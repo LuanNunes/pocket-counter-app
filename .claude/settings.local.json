@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p app/src/main/java/com/resolveprogramming/pocketcounter)",
+      "Bash(mkdir -p app/src/main/res/values)",
+      "Bash(mkdir -p app/src/main/res/font)",
+      "Bash(mkdir -p app/src/test/java/com/resolveprogramming/pocketcounter)",
+      "Bash(mkdir -p gradle/wrapper)",
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(./gradlew compileDebugKotlin)",
+      "Bash(./gradlew compileDebugKotlin kspDebugKotlin)",
+      "Bash(curl -sL \"https://github.com/googlefonts/dm-fonts/raw/main/Sans/Exports/DMSans-Medium.ttf\" -o dm_sans_medium.ttf)",
+      "Bash(curl -sL \"https://github.com/googlefonts/dm-fonts/raw/main/Sans/Exports/DMSans-SemiBold.ttf\" -o dm_sans_semibold.ttf)",
+      "Bash(curl -sL \"https://github.com/googlefonts/dm-fonts/raw/main/Sans/Exports/DMSans-Bold.ttf\" -o dm_sans_bold.ttf)",
+      "Bash(curl -sL \"https://github.com/vercel/geist-font/raw/main/packages/geist-mono/fonts/otf/GeistMono-Regular.otf\" -o geist_mono_regular.ttf)",
+      "Bash(curl -sL \"https://github.com/vercel/geist-font/raw/main/packages/geist-mono/fonts/otf/GeistMono-Medium.otf\" -o geist_mono_medium.ttf)",
+      "Bash(curl -sL \"https://github.com/vercel/geist-font/raw/main/packages/geist-mono/fonts/otf/GeistMono-SemiBold.otf\" -o geist_mono_semibold.ttf)",
+      "Bash(curl -sL -o geist_mono_regular.ttf \"https://raw.githubusercontent.com/vercel/geist-font/main/packages/geist-mono/fonts/geist-mono-latin-400-normal.ttf\")",
+      "WebSearch",
+      "Bash(curl -sL \"https://api.github.com/repos/vercel/geist-font/releases/326262285/assets\")",
+      "Bash(python3 -c \"import sys,json; [print\\(a['name'], a['browser_download_url']\\) for a in json.load\\(sys.stdin\\)]\")",
+      "Bash(./gradlew :app:compileDebugKotlin)",
+      "Bash(./gradlew :app:testDebugUnitTest)",
+      "Bash(./gradlew :app:testDebugUnitTest --tests \"com.resolveprogramming.pocketcounter.billing.BillingCycleTest.dueLabel formats correctly in pt-BR lowercase\")",
+      "Bash(./gradlew :app:assembleDebug)",
+      "Bash(./gradlew :app:assembleDebug :app:testDebugUnitTest -q)",
+      "Bash(./gradlew :app:assembleDebug :app:testDebugUnitTest)",
+      "Bash(./gradlew :app:compileDebugKotlin -q)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(git --no-pager diff --staged --stat)",
+      "Bash(git --no-pager diff --stat)",
+      "Bash(git --no-pager diff -- app/src/main/java/com/resolveprogramming/pocketcounter/domain/model/OpenInvoice.kt app/src/main/java/com/resolveprogramming/pocketcounter/data/repository/PaymentSourceRepository.kt app/src/main/java/com/resolveprogramming/pocketcounter/data/repository/SourceRepository.kt)",
+      "Bash(./gradlew :app:testDebugUnitTest --tests \"com.resolveprogramming.pocketcounter.domain.TransactionTotalsTest\")"
+    ]
+  }
+}
