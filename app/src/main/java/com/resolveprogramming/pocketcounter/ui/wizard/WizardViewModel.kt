@@ -79,19 +79,7 @@ class WizardViewModel @Inject constructor(
 
     private fun loadNotification() {
         viewModelScope.launch {
-            val base = notificationRepository.getById(notificationId).getOrNull()
-            if (base == null) {
-                // Stale/deleted/already-classified id: surface an error instead of an endless
-                // spinner (the screen shows a recoverable failure state with a way out).
-                _state.update {
-                    it.copy(
-                        isLoading = false,
-                        error = "Não foi possível abrir esta notificação. " +
-                            "Ela pode já ter sido classificada ou removida.",
-                    )
-                }
-                return@launch
-            }
+            val base = notificationRepository.getById(notificationId).getOrNull() ?: return@launch
             val paymentSources = paymentSourceRepository.getAll().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())

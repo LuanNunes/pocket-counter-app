@@ -75,12 +75,7 @@ fun WizardScreen(
         return
     }
 
-    val notification = state.notification ?: run {
-        // notification == null here only when the initial load failed (loading already returned
-        // above) — render a recoverable error instead of a blank screen.
-        WizardLoadError(message = state.error, onDismiss = onDismiss)
-        return
-    }
+    val notification = state.notification ?: return
 
     if (state.isConfirmingPending) {
         PendingConfirmScreen(
@@ -234,34 +229,6 @@ fun WizardScreen(
                 else viewModel.nextStep()
             },
         )
-    }
-}
-
-@Composable
-private fun WizardLoadError(message: String?, onDismiss: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PocketTheme.colors.bg)
-            .padding(24.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("⚠", style = PocketTheme.typography.screenH1, color = PocketTheme.colors.text3)
-            Text(
-                message ?: "Não foi possível abrir esta notificação.",
-                style = PocketTheme.typography.body,
-                color = PocketTheme.colors.text2,
-            )
-            PocketButton(
-                text = "Voltar",
-                onClick = onDismiss,
-                variant = PocketButtonVariant.SOFT,
-            )
-        }
     }
 }
 
