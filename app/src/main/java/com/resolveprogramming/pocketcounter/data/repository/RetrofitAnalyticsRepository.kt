@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.domain.model.MonthlySummary
 import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
 import com.resolveprogramming.pocketcounter.domain.model.SummaryTag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.YearMonth
@@ -47,12 +48,16 @@ class RetrofitAnalyticsRepository @Inject constructor(
         kind: TransactionType,
         compareKey: String?,
     ): Result<MonthlySummary> = runCatching {
-        val tagToContext = tagRepository.getAllTags().getOrDefault(emptyList())
-            .associate { it.id to it.idContext }
+        val tags = tagRepository.getAllTags().getOrDefault(emptyList())
+        val tagToContext = tags.associate { it.id to it.idContext }
+        val tagNameById = tags.associate { it.id to it.name }
         val contextById = tagRepository.getAllContexts().getOrDefault(emptyList())
             .associateBy { it.id }
-        val sourceNames = sourceRepository.getAll().getOrDefault(emptyList())
-            .associate { it.id to it.name }
+        val sources = sourceRepository.getAll().getOrDefault(emptyList())
+        val sourceNames = sources.associate { it.id to it.name }
+        // Source default tags, so an expense with no own tags inherits its source's context
+        // (matches Transações / Cartões); without this Resumo buckets it as "Sem categoria".
+        val sourceTags = sources.associate { it.id to it.tags }
 
         val ym = monthKey.toYearMonth()
         val current = fetch(kind, ym)
@@ -62,7 +67,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
         data class Bucket(val name: String, val color: Long, val txs: MutableList<TransactionDto>)
         val buckets = LinkedHashMap<String, Bucket>()
         for (tx in current) {
-            val (gid, name, color) = classify(tx, kind, tagToContext, contextById, sourceNames)
+            val (gid, name, color) = classify(tx, kind, tagToContext, contextById, sourceNames, sourceTags)
             buckets.getOrPut(gid) { Bucket(name, color, mutableListOf()) }.txs.add(tx)
         }
 
@@ -73,14 +78,14 @@ class RetrofitAnalyticsRepository @Inject constructor(
             compareKey == null -> { baseline = null; baseTotal = null }
             compareKey == "avg3" -> {
                 val months = (1..3).map { ym.minusMonths(it.toLong()) }
-                val perMonth = months.map { groupTotals(kind, it, tagToContext, contextById, sourceNames) }
+                val perMonth = months.map { groupTotals(kind, it, tagToContext, contextById, sourceNames, sourceTags) }
                 baseline = averageGroupTotals(perMonth)
                 baseTotal = perMonth.map { it.values.fold(BigDecimal.ZERO, BigDecimal::add) }
                     .fold(BigDecimal.ZERO, BigDecimal::add)
                     .divide(BigDecimal(3), 2, RoundingMode.HALF_UP)
             }
             else -> {
-                baseline = groupTotals(kind, compareKey.toYearMonth(), tagToContext, contextById, sourceNames)
+                baseline = groupTotals(kind, compareKey.toYearMonth(), tagToContext, contextById, sourceNames, sourceTags)
                 baseTotal = baseline.values.fold(BigDecimal.ZERO, BigDecimal::add)
             }
         }
@@ -96,7 +101,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
                 pct = ratio(total, grandTotal),
                 delta = relativeDelta(total, prev),
                 prevTotal = prev,
-                tags = drillTags(bucket.txs, kind, tagToContext, contextById),
+                tags = drillTags(bucket.txs, kind, sourceTags, tagNameById),
             )
         }.sortedByDescending { it.total }
 
@@ -119,7 +124,9 @@ class RetrofitAnalyticsRepository @Inject constructor(
 
         val tagToContext = tagRepository.getAllTags().getOrDefault(emptyList()).associate { it.id to it.idContext }
         val contextById = tagRepository.getAllContexts().getOrDefault(emptyList()).associateBy { it.id }
-        val sourceNames = sourceRepository.getAll().getOrDefault(emptyList()).associate { it.id to it.name }
+        val sources = sourceRepository.getAll().getOrDefault(emptyList())
+        val sourceNames = sources.associate { it.id to it.name }
+        val sourceTags = sources.associate { it.id to it.tags }
 
         val all = transactionApi.getRange(fromRef, toRef)
         val byMonthRef = all.groupBy { it.refYearMonth }
@@ -138,8 +145,8 @@ class RetrofitAnalyticsRepository @Inject constructor(
                 exp = expTotal,
                 inc = incTotal,
                 saldo = incTotal - expTotal,
-                expGroups = buildGroups(expenses, TransactionType.EXPENSE, tagToContext, contextById, sourceNames),
-                incGroups = buildGroups(incomes, TransactionType.INCOME, tagToContext, contextById, sourceNames),
+                expGroups = buildGroups(expenses, TransactionType.EXPENSE, tagToContext, contextById, sourceNames, sourceTags),
+                incGroups = buildGroups(incomes, TransactionType.INCOME, tagToContext, contextById, sourceNames, sourceTags),
             )
         }
 
@@ -182,12 +189,13 @@ class RetrofitAnalyticsRepository @Inject constructor(
         tagToContext: Map<String, String>,
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         sourceNames: Map<String, String>,
+        sourceTags: Map<String, List<String>>,
     ): List<SummaryGroup> {
         val grand = txs.sumAmount()
         data class B(val name: String, val color: Long, val txs: MutableList<TransactionDto>)
         val buckets = LinkedHashMap<String, B>()
         for (tx in txs) {
-            val (gid, name, color) = classify(tx, kind, tagToContext, contextById, sourceNames)
+            val (gid, name, color) = classify(tx, kind, tagToContext, contextById, sourceNames, sourceTags)
             buckets.getOrPut(gid) { B(name, color, mutableListOf()) }.txs.add(tx)
         }
         return buckets.map { (gid, b) ->
@@ -207,10 +215,11 @@ class RetrofitAnalyticsRepository @Inject constructor(
         tagToContext: Map<String, String>,
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         sourceNames: Map<String, String>,
+        sourceTags: Map<String, List<String>>,
     ): Map<String, BigDecimal> {
         val totals = LinkedHashMap<String, BigDecimal>()
         for (tx in fetch(kind, ym)) {
-            val (gid, _, _) = classify(tx, kind, tagToContext, contextById, sourceNames)
+            val (gid, _, _) = classify(tx, kind, tagToContext, contextById, sourceNames, sourceTags)
             totals[gid] = (totals[gid] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
         }
         return totals
@@ -230,9 +239,12 @@ class RetrofitAnalyticsRepository @Inject constructor(
         tagToContext: Map<String, String>,
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         sourceNames: Map<String, String>,
+        sourceTags: Map<String, List<String>>,
     ): Triple<String, String, Long> {
         return if (kind == TransactionType.EXPENSE) {
-            val tagId = tx.tags?.firstOrNull()?.id
+            // Resolve own-or-inherited tags, then bucket by the first tag's context.
+            val tagId = effectiveTagIds(tx.tags?.mapNotNull { it.id }, sourceTags[tx.idSource].orEmpty())
+                .firstOrNull()
             val ctxId = tagId?.let { tagToContext[it] }?.takeIf { it.isNotBlank() }
             val ctx = ctxId?.let { contextById[it] }
             if (ctx != null) Triple(ctx.id, ctx.name, ctx.color)
@@ -246,12 +258,17 @@ class RetrofitAnalyticsRepository @Inject constructor(
     private fun drillTags(
         txs: List<TransactionDto>,
         kind: TransactionType,
-        tagToContext: Map<String, String>,
-        contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
+        sourceTags: Map<String, List<String>>,
+        tagNameById: Map<String, String>,
     ): List<SummaryTag> = if (kind == TransactionType.EXPENSE) {
         val byTag = LinkedHashMap<String, BigDecimal>()
         for (tx in txs) {
-            val name = tx.tags?.firstOrNull()?.name ?: "sem etiqueta"
+            // Same effective-tag resolution as the bucket grouping, so an inheriting expense
+            // drills under its source-default tag instead of "sem etiqueta".
+            val tagId = effectiveTagIds(tx.tags?.mapNotNull { it.id }, sourceTags[tx.idSource].orEmpty())
+                .firstOrNull()
+            val name = tagId?.let { tagNameById[it] ?: tx.tags?.firstOrNull { t -> t.id == it }?.name }
+                ?: "sem etiqueta"
             byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
         }
         byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
