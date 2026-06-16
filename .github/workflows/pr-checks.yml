@@ -1,0 +1,70 @@
+name: PR Checks
+
+# Gate every PR targeting main: run unit tests + Android lint and an automated Claude review.
+# Make these "required" via branch protection so they must pass before merge
+# (Settings ▸ Branches ▸ main ▸ Require status checks: "test", "claude-review").
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests + Android lint
+        run: ./gradlew testDebugUnitTest lintDebug
+
+      - name: Publish reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            **/build/reports/tests/
+            **/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+          retention-days: 7
+
+  claude-review:
+    name: claude-review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review the pull request diff against the base branch for this
+            PocketCounter Android app (Kotlin). Follow the conventions in the
+            repo's CLAUDE.md. Focus on: correctness bugs, coroutine/threading
+            issues (main-thread blocking, structured concurrency, lifecycle-aware
+            scopes), null-safety, Compose/state pitfalls (unstable params,
+            recomposition, side effects in composition), resource and lifecycle
+            leaks, and consistency with the existing architecture and patterns.
+            Flag missing unit tests where logic warrants them. Group findings as
+            blocking / non-blocking / nits and post them as inline PR comments.
+            Do not modify code.
+          claude_args: '--max-turns 20 --model claude-opus-4-8'
