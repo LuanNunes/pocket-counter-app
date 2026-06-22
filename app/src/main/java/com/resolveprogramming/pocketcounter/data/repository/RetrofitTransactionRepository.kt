@@ -77,7 +77,8 @@ class RetrofitTransactionRepository @Inject constructor(
         val date = date ?: error("Date is required")
         val isPaid = statusPayment == PaymentStatus.PAID
         // Recurrence (isFixo) is not sent as a transaction field; it persists via series
-        // linkage (idSeries) in a later phase. The new backend has no isFixo column.
+        // linkage (idSeries). The WizardViewModel creates/links the recurring series after a
+        // successful save. The new backend has no isFixo column.
         return TransactionDto(
             transactionType = if (type == TransactionType.INCOME) "INCOME" else "EXPENSE",
             amount = amount,

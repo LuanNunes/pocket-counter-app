@@ -14,7 +14,9 @@ import com.resolveprogramming.pocketcounter.data.repository.RetrofitNotification
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitPaymentSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTagRepository
+import com.resolveprogramming.pocketcounter.data.repository.RetrofitSeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTransactionRepository
+import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
@@ -70,6 +72,11 @@ abstract class DataModule {
     abstract fun bindClassificationRuleRepository(
         impl: RetrofitClassificationRuleRepository,
     ): ClassificationRuleRepository
+
+    @Binds
+    abstract fun bindSeriesRepository(
+        impl: RetrofitSeriesRepository,
+    ): SeriesRepository
 
     @Binds
     abstract fun bindAssistantRepository(

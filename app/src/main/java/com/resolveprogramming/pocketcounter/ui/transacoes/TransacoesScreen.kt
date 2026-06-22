@@ -95,6 +95,7 @@ fun TransacoesScreen(
                     onPrev = { viewModel.stepMonth(-1) },
                     onNext = { viewModel.stepMonth(1) },
                     onToggleSearch = viewModel::toggleSearch,
+                    onGenerateBalance = viewModel::generateBalance,
                 )
 
                 TotalsStrip(
@@ -221,6 +222,7 @@ private fun MonthStepperBar(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onToggleSearch: () -> Unit,
+    onGenerateBalance: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -240,22 +242,34 @@ private fun MonthStepperBar(
             Spacer(Modifier.size(4.dp))
             StepperButton(glyph = "›", onClick = onNext)
         }
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .border(
-                    1.dp,
-                    if (searchOpen) PocketTheme.colors.accent else PocketTheme.colors.line,
-                    PocketTheme.shapes.icon,
-                )
-                .background(
-                    if (searchOpen) PocketTheme.colors.accentBg else PocketTheme.colors.surface,
-                    PocketTheme.shapes.icon,
-                )
-                .clickable(onClick = onToggleSearch),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("⌕", color = if (searchOpen) PocketTheme.colors.accent else PocketTheme.colors.text2)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.icon)
+                    .background(PocketTheme.colors.surface, PocketTheme.shapes.icon)
+                    .clickable(onClick = onGenerateBalance),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("↻", color = PocketTheme.colors.text2)
+            }
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .border(
+                        1.dp,
+                        if (searchOpen) PocketTheme.colors.accent else PocketTheme.colors.line,
+                        PocketTheme.shapes.icon,
+                    )
+                    .background(
+                        if (searchOpen) PocketTheme.colors.accentBg else PocketTheme.colors.surface,
+                        PocketTheme.shapes.icon,
+                    )
+                    .clickable(onClick = onToggleSearch),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("⌕", color = if (searchOpen) PocketTheme.colors.accent else PocketTheme.colors.text2)
+            }
         }
     }
 }

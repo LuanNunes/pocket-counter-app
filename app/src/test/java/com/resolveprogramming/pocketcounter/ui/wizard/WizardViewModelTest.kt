@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
@@ -14,11 +15,13 @@ import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +49,7 @@ class WizardViewModelTest {
     private val cardRepository: CardRepository = mockk()
     private val tagRepository: TagRepository = mockk()
     private val transactionRepository: TransactionRepository = mockk()
+    private val seriesRepository: SeriesRepository = mockk()
 
     @Before
     fun setUp() {
@@ -54,6 +58,11 @@ class WizardViewModelTest {
         coEvery { cardRepository.getCards() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
+        coEvery { seriesRepository.getAll() } returns Result.success(emptyList())
+        coEvery { seriesRepository.create(any(), any(), any()) } returns
+            Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, null))
+        coEvery { seriesRepository.setTags(any(), any()) } returns Result.success(Unit)
+        coEvery { seriesRepository.linkTransaction(any(), any(), any()) } returns Result.success(Unit)
     }
 
     @After
@@ -118,6 +127,7 @@ class WizardViewModelTest {
             cardRepository = cardRepository,
             tagRepository = tagRepository,
             transactionRepository = transactionRepository,
+            seriesRepository = seriesRepository,
         )
     }
 
@@ -638,5 +648,181 @@ class WizardViewModelTest {
         vm.updateRecurrenceDay(null)
 
         assertNull(vm.state.value.draft.recurrenceDay)
+    }
+
+    // -------------------------------------------------------------------------
+    // save() — recurring-series flow
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `save non-fixo does not touch seriesRepository`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        // draft.isFixo defaults to false — no toggleFixo call
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { seriesRepository.create(any(), any(), any()) }
+        coVerify(exactly = 0) { seriesRepository.linkTransaction(any(), any(), any()) }
+        assertTrue(vm.state.value.isSuccess)
+    }
+
+    @Test
+    fun `save fixo with no existing series creates series then links transaction`() = runTest {
+        val notification = makeNotification(tagIds = listOf("t1"))
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { seriesRepository.create("IFOOD", TransactionType.EXPENSE, 10) } returns
+            Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, 10))
+        coEvery { seriesRepository.setTags("s-new", listOf("t1")) } returns Result.success(Unit)
+        coEvery { seriesRepository.linkTransaction("s-new", "tx-1", false) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(10)
+        // draft.seriesId remains null — no selectSeries call
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerifyOrder {
+            transactionRepository.save(any())
+            seriesRepository.create("IFOOD", TransactionType.EXPENSE, 10)
+            seriesRepository.setTags("s-new", listOf("t1"))
+            seriesRepository.linkTransaction("s-new", "tx-1", false)
+        }
+        assertTrue(vm.state.value.isSuccess)
+    }
+
+    @Test
+    fun `save fixo derives series name from merchant when draft name is null`() = runTest {
+        // makeNotification sets merchantRaw = "IFOOD"; name defaults to null in WizardDraft
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(5)
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { seriesRepository.create("IFOOD", any(), any()) }
+    }
+
+    @Test
+    fun `save fixo with empty tagIds does not call setTags`() = runTest {
+        // notification has no suggested tagIds → draft.tagIds is empty
+        val notification = makeNotification(tagIds = emptyList())
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(5)
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { seriesRepository.setTags(any(), any()) }
+    }
+
+    @Test
+    fun `save fixo linking an existing series links without creating`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { seriesRepository.linkTransaction("s-existing", "tx-1", false) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(5)
+        vm.selectSeries("s-existing")
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { seriesRepository.linkTransaction("s-existing", "tx-1", false) }
+        coVerify(exactly = 0) { seriesRepository.create(any(), any(), any()) }
+        coVerify(exactly = 0) { seriesRepository.setTags(any(), any()) }
+    }
+
+    @Test
+    fun `save fixo still succeeds when series create fails (best-effort, transaction not rolled back)`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { seriesRepository.create(any(), any(), any()) } returns
+            Result.failure(RuntimeException("series create failed"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(5)
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        coVerify(exactly = 1) { notificationRepository.markClassified(any(), any()) }
+        assertTrue(vm.state.value.isSuccess)
+    }
+
+    @Test
+    fun `save fixo still succeeds when linkTransaction fails`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { seriesRepository.create(any(), any(), any()) } returns
+            Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, 5))
+        coEvery { seriesRepository.linkTransaction(any(), any(), any()) } returns
+            Result.failure(RuntimeException("link failed"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(5)
+
+        vm.save()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.isSuccess)
     }
 }
