@@ -181,7 +181,7 @@ private fun ChartCard(
     PocketCard(modifier = Modifier.fillMaxWidth()) {
         Column {
             Text(
-                "${if (isExpense) "Despesas" else "Receitas"} por ${if (isExpense) "contexto" else "fonte"}",
+                "${if (isExpense) "Despesas" else "Receitas"} por ${if (isExpense) "contexto" else "categoria de renda"}",
                 style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                 color = PocketTheme.colors.text,
             )
@@ -234,7 +234,7 @@ private fun SparkrowsCard(report: ReportData, isExpense: Boolean) {
     PocketCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                if (isExpense) "Receitas por fonte" else "Despesas por contexto",
+                if (isExpense) "Receitas por categoria" else "Despesas por contexto",
                 style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                 color = PocketTheme.colors.text,
             )
@@ -258,7 +258,7 @@ private fun DetailHeader(isExpense: Boolean, mode: ReportDetailMode, onMode: (Re
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            "Detalhe por ${if (isExpense) "contexto" else "fonte"}",
+            "Detalhe por ${if (isExpense) "contexto" else "categoria de renda"}",
             style = PocketTheme.typography.sectionHeader,
             color = PocketTheme.colors.text3,
         )
@@ -284,7 +284,7 @@ private fun DetailTable(report: ReportData, series: List<ReportSeries>, isExpens
         Row {
             // Pinned group column.
             Column {
-                Cell(if (isExpense) "Contexto" else "Fonte", nameW, rowH, header = true)
+                Cell(if (isExpense) "Contexto" else "Categoria", nameW, rowH, header = true)
                 series.forEach { Cell(it.name, nameW, rowH) }
                 Cell("Total", nameW, rowH, bold = true)
             }
