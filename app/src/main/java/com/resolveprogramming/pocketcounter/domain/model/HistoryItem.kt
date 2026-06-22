@@ -18,6 +18,13 @@ data class HistoryItem(
     val paymentMethod: PaymentMethod? = null,
     val cardId: String? = null,
     val seriesId: String? = null,
+    val name: String? = null,
+    val description: String? = null,
 ) {
     val isFixo: Boolean get() = seriesId != null
+
+    fun displayTitle(): String =
+        name?.takeIf { it.isNotBlank() }
+            ?: description?.takeIf { it.isNotBlank() }
+            ?: "—"
 }

@@ -54,6 +54,7 @@ fun PocketTheme(
 
     CompositionLocalProvider(
         LocalPocketColors provides colors,
+        LocalPocketIsDark provides darkTheme,
         LocalPocketTypography provides DefaultPocketTypography,
         LocalPocketShapes provides DefaultPocketShapes,
         LocalPocketSpacing provides spacing,
@@ -79,4 +80,7 @@ object PocketTheme {
 
     val spacing: PocketSpacing
         @Composable get() = LocalPocketSpacing.current
+
+    val isDark: Boolean
+        @Composable get() = LocalPocketIsDark.current
 }

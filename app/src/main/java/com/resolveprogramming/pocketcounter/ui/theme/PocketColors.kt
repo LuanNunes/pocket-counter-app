@@ -74,3 +74,5 @@ val DarkPocketColors = PocketColors(
 )
 
 val LocalPocketColors = staticCompositionLocalOf { LightPocketColors }
+
+val LocalPocketIsDark = staticCompositionLocalOf { false }

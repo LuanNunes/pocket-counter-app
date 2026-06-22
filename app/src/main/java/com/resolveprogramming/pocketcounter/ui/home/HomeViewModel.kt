@@ -5,15 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.AutomationStat
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionTotals
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,9 +29,8 @@ data class HomeUiState(
     val totalExpense: BigDecimal = BigDecimal.ZERO,
     val pendingReview: List<NotificationItem> = emptyList(),
     val history: List<HistoryItem> = emptyList(),
-    val paymentSources: Map<String, PaymentSource> = emptyMap(),
-    val sources: Map<String, Source> = emptyMap(),
     val tags: Map<String, Tag> = emptyMap(),
+    val cards: Map<String, CreditCard> = emptyMap(),
     /** null while loading */
     val automation: AutomationStat? = null,
     /** null while loading */
@@ -47,8 +43,6 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val notificationRepository: NotificationRepository,
     private val transactionRepository: TransactionRepository,
-    private val paymentSourceRepository: PaymentSourceRepository,
-    private val sourceRepository: SourceRepository,
     private val tagRepository: TagRepository,
     private val cardRepository: CardRepository,
     private val tokenStore: TokenStore,
@@ -65,10 +59,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             val pending = notificationRepository.getPendingReview().getOrDefault(emptyList())
             val history = transactionRepository.getHistory().getOrDefault(emptyList())
-            val paymentSources = paymentSourceRepository.getAll().getOrDefault(emptyList())
-            val sources = sourceRepository.getAll().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val automation = notificationRepository.getAutomationStat().getOrNull()
+            val cards = cardRepository.getCards().getOrDefault(emptyList())
             val invoices = cardRepository.getOpenInvoices().getOrDefault(emptyList())
             val userName = tokenStore.getUserName().orEmpty()
             val monthLabel = java.time.LocalDate.now().month
@@ -86,9 +79,8 @@ class HomeViewModel @Inject constructor(
                 monthLabel = monthLabel,
                 pendingReview = pending,
                 history = history,
-                paymentSources = paymentSources.associateBy { it.id },
-                sources = sources.associateBy { it.id },
                 tags = tags.associateBy { it.id },
+                cards = cards.associateBy { it.id },
                 balance = totals.balance,
                 totalIncome = totals.income,
                 totalExpense = totals.expense,
