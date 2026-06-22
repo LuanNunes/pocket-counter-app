@@ -49,7 +49,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
         compareKey: String?,
     ): Result<MonthlySummary> = runCatching {
         val tags = tagRepository.getAllTags().getOrDefault(emptyList())
-        val tagToContext = tags.associate { it.id to it.idContext }
+        val tagToContext: Map<String, String?> = tags.associate { it.id to it.idContext }
         val tagNameById = tags.associate { it.id to it.name }
         val contextById = tagRepository.getAllContexts().getOrDefault(emptyList())
             .associateBy { it.id }
@@ -122,7 +122,8 @@ class RetrofitAnalyticsRepository @Inject constructor(
         val fromRef = monthsList.first().let { it.year * 100 + it.monthValue }
         val toRef = monthsList.last().let { it.year * 100 + it.monthValue }
 
-        val tagToContext = tagRepository.getAllTags().getOrDefault(emptyList()).associate { it.id to it.idContext }
+        val tagToContext: Map<String, String?> =
+            tagRepository.getAllTags().getOrDefault(emptyList()).associate { it.id to it.idContext }
         val contextById = tagRepository.getAllContexts().getOrDefault(emptyList()).associateBy { it.id }
         val sources = sourceRepository.getAll().getOrDefault(emptyList())
         val sourceNames = sources.associate { it.id to it.name }
@@ -186,7 +187,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
     private fun buildGroups(
         txs: List<TransactionDto>,
         kind: TransactionType,
-        tagToContext: Map<String, String>,
+        tagToContext: Map<String, String?>,
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         sourceNames: Map<String, String>,
         sourceTags: Map<String, List<String>>,
@@ -212,7 +213,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
     private suspend fun groupTotals(
         kind: TransactionType,
         ym: YearMonth,
-        tagToContext: Map<String, String>,
+        tagToContext: Map<String, String?>,
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         sourceNames: Map<String, String>,
         sourceTags: Map<String, List<String>>,
@@ -236,7 +237,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
     private fun classify(
         tx: TransactionDto,
         kind: TransactionType,
-        tagToContext: Map<String, String>,
+        tagToContext: Map<String, String?>,
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         sourceNames: Map<String, String>,
         sourceTags: Map<String, List<String>>,

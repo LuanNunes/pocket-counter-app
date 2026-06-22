@@ -70,7 +70,10 @@ fun ContextosTagsScreen(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    items(state.sections.size, key = { state.sections[it].context?.id ?: "__sem_contexto__" }) { i ->
+                    item {
+                        SectionLabel("Contextos de despesa")
+                    }
+                    items(state.sections.size, key = { "ctx_${state.sections[it].context?.id ?: "__sem_contexto__"}" }) { i ->
                         ContextSectionCard(
                             section = state.sections[i],
                             onEditContext = { id -> viewModel.openEditContext(id) },
@@ -78,6 +81,15 @@ fun ContextosTagsScreen(
                             onAddTag = { idCtx -> viewModel.openAddTag(idCtx) },
                             onEditTag = { id -> viewModel.openEditTag(id) },
                             onDeleteTag = { id -> viewModel.requestDeleteTag(id) },
+                        )
+                    }
+                    item { SectionLabel("Categorias de renda") }
+                    item {
+                        IncomeCategoriesCard(
+                            categories = state.incomeCategories,
+                            onAddCategory = viewModel::openAddIncomeCategory,
+                            onEditCategory = { id -> viewModel.openEditTag(id) },
+                            onDeleteCategory = { id -> viewModel.requestDeleteTag(id) },
                         )
                     }
                     item { Box(Modifier.height(80.dp)) }
@@ -108,6 +120,7 @@ fun ContextosTagsScreen(
             mode = mode,
             editing = state.editingTag,
             contexts = state.contexts,
+            palette = state.palette,
             onSave = viewModel::saveTag,
             onDelete = {
                 val id = (mode as? TagFormMode.Edit)?.id
@@ -214,6 +227,48 @@ private fun ContextSectionCard(
             if (ctx != null) {
                 PocketChip(label = "+ Tag", variant = PocketChipVariant.ADD, onClick = { onAddTag(ctx.id) })
             }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = PocketTheme.typography.sectionHeader,
+        color = PocketTheme.colors.text3,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun IncomeCategoriesCard(
+    categories: List<Tag>,
+    onAddCategory: () -> Unit,
+    onEditCategory: (String) -> Unit,
+    onDeleteCategory: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            categories.forEach { category ->
+                TagChip(
+                    tag = category,
+                    dotColor = category.color?.let { Color(it) } ?: PocketTheme.colors.text3,
+                    onClick = { onEditCategory(category.id) },
+                    onRemove = { onDeleteCategory(category.id) },
+                )
+            }
+            PocketChip(label = "+ Categoria", variant = PocketChipVariant.ADD, onClick = onAddCategory)
         }
     }
 }

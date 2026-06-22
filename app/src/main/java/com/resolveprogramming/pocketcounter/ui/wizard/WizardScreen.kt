@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepAmount
@@ -197,6 +198,7 @@ fun WizardScreen(
                     )
 
                     WizardStep.TAGS -> StepTags(
+                        type = state.draft.type ?: TransactionType.EXPENSE,
                         tags = state.allTags,
                         contexts = state.contexts,
                         selectedTagIds = state.draft.tagIds,

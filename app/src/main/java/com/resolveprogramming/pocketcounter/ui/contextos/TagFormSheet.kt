@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -26,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.ui.components.ColorSwatchPicker
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
@@ -39,19 +42,32 @@ fun TagFormSheet(
     mode: TagFormMode,
     editing: Tag?,
     contexts: List<TagContext>,
+    palette: List<Long>,
     onSave: (TagInput) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val isIncome = when (mode) {
+        is TagFormMode.AddIncome -> true
+        is TagFormMode.Add -> false
+        is TagFormMode.Edit -> editing?.kind == TransactionType.INCOME
+    }
+
     var name by remember { mutableStateOf(editing?.name.orEmpty()) }
     var contextId by remember {
         mutableStateOf(editing?.idContext ?: (mode as? TagFormMode.Add)?.idContext.orEmpty())
     }
-    val canSave = name.isNotBlank() && contextId.isNotBlank()
+    var color by remember { mutableLongStateOf(editing?.color ?: palette.first()) }
+    val canSave = if (isIncome) name.isNotBlank() else name.isNotBlank() && contextId.isNotBlank()
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
         Text(
-            text = if (mode is TagFormMode.Edit) "Editar tag" else "Nova tag",
+            text = when {
+                mode is TagFormMode.Edit && isIncome -> "Editar categoria"
+                mode is TagFormMode.Edit -> "Editar tag"
+                isIncome -> "Nova categoria"
+                else -> "Nova tag"
+            },
             style = PocketTheme.typography.stepQuestion,
             color = PocketTheme.colors.text,
         )
@@ -59,36 +75,46 @@ fun TagFormSheet(
 
         FormLabel("Nome")
         Spacer(Modifier.height(8.dp))
-        FormTextField(value = name, onValueChange = { name = it }, placeholder = "Ex: supermercado")
+        FormTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = if (isIncome) "Ex: Salário" else "Ex: supermercado",
+        )
         Spacer(Modifier.height(16.dp))
 
-        FormLabel("Contexto")
-        Spacer(Modifier.height(8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            contexts.forEach { ctx ->
-                val selected = ctx.id == contextId
-                Row(
-                    modifier = Modifier
-                        .border(
-                            1.dp,
-                            if (selected) PocketTheme.colors.accent else PocketTheme.colors.line,
-                            PocketTheme.shapes.pill,
+        if (isIncome) {
+            FormLabel("Cor")
+            Spacer(Modifier.height(8.dp))
+            ColorSwatchPicker(colors = palette, selected = color, onSelect = { color = it })
+        } else {
+            FormLabel("Contexto")
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                contexts.forEach { ctx ->
+                    val selected = ctx.id == contextId
+                    Row(
+                        modifier = Modifier
+                            .border(
+                                1.dp,
+                                if (selected) PocketTheme.colors.accent else PocketTheme.colors.line,
+                                PocketTheme.shapes.pill,
+                            )
+                            .background(
+                                if (selected) PocketTheme.colors.accentBg else PocketTheme.colors.surface2,
+                                PocketTheme.shapes.pill,
+                            )
+                            .clickable { contextId = ctx.id }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Box(Modifier.size(8.dp).background(Color(ctx.color), PocketTheme.shapes.pill))
+                        Text(
+                            ctx.name,
+                            style = PocketTheme.typography.bodySm,
+                            color = if (selected) PocketTheme.colors.text else PocketTheme.colors.text2,
                         )
-                        .background(
-                            if (selected) PocketTheme.colors.accentBg else PocketTheme.colors.surface2,
-                            PocketTheme.shapes.pill,
-                        )
-                        .clickable { contextId = ctx.id }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Box(Modifier.size(8.dp).background(Color(ctx.color), PocketTheme.shapes.pill))
-                    Text(
-                        ctx.name,
-                        style = PocketTheme.typography.bodySm,
-                        color = if (selected) PocketTheme.colors.text else PocketTheme.colors.text2,
-                    )
+                    }
                 }
             }
         }
@@ -104,7 +130,14 @@ fun TagFormSheet(
             )
             PocketButton(
                 text = "Salvar",
-                onClick = { onSave(TagInput(name.trim(), contextId)) },
+                onClick = {
+                    val input = if (isIncome) {
+                        TagInput(name.trim(), kind = TransactionType.INCOME, idContext = null, color = color)
+                    } else {
+                        TagInput(name.trim(), kind = TransactionType.EXPENSE, idContext = contextId)
+                    }
+                    onSave(input)
+                },
                 enabled = canSave,
                 fillMaxWidth = true,
                 modifier = Modifier.weight(1.5f),
@@ -113,7 +146,7 @@ fun TagFormSheet(
         if (mode is TagFormMode.Edit) {
             Spacer(Modifier.height(8.dp))
             PocketButton(
-                text = "Excluir tag",
+                text = if (isIncome) "Excluir categoria" else "Excluir tag",
                 onClick = onDelete,
                 variant = PocketButtonVariant.GHOST,
                 fillMaxWidth = true,

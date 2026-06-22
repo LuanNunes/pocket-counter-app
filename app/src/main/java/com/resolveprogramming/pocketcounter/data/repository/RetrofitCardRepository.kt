@@ -114,7 +114,7 @@ class RetrofitCardRepository @Inject constructor(
         }
 
         // Only learn tags that carry a context — the backend rule needs {idTag, idContext}.
-        val ruleTags = tags.filter { it.idContext.isNotBlank() }
+        val ruleTags = tags.filter { !it.idContext.isNullOrBlank() }
         if (ruleTags.isEmpty()) {
             return@runCatching ClassifyOutcome(ruleRequested = true, ruleCreated = false)
         }
@@ -125,7 +125,7 @@ class RetrofitCardRepository @Inject constructor(
                 idPaymentSource = card.id,
                 idSource = tx.idSource, // TODO(phase-3 faturas): legacy field, null on the new backend
                 transactionType = "EXPENSE",
-                tagIds = ruleTags.map { ClassificationRuleTagDto(it.id, it.idContext) },
+                tagIds = ruleTags.map { ClassificationRuleTagDto(it.id, it.idContext!!) },
             )
             classificationRuleApi.create(dto)
         }.isSuccess

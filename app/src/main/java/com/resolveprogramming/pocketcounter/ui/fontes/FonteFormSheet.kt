@@ -25,6 +25,7 @@ import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
 import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormSwitchRow
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
@@ -133,7 +134,9 @@ fun FonteFormSheet(
             Spacer(Modifier.height(16.dp))
 
             // Tags padrão — reuse the wizard tag picker without the "learn from notifications" card.
+            // Income-only sources pick income categories; otherwise (Despesa/Ambos) expense tags.
             StepTags(
+                type = if (tipoIndex == 1) TransactionType.INCOME else TransactionType.EXPENSE,
                 tags = tags,
                 contexts = contexts,
                 selectedTagIds = tagIds,

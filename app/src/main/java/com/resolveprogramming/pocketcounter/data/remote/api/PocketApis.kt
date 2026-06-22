@@ -6,8 +6,8 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDt
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifiedRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ContextDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ContextReorderDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryReorderDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
@@ -116,8 +116,8 @@ interface TagApi {
     @GET("api/v1/tags")
     suspend fun getTags(): List<TagDto>
 
-    @GET("api/v1/tags/context/{idContext}")
-    suspend fun getTagsByContext(@Path("idContext") idContext: String): List<TagDto>
+    @GET("api/v1/tags/category/{idCategory}")
+    suspend fun getTagsByCategory(@Path("idCategory") idCategory: String): List<TagDto>
 
     @POST("api/v1/tags")
     suspend fun addTag(@Body dto: TagDto): String
@@ -129,21 +129,21 @@ interface TagApi {
     suspend fun delete(@Path("id") id: String)
 }
 
-interface ContextApi {
-    @GET("api/v1/contexts")
-    suspend fun getContexts(): List<ContextDto>
+interface CategoryApi {
+    @GET("api/v1/categories")
+    suspend fun getCategories(): List<CategoryDto>
 
-    @POST("api/v1/contexts")
-    suspend fun addContext(@Body dto: ContextDto): String
+    @POST("api/v1/categories")
+    suspend fun addCategory(@Body dto: CategoryDto): String
 
-    @PUT("api/v1/contexts/{id}")
-    suspend fun update(@Path("id") id: String, @Body dto: ContextDto): String
+    @PUT("api/v1/categories/{id}")
+    suspend fun update(@Path("id") id: String, @Body dto: CategoryDto): String
 
-    @DELETE("api/v1/contexts/{id}")
+    @DELETE("api/v1/categories/{id}")
     suspend fun delete(@Path("id") id: String)
 
-    @PUT("api/v1/contexts/reorder")
-    suspend fun reorder(@Body body: ContextReorderDto)
+    @PUT("api/v1/categories/reorder")
+    suspend fun reorder(@Body body: CategoryReorderDto)
 }
 
 interface AssistantApi {

@@ -2,7 +2,7 @@ package com.resolveprogramming.pocketcounter.data.remote
 
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ContextDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
@@ -153,10 +153,11 @@ internal object RemoteMappers {
         idSource = idSource,
         transactionType = parseType(transactionType),
         // Names are resolved against the loaded tag list in the UI layer.
-        tags = tagIds.map { Tag(id = it.idTag, name = "", idContext = it.idContext) },
+        // Rule tags are always expense (the rule DTO keeps its own idContext field).
+        tags = tagIds.map { Tag(id = it.idTag, name = "", kind = TransactionType.EXPENSE, idContext = it.idContext) },
     )
 
-    fun ContextDto.toDomain(): TagContext = TagContext(
+    fun CategoryDto.toDomain(): TagContext = TagContext(
         id = id ?: name,
         name = name,
         color = parseColor(color, id ?: name),
@@ -165,7 +166,9 @@ internal object RemoteMappers {
     fun TagDto.toDomain(idContextFallback: String? = null): Tag = Tag(
         id = id ?: name,
         name = name,
-        idContext = idContext ?: idContextFallback.orEmpty(),
+        kind = parseType(kind) ?: TransactionType.EXPENSE,
+        idContext = idCategory ?: idContextFallback,
+        color = color?.let { parseColor(it, id ?: name) },
     )
 
     /** A persisted transaction → the Home history row (amount carries an expense sign). */

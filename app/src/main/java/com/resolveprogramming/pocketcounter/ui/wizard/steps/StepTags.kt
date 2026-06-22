@@ -31,11 +31,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StepTags(
+    type: TransactionType,
     tags: List<Tag>,
     contexts: List<TagContext>,
     selectedTagIds: List<String>,
@@ -51,9 +53,16 @@ fun StepTags(
     showLearnToggle: Boolean = true,
 ) {
     val contextMap = contexts.associateBy { it.id }
-    val filteredTags = if (searchQuery.isBlank()) tags
-    else tags.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    val kindTags = tags.filter { it.kind == type }
+    val filteredTags = if (searchQuery.isBlank()) kindTags
+    else kindTags.filter { it.name.contains(searchQuery, ignoreCase = true) }
     val tagsByContext = filteredTags.groupBy { it.idContext }
+    // Expense tags whose context is null/blank or points at an unknown/deleted context
+    // must still be selectable — surface them in a trailing "Sem contexto" group,
+    // mirroring the Gestão screen's buildContextSections orphan bucket.
+    val knownContextIds = contexts.map { it.id }.toSet()
+    val orphanExpenseTags = if (type == TransactionType.INCOME) emptyList()
+        else filteredTags.filter { it.idContext.isNullOrBlank() || it.idContext !in knownContextIds }
 
     Column(modifier = modifier) {
         Text(
@@ -119,8 +128,10 @@ fun StepTags(
             ) {
                 selectedTagIds.forEach { tagId ->
                     val tag = tags.find { it.id == tagId } ?: return@forEach
-                    val context = contextMap[tag.idContext]
-                    val contextColor = context?.color?.let { Color(it) } ?: PocketTheme.colors.text3
+                    val context = tag.idContext?.let { contextMap[it] }
+                    val dotColor = context?.color
+                        ?: tag.color
+                    val contextColor = dotColor?.let { Color(it) } ?: PocketTheme.colors.text3
 
                     Row(
                         modifier = Modifier
@@ -153,47 +164,123 @@ fun StepTags(
 
         Spacer(Modifier.height(16.dp))
 
-        contexts.forEach { context ->
-            val contextTags = tagsByContext[context.id] ?: return@forEach
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 8.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(Color(context.color), CircleShape),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = context.name.uppercase(),
-                    style = PocketTheme.typography.sectionHeader,
-                    color = PocketTheme.colors.text3,
-                )
-            }
-
+        if (type == TransactionType.INCOME) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 16.dp),
             ) {
-                contextTags.forEach { tag ->
+                filteredTags.forEach { tag ->
                     val isSelected = tag.id in selectedTagIds
                     val bg = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.surface
                     val textColor = if (isSelected) PocketTheme.colors.accentInk else PocketTheme.colors.text2
                     val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+                    val dotColor = tag.color?.let { Color(it) } ?: PocketTheme.colors.text3
 
-                    Text(
-                        text = tag.name,
-                        style = PocketTheme.typography.bodySm,
-                        color = textColor,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .border(1.dp, borderColor, PocketTheme.shapes.chip)
                             .background(bg, PocketTheme.shapes.chip)
                             .clickable { onToggleTag(tag.id) }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Box(Modifier.size(6.dp).background(dotColor, CircleShape))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = tag.name,
+                            style = PocketTheme.typography.bodySm,
+                            color = textColor,
+                        )
+                    }
+                }
+            }
+        } else {
+            contexts.forEach { context ->
+                val contextTags = tagsByContext[context.id] ?: return@forEach
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(Color(context.color), CircleShape),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = context.name.uppercase(),
+                        style = PocketTheme.typography.sectionHeader,
+                        color = PocketTheme.colors.text3,
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 16.dp),
+                ) {
+                    contextTags.forEach { tag ->
+                        val isSelected = tag.id in selectedTagIds
+                        val bg = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.surface
+                        val textColor = if (isSelected) PocketTheme.colors.accentInk else PocketTheme.colors.text2
+                        val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+
+                        Text(
+                            text = tag.name,
+                            style = PocketTheme.typography.bodySm,
+                            color = textColor,
+                            modifier = Modifier
+                                .border(1.dp, borderColor, PocketTheme.shapes.chip)
+                                .background(bg, PocketTheme.shapes.chip)
+                                .clickable { onToggleTag(tag.id) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+
+            if (orphanExpenseTags.isNotEmpty()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(PocketTheme.colors.text3, CircleShape),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "SEM CONTEXTO",
+                        style = PocketTheme.typography.sectionHeader,
+                        color = PocketTheme.colors.text3,
+                    )
+                }
+
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 16.dp),
+                ) {
+                    orphanExpenseTags.forEach { tag ->
+                        val isSelected = tag.id in selectedTagIds
+                        val bg = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.surface
+                        val textColor = if (isSelected) PocketTheme.colors.accentInk else PocketTheme.colors.text2
+                        val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+
+                        Text(
+                            text = tag.name,
+                            style = PocketTheme.typography.bodySm,
+                            color = textColor,
+                            modifier = Modifier
+                                .border(1.dp, borderColor, PocketTheme.shapes.chip)
+                                .background(bg, PocketTheme.shapes.chip)
+                                .clickable { onToggleTag(tag.id) }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
                 }
             }
         }

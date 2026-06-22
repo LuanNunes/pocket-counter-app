@@ -174,8 +174,9 @@ fun SuccessScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             selectedTags.forEach { tag ->
-                                val ctx = contextMap[tag.idContext]
-                                val ctxColor = ctx?.color?.let { Color(it) } ?: PocketTheme.colors.text3
+                                val ctx = tag.idContext?.let { contextMap[it] }
+                                val ctxColor = (ctx?.color ?: tag.color)?.let { Color(it) }
+                                    ?: PocketTheme.colors.text3
                                 Row(
                                     modifier = Modifier
                                         .background(PocketTheme.colors.surface2, PocketTheme.shapes.chip)

@@ -187,7 +187,8 @@ private fun RegraCard(
                 ) {
                     rule.tags.forEach { tag ->
                         val name = tagsById[tag.id]?.name ?: return@forEach
-                        val dotColor = contextsById[tag.idContext]?.color?.let { Color(it) }
+                        val dotColor = (tag.idContext?.let { contextsById[it] }?.color ?: tag.color)
+                            ?.let { Color(it) }
                             ?: PocketTheme.colors.text3
                         TagDotChip(name = name, dotColor = dotColor)
                     }
