@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ContextDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ContextReorderDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
@@ -53,6 +54,20 @@ interface TransactionApi {
 
     @PUT("api/v1/transactions/reorder")
     suspend fun reorder(@Body body: TransactionReorderRequest)
+}
+
+interface CreditCardApi {
+    @GET("api/v1/credit-cards")
+    suspend fun getCards(): List<CreditCardDto>
+
+    @POST("api/v1/credit-cards")
+    suspend fun create(@Body dto: CreditCardDto): String
+
+    @PUT("api/v1/credit-cards/{id}")
+    suspend fun update(@Path("id") id: String, @Body dto: CreditCardDto): String
+
+    @DELETE("api/v1/credit-cards/{id}")
+    suspend fun delete(@Path("id") id: String)
 }
 
 interface ClassificationRuleApi {

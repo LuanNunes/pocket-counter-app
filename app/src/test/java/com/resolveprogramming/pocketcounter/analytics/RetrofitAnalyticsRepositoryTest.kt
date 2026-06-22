@@ -54,7 +54,7 @@ class RetrofitAnalyticsRepositoryTest {
     private fun expense(idSource: String?, tags: List<TagDto>?) = TransactionDto(
         id = "e1",
         idSource = idSource,
-        type = "EXPENSE",
+        transactionType = "EXPENSE",
         amount = BigDecimal("100.00"),
         tags = tags,
     )

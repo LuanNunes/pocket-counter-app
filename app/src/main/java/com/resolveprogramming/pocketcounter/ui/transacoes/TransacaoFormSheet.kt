@@ -17,12 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
-import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
@@ -31,7 +29,6 @@ import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.WizardStep
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepAmount
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepPayment
-import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepSource
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepTags
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepType
 import java.time.LocalDate
@@ -39,25 +36,20 @@ import java.time.LocalDate
 /**
  * Manual add / edit form. Reuses the wizard step composables + [WizardDraft] + the same
  * footer/validation pattern, but NOT WizardViewModel (which is notification-coupled).
- * Draft + step index are local UI state; the VM only supplies source filtering, inline
- * source create, and the save path.
+ * Draft + step index are local UI state; the VM only supplies the card list and save path.
  */
 @Composable
 fun TransacaoFormSheet(
     mode: FormMode,
     initialItem: HistoryItem?,
-    paymentSources: List<PaymentSource>,
-    filteredSources: List<Source>,
+    cards: List<CreditCard>,
     tags: List<Tag>,
     contexts: List<TagContext>,
-    onLoadSources: (String, TransactionType) -> Unit,
-    onCreateSource: (String, String, TransactionType, (String) -> Unit) -> Unit,
     onSave: (WizardDraft) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var draft by remember { mutableStateOf(seedDraft(initialItem)) }
     var step by remember { mutableStateOf(WizardStep.TYPE) }
-    var sourceSearch by remember { mutableStateOf("") }
     var tagSearch by remember { mutableStateOf("") }
     val context = LocalContext.current
 
@@ -78,7 +70,7 @@ fun TransacaoFormSheet(
             WizardStep.TYPE -> StepType(
                 suggestedType = null,
                 selectedType = draft.type,
-                onSelect = { draft = draft.copy(type = it) },
+                onSelect = { draft = draft.withType(it) },
             )
 
             WizardStep.AMOUNT -> StepAmount(
@@ -104,34 +96,19 @@ fun TransacaoFormSheet(
                 },
                 onStatusChange = { draft = draft.copy(statusPayment = it) },
                 onToggleInstallments = { },
+                isFixo = draft.isFixo,
+                recurrenceDay = draft.recurrenceDay,
+                onToggleFixo = { draft = draft.copy(isFixo = it) },
+                onRecurrenceDayChange = { draft = draft.copy(recurrenceDay = it) },
             )
 
             WizardStep.PAYMENT -> StepPayment(
-                paymentSources = paymentSources,
-                selectedId = draft.idPaymentSource,
-                suggestedId = null,
-                paymentHint = null,
-                onSelect = { id ->
-                    draft = draft.withPaymentSourceReset(id)
-                    draft.type?.let { onLoadSources(id, it) }
-                },
-            )
-
-            WizardStep.SOURCE -> StepSource(
-                sources = filteredSources,
-                selectedId = draft.idSource,
-                suggestedId = null,
-                merchantRaw = draft.merchant,
-                searchQuery = sourceSearch,
-                onSearchChange = { sourceSearch = it },
-                onSelect = { draft = draft.copy(idSource = it) },
-                onCreateNew = { name ->
-                    val ps = draft.idPaymentSource
-                    val type = draft.type
-                    if (ps != null && type != null) {
-                        onCreateSource(name, ps, type) { newId -> draft = draft.copy(idSource = newId) }
-                    }
-                },
+                type = draft.type,
+                cards = cards,
+                selectedMethod = draft.paymentMethod,
+                selectedCardId = draft.cardId,
+                onSelectMethod = { draft = draft.withPaymentMethod(it) },
+                onSelectCard = { draft = draft.copy(cardId = it) },
             )
 
             WizardStep.TAGS -> StepTags(
@@ -155,7 +132,6 @@ fun TransacaoFormSheet(
             WizardStep.TYPE -> draft.isStep1Valid()
             WizardStep.AMOUNT -> draft.isStep2Valid()
             WizardStep.PAYMENT -> draft.isStep3Valid()
-            WizardStep.SOURCE -> draft.isStep4Valid()
             WizardStep.TAGS -> true
         }
         Row(
@@ -198,8 +174,8 @@ private fun seedDraft(item: HistoryItem?): WizardDraft =
             amount = item.amount.abs(),
             date = item.date,
             statusPayment = item.statusPayment,
-            idPaymentSource = item.idPaymentSource,
-            idSource = item.idSource,
+            paymentMethod = item.paymentMethod,
+            cardId = item.cardId,
             // Inheriting (null) rows seed empty here; the dedicated tag sheet handles inherit/override.
             tagIds = item.tagIds.orEmpty(),
             displayOrder = item.displayOrder,

@@ -15,4 +15,6 @@ data class HistoryItem(
     val statusPayment: PaymentStatus = PaymentStatus.PAID,
     /** Backend-managed manual sort key (group-reorder); 0 until the user reorders. */
     val displayOrder: Int = 0,
+    val paymentMethod: PaymentMethod? = null,
+    val cardId: String? = null,
 )

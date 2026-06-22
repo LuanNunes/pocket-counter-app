@@ -2,11 +2,13 @@ package com.resolveprogramming.pocketcounter.ui.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,8 +18,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -33,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +65,7 @@ import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun CartoesScreen(
@@ -156,74 +162,95 @@ private fun CartoesCarousel(
     }
 
     val pagerState = rememberPagerState(pageCount = { invoices.size })
+    val scope = rememberCoroutineScope()
+    val multi = invoices.size > 1
 
     Column(modifier) {
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f),
-        ) { page ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                item { Spacer(Modifier.height(4.dp)) }
-
-                item {
-                    FaturaBlock(
-                        invoice = invoices[page],
-                        formatter = formatter,
-                        onItemClick = { item -> onItemClick(invoices[page], item) },
-                    )
-                }
-
-                item {
-                    Text(
-                        text = "As compras chegam como notificações soltas e o PocketCounter junta tudo na fatura do cartão certo. Deslize para ver outro cartão.",
-                        style = PocketTheme.typography.bodyXs,
-                        color = PocketTheme.colors.text3,
-                        modifier = Modifier.padding(vertical = 8.dp),
-                    )
-                }
-
-                item { Spacer(Modifier.height(8.dp)) }
-            }
+        // Tappable card-name pills double as the page indicator — far more discoverable
+        // than dots, and they name what's on each page.
+        if (multi) {
+            CardPillRow(
+                invoices = invoices,
+                active = pagerState.currentPage,
+                onSelect = { scope.launch { pagerState.animateScrollToPage(it) } },
+            )
         }
 
-        if (invoices.size > 1) {
-            PagerDots(
-                count = invoices.size,
-                active = pagerState.currentPage,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-            )
+        // The pager wraps ONLY the gradient card tile + meta row. With horizontal
+        // contentPadding the neighbouring cards peek at the edges, making the swipe
+        // affordance obvious. The invoice list lives below, full-width.
+        HorizontalPager(
+            state = pagerState,
+            contentPadding = if (multi) PaddingValues(horizontal = 28.dp) else PaddingValues(horizontal = 20.dp),
+            pageSpacing = if (multi) 12.dp else 0.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+        ) { page ->
+            FaturaCard(invoice = invoices[page], formatter = formatter)
+        }
+
+        // Invoice list for the currently-visible card.
+        val current = invoices[pagerState.currentPage]
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            item { Spacer(Modifier.height(12.dp)) }
+
+            items(current.items, key = { it.transactionId }) { item ->
+                InvoiceItemRow(
+                    item = item,
+                    formatter = formatter,
+                    onClick = { onItemClick(current, item) },
+                )
+            }
+
+            item {
+                Text(
+                    text = "As compras chegam como notificações soltas e o PocketCounter junta tudo na fatura do cartão certo.",
+                    style = PocketTheme.typography.bodyXs,
+                    color = PocketTheme.colors.text3,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
+
+            item { Spacer(Modifier.height(8.dp)) }
         }
     }
 }
 
 @Composable
-private fun PagerDots(
-    count: Int,
+private fun CardPillRow(
+    invoices: List<OpenInvoice>,
     active: Int,
-    modifier: Modifier = Modifier,
+    onSelect: (Int) -> Unit,
 ) {
     Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        repeat(count) { index ->
+        invoices.forEachIndexed { index, invoice ->
             val isActive = index == active
             Box(
                 modifier = Modifier
-                    .size(if (isActive) 8.dp else 6.dp)
                     .clip(PocketTheme.shapes.pill)
-                    .background(
-                        if (isActive) PocketTheme.colors.text else PocketTheme.colors.line,
-                    ),
-            )
+                    .background(if (isActive) PocketTheme.colors.text else PocketTheme.colors.surface2)
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = invoice.card.name,
+                    style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (isActive) PocketTheme.colors.bg else PocketTheme.colors.text3,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -284,10 +311,9 @@ private fun CartoesHeader(
 }
 
 @Composable
-private fun FaturaBlock(
+private fun FaturaCard(
     invoice: OpenInvoice,
     formatter: NumberFormat,
-    onItemClick: (InvoiceItem) -> Unit,
 ) {
     val card = invoice.card
     val usagePct = (invoice.usage * 100).toInt()
@@ -423,19 +449,6 @@ private fun FaturaBlock(
                         .fillMaxWidth(invoice.usage.coerceIn(0f, 1f))
                         .height(4.dp)
                         .background(PocketTheme.colors.text.copy(alpha = 0.55f)),
-                )
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Invoice items
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            invoice.items.forEach { item ->
-                InvoiceItemRow(
-                    item = item,
-                    formatter = formatter,
-                    onClick = { onItemClick(item) },
                 )
             }
         }

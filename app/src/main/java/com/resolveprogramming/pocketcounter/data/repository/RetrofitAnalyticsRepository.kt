@@ -134,9 +134,9 @@ class RetrofitAnalyticsRepository @Inject constructor(
         val reportMonths = monthsList.map { ym ->
             val ref = ym.year * 100 + ym.monthValue
             val txs = byMonthRef[ref].orEmpty()
-            val incomes = txs.filter { RemoteMappers.parseType(it.type) == TransactionType.INCOME }
+            val incomes = txs.filter { RemoteMappers.parseType(it.transactionType) == TransactionType.INCOME }
             // Anything not income counts as expense, so an unclassifiable row never silently vanishes.
-            val expenses = txs.filter { RemoteMappers.parseType(it.type) != TransactionType.INCOME }
+            val expenses = txs.filter { RemoteMappers.parseType(it.transactionType) != TransactionType.INCOME }
             val expTotal = expenses.sumAmount()
             val incTotal = incomes.sumAmount()
             com.resolveprogramming.pocketcounter.domain.model.ReportMonth(

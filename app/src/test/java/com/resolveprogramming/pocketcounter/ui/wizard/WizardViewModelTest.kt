@@ -2,22 +2,18 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSourceKind
-import com.resolveprogramming.pocketcounter.domain.model.Source
-import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -47,19 +43,17 @@ class WizardViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private val notificationRepository: NotificationRepository = mockk()
-    private val paymentSourceRepository: PaymentSourceRepository = mockk()
-    private val sourceRepository: SourceRepository = mockk()
+    private val cardRepository: CardRepository = mockk()
     private val tagRepository: TagRepository = mockk()
     private val transactionRepository: TransactionRepository = mockk()
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        // Default stubs that most tests rely on — individual tests may override
-        coEvery { paymentSourceRepository.getAll() } returns Result.success(emptyList())
+        // Default stubs — individual tests may override
+        coEvery { cardRepository.getCards() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
-        coEvery { sourceRepository.getByPaymentSourceAndType(any(), any()) } returns Result.success(emptyList())
     }
 
     @After
@@ -76,8 +70,8 @@ class WizardViewModelTest {
         status: NotificationStatus = NotificationStatus.NEEDS_REVIEW,
         type: TransactionType? = TransactionType.EXPENSE,
         amount: BigDecimal? = BigDecimal("49.90"),
-        idPaymentSource: String? = "itau",
-        idSource: String? = "src-ifood",
+        paymentMethod: PaymentMethod? = null,
+        cardId: String? = null,
         tagIds: List<String> = emptyList(),
         tokens: List<Token> = emptyList(),
     ) = NotificationItem(
@@ -96,11 +90,24 @@ class WizardViewModelTest {
             paymentHint = null,
         ),
         suggestions = ClassificationSuggestion(
-            idPaymentSource = idPaymentSource,
-            idSource = idSource,
+            idPaymentSource = null,
+            idSource = null,
             tagIds = tagIds,
+            paymentMethod = paymentMethod,
+            cardId = cardId,
         ),
         tokens = tokens,
+    )
+
+    private fun makeCreditCard(id: String = "card-x") = CreditCard(
+        id = id,
+        name = "Nubank",
+        brand = "Mastercard",
+        last4 = "1234",
+        gradientStart = 0xFF6F00C9L,
+        gradientEnd = 0xFF4A0096L,
+        limit = BigDecimal("5000.00"),
+        billDay = 10,
     )
 
     private fun makeViewModel(notificationId: String = "notif-1"): WizardViewModel {
@@ -108,31 +115,49 @@ class WizardViewModelTest {
         return WizardViewModel(
             savedStateHandle = handle,
             notificationRepository = notificationRepository,
-            paymentSourceRepository = paymentSourceRepository,
-            sourceRepository = sourceRepository,
+            cardRepository = cardRepository,
             tagRepository = tagRepository,
             transactionRepository = transactionRepository,
         )
     }
 
     // -------------------------------------------------------------------------
-    // Priority 2a — short-circuit: classify returns pendingTransactionId != null
+    // WizardStep enum — 4 steps only
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `WizardStep has exactly 4 entries`() {
+        assertEquals(4, WizardStep.entries.size)
+    }
+
+    @Test
+    fun `WizardStep entries are TYPE AMOUNT PAYMENT TAGS in order`() {
+        val entries = WizardStep.entries.map { it.name }
+        assertEquals(listOf("TYPE", "AMOUNT", "PAYMENT", "TAGS"), entries)
+    }
+
+    @Test
+    fun `WizardStep subtitles are 1 de 4 through 4 de 4`() {
+        assertEquals("1 de 4", WizardStep.TYPE.subtitle)
+        assertEquals("2 de 4", WizardStep.AMOUNT.subtitle)
+        assertEquals("3 de 4", WizardStep.PAYMENT.subtitle)
+        assertEquals("4 de 4", WizardStep.TAGS.subtitle)
+    }
+
+    // -------------------------------------------------------------------------
+    // Short-circuit: classify returns pendingTransactionId != null
     // -------------------------------------------------------------------------
 
     @Test
     fun `loadNotification with pendingTransactionId sets isConfirmingPending true`() = runTest {
         val notification = makeNotification()
-        val classified = ClassifiedNotification(
-            notification = notification,
-            pendingTransactionId = "tx-pending-42",
-        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = "tx-pending-42")
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
 
         val vm = makeViewModel()
 
         vm.state.test {
-            // skip initial loading state
             val loading = awaitItem()
             assertTrue(loading.isLoading)
 
@@ -147,10 +172,7 @@ class WizardViewModelTest {
     @Test
     fun `loadNotification with pendingTransactionId does not build a draft`() = runTest {
         val notification = makeNotification()
-        val classified = ClassifiedNotification(
-            notification = notification,
-            pendingTransactionId = "tx-pending-42",
-        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = "tx-pending-42")
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
 
@@ -159,7 +181,6 @@ class WizardViewModelTest {
         vm.state.test {
             awaitItem() // loading
             val ready = awaitItem()
-            // When confirming pending, draft stays at its zero-value default
             assertNull(ready.draft.type)
             assertNull(ready.draft.amount)
             cancelAndIgnoreRemainingEvents()
@@ -177,7 +198,7 @@ class WizardViewModelTest {
         coEvery { notificationRepository.markClassified("notif-1", pendingId) } returns Result.success(Unit)
 
         val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle() // finish loadNotification
+        testDispatcher.scheduler.advanceUntilIdle()
 
         vm.confirmPending()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -207,7 +228,7 @@ class WizardViewModelTest {
     }
 
     // -------------------------------------------------------------------------
-    // Priority 2a — normal enrich: classify returns pendingTransactionId == null
+    // Normal enrich: classify returns pendingTransactionId == null
     // -------------------------------------------------------------------------
 
     @Test
@@ -216,14 +237,13 @@ class WizardViewModelTest {
             status = NotificationStatus.NEEDS_REVIEW,
             type = TransactionType.EXPENSE,
             amount = BigDecimal("153.98"),
-            idPaymentSource = "itau",
-            idSource = "src-pao",
+            paymentMethod = PaymentMethod.CREDIT,
+            cardId = "card-abc",
             tagIds = listOf("tag-1"),
         )
         val classified = ClassifiedNotification(notification = enrichedNotification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(enrichedNotification)
         coEvery { notificationRepository.classify("notif-1", enrichedNotification) } returns Result.success(classified)
-        coEvery { sourceRepository.getByPaymentSourceAndType("itau", TransactionType.EXPENSE) } returns Result.success(emptyList())
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -231,8 +251,8 @@ class WizardViewModelTest {
         val state = vm.state.value
         assertEquals(TransactionType.EXPENSE, state.draft.type)
         assertEquals(BigDecimal("153.98"), state.draft.amount)
-        assertEquals("itau", state.draft.idPaymentSource)
-        assertEquals("src-pao", state.draft.idSource)
+        assertEquals(PaymentMethod.CREDIT, state.draft.paymentMethod)
+        assertEquals("card-abc", state.draft.cardId)
         assertEquals(listOf("tag-1"), state.draft.tagIds)
     }
 
@@ -305,8 +325,23 @@ class WizardViewModelTest {
         assertFalse(vm.state.value.isConfirmingPending)
     }
 
+    @Test
+    fun `loadNotification loads cards into state from cardRepository`() = runTest {
+        val card = makeCreditCard("card-x")
+        coEvery { cardRepository.getCards() } returns Result.success(listOf(card))
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(card), vm.state.value.cards)
+    }
+
     // -------------------------------------------------------------------------
-    // Priority 2a — graceful degrade: classify returns Result.failure
+    // Graceful degrade: classify returns Result.failure
     // -------------------------------------------------------------------------
 
     @Test
@@ -314,12 +349,10 @@ class WizardViewModelTest {
         val base = makeNotification(
             type = TransactionType.INCOME,
             amount = BigDecimal("200.00"),
-            idPaymentSource = "nubank",
-            idSource = "src-salary",
+            paymentMethod = PaymentMethod.PIX,
         )
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(base)
         coEvery { notificationRepository.classify("notif-1", base) } returns Result.failure(RuntimeException("network error"))
-        coEvery { sourceRepository.getByPaymentSourceAndType("nubank", TransactionType.INCOME) } returns Result.success(emptyList())
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -327,8 +360,7 @@ class WizardViewModelTest {
         val state = vm.state.value
         assertEquals(TransactionType.INCOME, state.draft.type)
         assertEquals(BigDecimal("200.00"), state.draft.amount)
-        assertEquals("nubank", state.draft.idPaymentSource)
-        assertEquals("src-salary", state.draft.idSource)
+        assertEquals(PaymentMethod.PIX, state.draft.paymentMethod)
     }
 
     @Test
@@ -369,7 +401,7 @@ class WizardViewModelTest {
     }
 
     // -------------------------------------------------------------------------
-    // Priority 2a — save() path
+    // save() path
     // -------------------------------------------------------------------------
 
     @Test
@@ -415,7 +447,6 @@ class WizardViewModelTest {
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
         coEvery { transactionRepository.save(any()) } returns Result.success("tx-new-99")
-        // markClassified returns failure — the VM ignores the return value, so isSuccess must still be true
         coEvery { notificationRepository.markClassified("notif-1", "tx-new-99") } returns Result.failure(RuntimeException("server error"))
 
         val vm = makeViewModel()
@@ -477,5 +508,135 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertFalse(vm.state.value.isSaving)
+    }
+
+    // -------------------------------------------------------------------------
+    // NEW: selectPaymentMethod
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `selectPaymentMethod sets paymentMethod on draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectPaymentMethod(PaymentMethod.PIX)
+
+        assertEquals(PaymentMethod.PIX, vm.state.value.draft.paymentMethod)
+    }
+
+    @Test
+    fun `selectPaymentMethod CREDIT then selectCard sets both on draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectPaymentMethod(PaymentMethod.CREDIT)
+        vm.selectCard("card-x")
+
+        val draft = vm.state.value.draft
+        assertEquals(PaymentMethod.CREDIT, draft.paymentMethod)
+        assertEquals("card-x", draft.cardId)
+    }
+
+    @Test
+    fun `selectPaymentMethod DEBIT after cardId was set clears cardId`() = runTest {
+        val notification = makeNotification(paymentMethod = PaymentMethod.CREDIT, cardId = "card-x")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Verify card was loaded into draft
+        assertEquals("card-x", vm.state.value.draft.cardId)
+
+        vm.selectPaymentMethod(PaymentMethod.DEBIT)
+
+        val draft = vm.state.value.draft
+        assertEquals(PaymentMethod.DEBIT, draft.paymentMethod)
+        assertNull(draft.cardId)
+    }
+
+    // -------------------------------------------------------------------------
+    // NEW: selectCard
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `selectCard sets cardId on draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectCard("card-abc")
+
+        assertEquals("card-abc", vm.state.value.draft.cardId)
+    }
+
+    // -------------------------------------------------------------------------
+    // NEW: toggleFixo and updateRecurrenceDay
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `toggleFixo true then updateRecurrenceDay 10 both reflected in draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.updateRecurrenceDay(10)
+
+        val draft = vm.state.value.draft
+        assertTrue(draft.isFixo)
+        assertEquals(10, draft.recurrenceDay)
+    }
+
+    @Test
+    fun `toggleFixo false clears isFixo on draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleFixo(true)
+        vm.toggleFixo(false)
+
+        assertFalse(vm.state.value.draft.isFixo)
+    }
+
+    @Test
+    fun `updateRecurrenceDay null clears recurrenceDay on draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.updateRecurrenceDay(15)
+
+        vm.updateRecurrenceDay(null)
+
+        assertNull(vm.state.value.draft.recurrenceDay)
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Switch
@@ -46,10 +47,14 @@ fun StepAmount(
     installmentsEnabled: Boolean,
     installmentCount: Int?,
     installmentValue: BigDecimal?,
+    isFixo: Boolean,
+    recurrenceDay: Int?,
     onAmountChange: (BigDecimal?) -> Unit,
     onDateTap: () -> Unit,
     onStatusChange: (PaymentStatus) -> Unit,
     onToggleInstallments: (Boolean) -> Unit,
+    onToggleFixo: (Boolean) -> Unit,
+    onRecurrenceDayChange: (Int?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
@@ -218,6 +223,117 @@ fun StepAmount(
                 dotColor = PocketTheme.colors.warn,
                 onClick = { onStatusChange(PaymentStatus.PENDING) },
                 modifier = Modifier.weight(1f),
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    if (isFixo) PocketTheme.colors.accentBg else PocketTheme.colors.surface,
+                    PocketTheme.shapes.card,
+                )
+                .border(
+                    1.dp,
+                    if (isFixo) PocketTheme.colors.accent else PocketTheme.colors.line,
+                    PocketTheme.shapes.card,
+                )
+                .padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Repete todo mês",
+                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = PocketTheme.colors.text,
+                    )
+                    Text(
+                        text = "Para contas fixas como aluguel ou assinatura.",
+                        style = PocketTheme.typography.bodyXs,
+                        color = PocketTheme.colors.text3,
+                    )
+                }
+                Switch(
+                    checked = isFixo,
+                    onCheckedChange = onToggleFixo,
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = PocketTheme.colors.accent,
+                        checkedThumbColor = PocketTheme.colors.accentInk,
+                    ),
+                )
+            }
+
+            if (isFixo) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "Dia do mês",
+                        style = PocketTheme.typography.body,
+                        color = PocketTheme.colors.text2,
+                    )
+                    RecurrenceDayField(
+                        recurrenceDay = recurrenceDay,
+                        onRecurrenceDayChange = onRecurrenceDayChange,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecurrenceDayField(
+    recurrenceDay: Int?,
+    onRecurrenceDayChange: (Int?) -> Unit,
+) {
+    var text by remember(recurrenceDay) {
+        mutableStateOf(recurrenceDay?.toString() ?: "")
+    }
+    // An entry the parser rejects (e.g. "0", "45") pushes null upstream; surface that as an
+    // inline hint instead of leaving a number that looks accepted but silently doesn't apply.
+    val isInvalid = text.isNotEmpty() && (text.toIntOrNull()?.let { it !in 1..31 } ?: true)
+
+    Column(horizontalAlignment = Alignment.End) {
+        Box(
+            modifier = Modifier
+                .background(PocketTheme.colors.surface, PocketTheme.shapes.pill)
+                .border(
+                    1.dp,
+                    if (isInvalid) PocketTheme.colors.warn else PocketTheme.colors.line,
+                    PocketTheme.shapes.pill,
+                )
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        ) {
+            BasicTextField(
+                value = text,
+                onValueChange = { newValue ->
+                    val cleaned = newValue.filter { it.isDigit() }.take(2)
+                    text = cleaned
+                    val day = cleaned.toIntOrNull()
+                    onRecurrenceDayChange(if (day != null && day in 1..31) day else null)
+                },
+                textStyle = PocketTheme.typography.monoSm.copy(color = PocketTheme.colors.text),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.width(40.dp),
+            )
+        }
+        if (isInvalid) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "1 a 31",
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.warn,
             )
         }
     }
