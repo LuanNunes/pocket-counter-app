@@ -178,6 +178,9 @@ private fun seedDraft(item: HistoryItem?): WizardDraft =
             statusPayment = item.statusPayment,
             paymentMethod = item.paymentMethod,
             cardId = item.cardId,
+            // Preserve series membership across an edit — toDto() sends idSeries, and the backend
+            // copies it verbatim, so dropping it here would silently unlink a fixo row.
+            seriesId = item.seriesId,
             // Inheriting (null) rows seed empty here; the dedicated tag sheet handles inherit/override.
             tagIds = item.tagIds.orEmpty(),
             displayOrder = item.displayOrder,
