@@ -204,12 +204,9 @@ fun TransacoesScreen(
             initialItem = (state.formMode as? FormMode.Edit)?.let { edit ->
                 state.items.firstOrNull { it.id == edit.itemId }
             },
-            paymentSources = state.paymentSources.values.toList(),
-            filteredSources = state.filteredSources,
+            cards = state.cards,
             tags = state.tags.values.toList(),
             contexts = state.contexts,
-            onLoadSources = viewModel::loadFilteredSources,
-            onCreateSource = viewModel::createInlineSource,
             onSave = viewModel::saveForm,
             onDismiss = viewModel::closeForm,
         )
@@ -294,7 +291,14 @@ private fun TotalsStrip(
     ) {
         TotalCell("Receitas", income, PocketTheme.colors.income, Modifier.weight(1f))
         TotalCell("Despesas", expense, PocketTheme.colors.expense, Modifier.weight(1f))
-        TotalCell("Saldo", balance, PocketTheme.colors.text, Modifier.weight(1f))
+        TotalCell(
+            label = "Saldo",
+            amount = balance,
+            // Saldo is signed: red when negative, green when positive (matches Relatório).
+            color = if (balance.signum() < 0) PocketTheme.colors.expense else PocketTheme.colors.income,
+            modifier = Modifier.weight(1f),
+            showSign = true,
+        )
     }
 }
 
@@ -304,6 +308,7 @@ private fun TotalCell(
     amount: java.math.BigDecimal,
     color: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
+    showSign: Boolean = false,
 ) {
     Column(modifier = modifier) {
         Text(
@@ -315,6 +320,7 @@ private fun TotalCell(
         AmountText(
             amount = amount,
             color = color,
+            showSign = showSign,
             style = PocketTheme.typography.monoSm,
         )
     }

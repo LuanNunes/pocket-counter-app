@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.ReportData
@@ -140,14 +142,24 @@ private fun KpiTile(
     rawValue: String? = null,
     showSign: Boolean = false,
 ) {
-    PocketCard(modifier = modifier) {
+    // Half-width tiles can't fit 26sp currency values without wrapping; render the
+    // headline a touch smaller and force a single line so large amounts never break.
+    val valueStyle = PocketTheme.typography.monoTotal.copy(fontSize = 20.sp)
+    PocketCard(modifier = modifier.heightIn(min = 84.dp)) {
         Column {
             Text(label.uppercase(), style = PocketTheme.typography.label, color = PocketTheme.colors.text3)
             Spacer(Modifier.height(4.dp))
             if (amount != null) {
-                AmountText(amount = amount, color = color, showSign = showSign, style = PocketTheme.typography.monoTotal)
+                AmountText(
+                    amount = amount,
+                    color = color,
+                    showSign = showSign,
+                    style = valueStyle,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             } else {
-                Text(rawValue.orEmpty(), style = PocketTheme.typography.monoTotal, color = color)
+                Text(rawValue.orEmpty(), style = valueStyle, color = color, maxLines = 1, softWrap = false)
             }
             if (sub != null) {
                 Spacer(Modifier.height(2.dp))

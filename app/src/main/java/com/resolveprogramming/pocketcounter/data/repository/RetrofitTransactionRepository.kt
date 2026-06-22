@@ -76,10 +76,10 @@ class RetrofitTransactionRepository @Inject constructor(
         val amount = amount?.abs() ?: error("Amount is required")
         val date = date ?: error("Date is required")
         val isPaid = statusPayment == PaymentStatus.PAID
+        // Recurrence (isFixo) is not sent as a transaction field; it persists via series
+        // linkage (idSeries) in a later phase. The new backend has no isFixo column.
         return TransactionDto(
-            idSource = idSource ?: error("Source is required"),
-            idPaymentSource = idPaymentSource ?: error("Payment source is required"),
-            type = if (type == TransactionType.INCOME) "INCOME" else "EXPENSE",
+            transactionType = if (type == TransactionType.INCOME) "INCOME" else "EXPENSE",
             amount = amount,
             statusPayment = if (isPaid) "PAID" else "PENDING",
             refYearMonth = RemoteMappers.refYearMonth(date),
@@ -88,6 +88,9 @@ class RetrofitTransactionRepository @Inject constructor(
             tags = tagIds.map { TagDto(id = it, name = "") },
             // Preserve manual sort position across edits (0 for new rows).
             displayOrder = displayOrder,
+            paymentMethod = paymentMethod?.name,
+            cardId = cardId,
+            idSeries = seriesId,
         )
     }
 

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,9 +35,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
-import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -50,8 +50,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun SuccessScreen(
     draft: WizardDraft,
-    paymentSources: List<PaymentSource>,
-    sources: List<Source>,
+    cards: List<CreditCard>,
     allTags: List<Tag>,
     contexts: List<TagContext>,
     onViewTransaction: () -> Unit,
@@ -67,9 +66,11 @@ fun SuccessScreen(
 
     val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
     val accentColor = PocketTheme.colors.accent
-    val sourceName = sources.find { it.id == draft.idSource }?.name ?: ""
-    val source = sources.find { it.id == draft.idSource }
-    val paymentSource = paymentSources.find { it.id == draft.idPaymentSource }
+    val cardName = draft.cardId?.let { id -> cards.find { it.id == id }?.name }
+    val paymentLabel = draft.paymentMethod?.let { method ->
+        val base = method.label()
+        if (cardName != null) "$base · $cardName" else base
+    } ?: "—"
     val selectedTags = allTags.filter { it.id in draft.tagIds }
     val contextMap = contexts.associateBy { it.id }
 
@@ -146,17 +147,14 @@ fun SuccessScreen(
                 SummaryDivider()
                 SummaryRow("Data", draft.date?.format(dateFormatter) ?: "—")
                 SummaryDivider()
-                SummaryRow("Source", sourceName.ifEmpty { "—" })
-                if (source?.isRecurring == true) {
-                    Text(
-                        text = "recorrente · dia ${source.refDayRecurring}",
-                        style = PocketTheme.typography.bodyXs,
-                        color = PocketTheme.colors.text3,
-                        modifier = Modifier.padding(start = 0.dp, bottom = 8.dp),
+                SummaryRow("Pagamento", paymentLabel)
+                if (draft.isFixo) {
+                    SummaryDivider()
+                    SummaryRow(
+                        "Repete todo mês",
+                        draft.recurrenceDay?.let { "dia $it" } ?: "Sim",
                     )
                 }
-                SummaryDivider()
-                SummaryRow("Meio", paymentSource?.let { "${it.name} · ${it.sub}" } ?: "—")
 
                 if (selectedTags.isNotEmpty()) {
                     SummaryDivider()
@@ -227,7 +225,7 @@ fun SuccessScreen(
                     Spacer(Modifier.height(8.dp))
                     val pattern = draft.merchant ?: "..."
                     Text(
-                        text = "$pattern → $sourceName + ${selectedTags.size} tags",
+                        text = "$pattern → $paymentLabel + ${selectedTags.size} tags",
                         style = PocketTheme.typography.monoSm,
                         color = PocketTheme.colors.text2,
                     )
@@ -308,18 +306,18 @@ fun WizardButton(
         isPrimary -> PocketTheme.colors.accentInk
         else -> PocketTheme.colors.text
     }
-    val borderMod = if (!isPrimary) {
-        Modifier.background(bg, PocketTheme.shapes.chip)
-            .then(
-                Modifier.background(bg, PocketTheme.shapes.chip)
-            )
+    // The non-primary ("Ver transação") button reads as a soft surface tile with a line border.
+    val surfaceMod = if (!isPrimary) {
+        Modifier
+            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
+            .background(bg, PocketTheme.shapes.chip)
     } else {
         Modifier.background(bg, PocketTheme.shapes.chip)
     }
 
     Box(
         modifier = modifier
-            .then(borderMod)
+            .then(surfaceMod)
             .then(
                 if (enabled) Modifier.clickable(onClick = onClick) else Modifier
             )

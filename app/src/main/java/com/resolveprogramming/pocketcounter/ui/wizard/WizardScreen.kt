@@ -34,10 +34,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepAmount
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepPayment
-import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepSource
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepTags
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepType
 import java.time.LocalDate
@@ -65,8 +65,7 @@ fun WizardScreen(
     if (state.isSuccess) {
         SuccessScreen(
             draft = state.draft,
-            paymentSources = state.paymentSources,
-            sources = state.filteredSources,
+            cards = state.cards,
             allTags = state.allTags,
             contexts = state.contexts,
             onViewTransaction = onDismiss,
@@ -166,6 +165,8 @@ fun WizardScreen(
                             installmentsEnabled = state.draft.installments != null,
                             installmentCount = notification.parsed.installments,
                             installmentValue = notification.parsed.installmentValue,
+                            isFixo = state.draft.isFixo,
+                            recurrenceDay = state.draft.recurrenceDay,
                             onAmountChange = viewModel::updateAmount,
                             onDateTap = {
                                 val current = state.draft.date ?: LocalDate.now()
@@ -181,26 +182,18 @@ fun WizardScreen(
                             },
                             onStatusChange = viewModel::updateStatusPayment,
                             onToggleInstallments = viewModel::toggleInstallments,
+                            onToggleFixo = viewModel::toggleFixo,
+                            onRecurrenceDayChange = viewModel::updateRecurrenceDay,
                         )
                     }
 
                     WizardStep.PAYMENT -> StepPayment(
-                        paymentSources = state.paymentSources,
-                        selectedId = state.draft.idPaymentSource,
-                        suggestedId = notification.suggestions.idPaymentSource,
-                        paymentHint = notification.parsed.paymentHint,
-                        onSelect = viewModel::selectPaymentSource,
-                    )
-
-                    WizardStep.SOURCE -> StepSource(
-                        sources = state.filteredSources,
-                        selectedId = state.draft.idSource,
-                        suggestedId = notification.suggestions.idSource,
-                        merchantRaw = notification.parsed.merchantRaw,
-                        searchQuery = state.sourceSearchQuery,
-                        onSearchChange = viewModel::updateSourceSearch,
-                        onSelect = viewModel::selectSource,
-                        onCreateNew = viewModel::createSource,
+                        type = state.draft.type,
+                        cards = state.cards,
+                        selectedMethod = state.draft.paymentMethod,
+                        selectedCardId = state.draft.cardId,
+                        onSelectMethod = viewModel::selectPaymentMethod,
+                        onSelectCard = viewModel::selectCard,
                     )
 
                     WizardStep.TAGS -> StepTags(
@@ -349,7 +342,7 @@ private fun WizardProgressBar(step: WizardStep) {
 @Composable
 private fun WizardFooter(
     step: WizardStep,
-    draft: com.resolveprogramming.pocketcounter.domain.model.WizardDraft,
+    draft: WizardDraft,
     isSaving: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
@@ -358,7 +351,6 @@ private fun WizardFooter(
         WizardStep.TYPE -> draft.isStep1Valid()
         WizardStep.AMOUNT -> draft.isStep2Valid()
         WizardStep.PAYMENT -> draft.isStep3Valid()
-        WizardStep.SOURCE -> draft.isStep4Valid()
         WizardStep.TAGS -> true
     }
 

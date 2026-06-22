@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SourceInput
 import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
@@ -13,12 +14,12 @@ import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
 import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionTotals
-import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -78,10 +79,10 @@ data class TransacoesUiState(
     val detailTarget: HistoryItem? = null,
     val tagEditTarget: HistoryItem? = null,
     val formMode: FormMode? = null,
-    val filteredSources: List<Source> = emptyList(),
     val confirmDeleteId: String? = null,
     val sources: Map<String, Source> = emptyMap(),
     val paymentSources: Map<String, PaymentSource> = emptyMap(),
+    val cards: List<CreditCard> = emptyList(),
     val tags: Map<String, Tag> = emptyMap(),
     val contexts: List<TagContext> = emptyList(),
     val toastMessage: String? = null,
@@ -94,6 +95,7 @@ class TransacoesViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
     private val sourceRepository: SourceRepository,
     private val paymentSourceRepository: PaymentSourceRepository,
+    private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
 ) : ViewModel() {
 
@@ -116,12 +118,14 @@ class TransacoesViewModel @Inject constructor(
         viewModelScope.launch {
             val sources = sourceRepository.getAll().getOrDefault(emptyList())
             val paymentSources = paymentSourceRepository.getAll().getOrDefault(emptyList())
+            val cards = cardRepository.getCards().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
             _state.update {
                 it.copy(
                     sources = sources.associateBy { s -> s.id },
                     paymentSources = paymentSources.associateBy { p -> p.id },
+                    cards = cards,
                     tags = tags.associateBy { t -> t.id },
                     contexts = contexts,
                 )
@@ -290,33 +294,11 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add, filteredSources = emptyList()) }
+    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add) }
 
-    fun openEdit(item: HistoryItem) {
-        _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
-        if (item.idPaymentSource.isNotBlank()) {
-            loadFilteredSources(item.idPaymentSource, item.type)
-        }
-    }
+    fun openEdit(item: HistoryItem) = _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
 
-    fun closeForm() = _state.update { it.copy(formMode = null, filteredSources = emptyList()) }
-
-    fun loadFilteredSources(idPaymentSource: String, type: TransactionType) {
-        viewModelScope.launch {
-            sourceRepository.getByPaymentSourceAndType(idPaymentSource, type)
-                .onSuccess { sources -> _state.update { it.copy(filteredSources = sources) } }
-        }
-    }
-
-    fun createInlineSource(name: String, idPaymentSource: String, type: TransactionType, onCreated: (String) -> Unit) {
-        viewModelScope.launch {
-            sourceRepository.create(name, idPaymentSource, type)
-                .onSuccess { source ->
-                    onCreated(source.id)
-                    loadFilteredSources(idPaymentSource, type)
-                }
-        }
-    }
+    fun closeForm() = _state.update { it.copy(formMode = null) }
 
     fun saveForm(draft: WizardDraft) {
         val mode = _state.value.formMode ?: return
@@ -328,7 +310,7 @@ class TransacoesViewModel @Inject constructor(
             result
                 .onSuccess {
                     val msg = if (mode is FormMode.Edit) "Transação atualizada" else "Transação salva"
-                    _state.update { it.copy(formMode = null, filteredSources = emptyList(), toastMessage = msg) }
+                    _state.update { it.copy(formMode = null, toastMessage = msg) }
                     loadMonth()
                 }
                 .onFailure { _state.update { it.copy(toastMessage = "Não foi possível salvar") } }

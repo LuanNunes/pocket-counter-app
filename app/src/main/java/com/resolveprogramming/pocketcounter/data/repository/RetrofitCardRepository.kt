@@ -3,11 +3,11 @@ package com.resolveprogramming.pocketcounter.data.repository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
-import com.resolveprogramming.pocketcounter.data.remote.api.PaymentSourceApi
+import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleTagDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.domain.billing.BillingCycle
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -28,7 +28,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class RetrofitCardRepository @Inject constructor(
-    private val paymentSourceApi: PaymentSourceApi,
+    private val creditCardApi: CreditCardApi,
     private val transactionApi: TransactionApi,
     private val classificationRuleApi: ClassificationRuleApi,
     private val sourceRepository: SourceRepository,
@@ -45,12 +45,14 @@ class RetrofitCardRepository @Inject constructor(
         val expenses = transactionApi.getExpenses(ref)
         // Fatura items are real transactions, so they INHERIT their source's default tags when
         // the transaction has none of its own. Resolve the effective set against the loaded sources.
-        val sourceTags = sourceRepository.getAll().getOrDefault(emptyList()).associate { it.id to it.tags }
+        val sources = sourceRepository.getAll().getOrDefault(emptyList())
+        val sourceTags = sources.associate { it.id to it.tags }
+        val sourceNames = sources.associate { it.id to it.name }
         val tagsById = tagRepository.getAllTags().getOrDefault(emptyList()).associateBy { it.id }
 
         cards.map { card ->
             val items = expenses
-                .filter { it.idPaymentSource == card.id }
+                .filter { it.cardId == card.id }
                 .mapNotNull { tx ->
                     val txId = tx.id ?: return@mapNotNull null
                     val effectiveIds = effectiveTagIds(
@@ -62,7 +64,13 @@ class RetrofitCardRepository @Inject constructor(
                     val ownById = tx.tags?.associateBy { it.id }.orEmpty()
                     InvoiceItem(
                         transactionId = txId,
-                        name = tx.name ?: tx.paymentSourceName ?: "—",
+                        // Per-purchase label is the fonte (source) name, then the freeform
+                        // description. Never fall back to paymentSourceName — that's the card
+                        // itself, which would make every row read identically (e.g. the card name).
+                        name = sourceNames[tx.idSource]?.takeIf { it.isNotBlank() }
+                            ?: tx.name?.takeIf { it.isNotBlank() }
+                            ?: tx.description?.takeIf { it.isNotBlank() }
+                            ?: "Compra",
                         date = RemoteMappers.parseDate(tx.datePaid)
                             ?: RemoteMappers.parseDate(tx.dateDue)
                             ?: java.time.LocalDate.now(),
@@ -113,9 +121,9 @@ class RetrofitCardRepository @Inject constructor(
 
         val ruleCreated = runCatching {
             val dto = ClassificationRuleDto(
-                pattern = tx.name ?: tx.paymentSourceName ?: card.name,
+                pattern = tx.name ?: tx.description ?: card.name,
                 idPaymentSource = card.id,
-                idSource = tx.idSource,
+                idSource = tx.idSource, // TODO(phase-3 faturas): legacy field, null on the new backend
                 transactionType = "EXPENSE",
                 tagIds = ruleTags.map { ClassificationRuleTagDto(it.id, it.idContext) },
             )
@@ -126,22 +134,20 @@ class RetrofitCardRepository @Inject constructor(
     }
 
     private suspend fun creditCards(): List<CreditCard> =
-        paymentSourceApi.getPaymentSources()
-            .filter { it.type == "CREDIT_CARD" }
-            .map { it.toCreditCard() }
+        creditCardApi.getCards().map { it.toCreditCard() }
 
-    private fun PaymentSourceDto.toCreditCard(): CreditCard {
+    private fun CreditCardDto.toCreditCard(): CreditCard {
         val key = id ?: name
         val (start, end) = RemoteMappers.cardGradient(key)
         return CreditCard(
             id = key,
             name = name,
-            brand = "",
+            brand = brand ?: "",
             last4 = "",
             gradientStart = start,
             gradientEnd = end,
             limit = BigDecimal.ZERO,
-            billDay = refDayBill ?: 1,
+            billDay = closingDay ?: 1,
         )
     }
 }

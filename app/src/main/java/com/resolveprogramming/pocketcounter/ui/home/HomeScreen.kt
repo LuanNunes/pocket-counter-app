@@ -106,6 +106,10 @@ fun HomeScreen(
                 ResumoStrip(monthLabel = state.monthLabel, onClick = { onNavigate("resumo") })
             }
 
+            item {
+                ReportStrip(onClick = { onNavigate("relatorio") })
+            }
+
             val openBillsTotal = state.openBillsTotal
             if (openBillsTotal != null) {
                 item {
@@ -548,6 +552,51 @@ private fun ResumoStrip(monthLabel: String, onClick: () -> Unit) {
                 )
                 Text(
                     text = "Para onde foi seu dinheiro",
+                    style = PocketTheme.typography.bodyXs,
+                    color = PocketTheme.colors.text3,
+                )
+            }
+            Text(
+                text = "›",
+                style = PocketTheme.typography.stepQuestion,
+                color = PocketTheme.colors.text3,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReportStrip(onClick: () -> Unit) {
+    PocketCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(PocketTheme.colors.accentBg, PocketTheme.shapes.chip),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "▦",
+                    fontSize = 18.sp,
+                    color = PocketTheme.colors.accent,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Relatório",
+                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = PocketTheme.colors.text,
+                )
+                Text(
+                    text = "Tendências por mês, trimestre, ano",
                     style = PocketTheme.typography.bodyXs,
                     color = PocketTheme.colors.text3,
                 )

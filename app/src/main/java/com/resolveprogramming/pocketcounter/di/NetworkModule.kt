@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.data.remote.TokenAuthenticator
 import com.resolveprogramming.pocketcounter.data.remote.api.AuthApi
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
 import com.resolveprogramming.pocketcounter.data.remote.api.ContextApi
+import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.NotificationApi
 import com.resolveprogramming.pocketcounter.data.remote.api.PaymentSourceApi
 import com.resolveprogramming.pocketcounter.data.remote.api.SourceApi
@@ -96,6 +97,11 @@ object NetworkModule {
     @Singleton
     fun provideNotificationApi(retrofit: Retrofit): NotificationApi =
         retrofit.create(NotificationApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideCreditCardApi(retrofit: Retrofit): CreditCardApi =
+        retrofit.create(CreditCardApi::class.java)
 
     @Provides
     @Singleton

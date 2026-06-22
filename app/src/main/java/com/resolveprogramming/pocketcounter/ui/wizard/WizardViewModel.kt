@@ -3,16 +3,15 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
-import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.Token
@@ -31,22 +30,19 @@ import java.time.LocalDate
 import javax.inject.Inject
 
 enum class WizardStep(val index: Int, val label: String, val subtitle: String) {
-    TYPE(0, "Tipo de transação", "1 de 5"),
-    AMOUNT(1, "Valor e data", "2 de 5"),
-    PAYMENT(2, "Meio de pagamento", "3 de 5"),
-    SOURCE(3, "Source", "4 de 5"),
-    TAGS(4, "Tags", "5 de 5"),
+    TYPE(0, "Tipo de transação", "1 de 4"),
+    AMOUNT(1, "Valor e data", "2 de 4"),
+    PAYMENT(2, "Pagamento", "3 de 4"),
+    TAGS(3, "Tags", "4 de 4"),
 }
 
 data class WizardUiState(
     val notification: NotificationItem? = null,
     val draft: WizardDraft = WizardDraft(),
     val step: WizardStep = WizardStep.TYPE,
-    val paymentSources: List<PaymentSource> = emptyList(),
-    val filteredSources: List<Source> = emptyList(),
+    val cards: List<CreditCard> = emptyList(),
     val allTags: List<Tag> = emptyList(),
     val contexts: List<TagContext> = emptyList(),
-    val sourceSearchQuery: String = "",
     val tagSearchQuery: String = "",
     val tokens: List<Token> = emptyList(),
     val selectedTokenIndex: Int? = null,
@@ -63,8 +59,7 @@ data class WizardUiState(
 class WizardViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val notificationRepository: NotificationRepository,
-    private val paymentSourceRepository: PaymentSourceRepository,
-    private val sourceRepository: SourceRepository,
+    private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val transactionRepository: TransactionRepository,
 ) : ViewModel() {
@@ -92,7 +87,7 @@ class WizardViewModel @Inject constructor(
                 }
                 return@launch
             }
-            val paymentSources = paymentSourceRepository.getAll().getOrDefault(emptyList())
+            val cards = cardRepository.getCards().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
 
@@ -102,7 +97,7 @@ class WizardViewModel @Inject constructor(
             if (classified?.pendingTransactionId != null) {
                 _state.value = WizardUiState(
                     notification = classified.notification,
-                    paymentSources = paymentSources,
+                    cards = cards,
                     allTags = tags,
                     contexts = contexts,
                     pendingTransactionId = classified.pendingTransactionId,
@@ -124,17 +119,13 @@ class WizardViewModel @Inject constructor(
                 notification = notification,
                 draft = draft,
                 step = resolveStartStep(notification),
-                paymentSources = paymentSources,
+                cards = cards,
                 allTags = tags,
                 contexts = contexts,
                 tokens = tokens,
                 isLoading = false,
                 error = degradeError,
             )
-
-            if (draft.idPaymentSource != null && draft.type != null) {
-                loadFilteredSources(draft.idPaymentSource, draft.type)
-            }
         }
     }
 
@@ -145,7 +136,7 @@ class WizardViewModel @Inject constructor(
         }
 
     fun selectType(type: TransactionType) {
-        _state.update { it.copy(draft = it.draft.copy(type = type)) }
+        _state.update { it.copy(draft = it.draft.withType(type)) }
     }
 
     fun updateAmount(amount: BigDecimal?) {
@@ -175,23 +166,20 @@ class WizardViewModel @Inject constructor(
         }
     }
 
-    fun selectPaymentSource(id: String) {
-        _state.update { state ->
-            val newDraft = state.draft.withPaymentSourceReset(id)
-            state.copy(draft = newDraft)
-        }
-        val draft = _state.value.draft
-        if (draft.type != null) {
-            viewModelScope.launch { loadFilteredSources(id, draft.type) }
-        }
+    fun selectPaymentMethod(method: PaymentMethod) {
+        _state.update { it.copy(draft = it.draft.withPaymentMethod(method)) }
     }
 
-    fun selectSource(id: String) {
-        _state.update { it.copy(draft = it.draft.copy(idSource = id)) }
+    fun selectCard(cardId: String) {
+        _state.update { it.copy(draft = it.draft.copy(cardId = cardId)) }
     }
 
-    fun updateSourceSearch(query: String) {
-        _state.update { it.copy(sourceSearchQuery = query) }
+    fun toggleFixo(enabled: Boolean) {
+        _state.update { it.copy(draft = it.draft.copy(isFixo = enabled)) }
+    }
+
+    fun updateRecurrenceDay(day: Int?) {
+        _state.update { it.copy(draft = it.draft.copy(recurrenceDay = day)) }
     }
 
     fun updateTagSearch(query: String) {
@@ -282,13 +270,6 @@ class WizardViewModel @Inject constructor(
                 state
             }
         }
-        val currentState = _state.value
-        if (currentState.step == WizardStep.SOURCE) {
-            val draft = currentState.draft
-            if (draft.idPaymentSource != null && draft.type != null) {
-                viewModelScope.launch { loadFilteredSources(draft.idPaymentSource, draft.type) }
-            }
-        }
     }
 
     fun previousStep() {
@@ -323,25 +304,5 @@ class WizardViewModel @Inject constructor(
                 }
                 .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
         }
-    }
-
-    fun createSource(name: String) {
-        viewModelScope.launch {
-            val draft = _state.value.draft
-            val paymentSourceId = draft.idPaymentSource ?: return@launch
-            val type = draft.type ?: return@launch
-            sourceRepository.create(name, paymentSourceId, type)
-                .onSuccess { newSource ->
-                    _state.update { it.copy(draft = it.draft.copy(idSource = newSource.id)) }
-                    loadFilteredSources(paymentSourceId, type)
-                }
-        }
-    }
-
-    private suspend fun loadFilteredSources(paymentSourceId: String, type: TransactionType) {
-        sourceRepository.getByPaymentSourceAndType(paymentSourceId, type)
-            .onSuccess { sources ->
-                _state.update { it.copy(filteredSources = sources) }
-            }
     }
 }

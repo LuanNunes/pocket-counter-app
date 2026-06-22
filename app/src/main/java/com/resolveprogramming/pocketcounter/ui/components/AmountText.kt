@@ -19,6 +19,8 @@ fun AmountText(
     showSign: Boolean = false,
     style: TextStyle = PocketTheme.typography.monoBody,
     color: Color? = null,
+    maxLines: Int = Int.MAX_VALUE,
+    softWrap: Boolean = true,
 ) {
     val resolvedColor = color ?: when (type) {
         TransactionType.INCOME -> PocketTheme.colors.income
@@ -38,6 +40,8 @@ fun AmountText(
         text = "$prefix$formatted",
         style = style,
         color = resolvedColor,
+        maxLines = maxLines,
+        softWrap = softWrap,
         modifier = modifier,
     )
 }

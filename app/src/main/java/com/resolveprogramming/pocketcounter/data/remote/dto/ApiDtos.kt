@@ -12,17 +12,16 @@ import java.math.BigDecimal
 @Serializable
 data class TransactionDto(
     val id: String? = null,
-    val idSource: String? = null,
-    val idPaymentSource: String? = null,
-    val type: String? = null,                 // "INCOME" | "EXPENSE"
+    val transactionType: String? = null,      // "INCOME" | "EXPENSE" (controller sets it on create)
     @Serializable(with = RemoteBigDecimalSerializer::class)
     val amount: BigDecimal? = null,
     val statusPayment: String? = null,        // "PAID" | "PENDING"
     val refYearMonth: Int = 0,
-    val name: String? = null,                 // source name (join)
-    val paymentSourceName: String? = null,
-    val paymentSourceType: String? = null,
-    val idBillingCard: String? = null,
+    val name: String? = null,
+    val paymentMethod: String? = null,        // PaymentMethodEnum name (UPPERCASE)
+    val cardId: String? = null,               // UUID of the credit card
+    val isInvoice: Boolean = false,
+    val idSeries: String? = null,             // UUID of the recurring series
     val dateDue: String? = null,              // ISO yyyy-MM-dd
     val datePaid: String? = null,
     val tags: List<TagDto>? = null,
@@ -34,6 +33,10 @@ data class TransactionDto(
     val amountOriginal: BigDecimal? = null,
     @Serializable(with = RemoteBigDecimalSerializer::class)
     val exchangeRate: BigDecimal? = null,
+    // Legacy read-only fields kept until analytics/faturas migrate off them (phase-3).
+    // The new backend no longer returns them, so they degrade to null on read.
+    val idSource: String? = null,
+    val idPaymentSource: String? = null,
 )
 
 @Serializable
@@ -58,6 +61,16 @@ data class PaymentSourceDto(
     val allowsIncome: Boolean = false,
     val allowsExpense: Boolean = false,
     val refDayBill: Int? = null,
+)
+
+@Serializable
+data class CreditCardDto(
+    val id: String? = null,
+    val idUser: String? = null,
+    val name: String,
+    val brand: String? = null,
+    val closingDay: Int? = null,
+    val color: String? = null,
 )
 
 @Serializable
@@ -123,8 +136,9 @@ data class ParsedNotificationDto(
 
 @Serializable
 data class ClassificationSuggestionDto(
-    val idPaymentSource: String? = null,
-    val idSource: String? = null,
+    val transactionType: String? = null,      // "INCOME" | "EXPENSE"
+    val paymentMethod: String? = null,        // PaymentMethodEnum name (UPPERCASE)
+    val cardId: String? = null,               // UUID
     val tagIds: List<String> = emptyList(),
 )
 

@@ -18,6 +18,7 @@ import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
 import com.resolveprogramming.pocketcounter.domain.model.PaymentSourceKind
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
@@ -57,6 +58,12 @@ internal object RemoteMappers {
         "EXPENSE" -> TransactionType.EXPENSE
         else -> null
     }
+
+    /** PaymentMethodEnum name (UPPERCASE on the wire) → domain enum; null when absent/unknown. */
+    fun parsePaymentMethod(value: String?): PaymentMethod? =
+        value?.uppercase()?.let { name ->
+            PaymentMethod.entries.firstOrNull { it.name == name }
+        }
 
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -163,7 +170,7 @@ internal object RemoteMappers {
 
     /** A persisted transaction → the Home history row (amount carries an expense sign). */
     fun TransactionDto.toHistoryItem(): HistoryItem {
-        val type = parseType(type) ?: TransactionType.EXPENSE
+        val type = parseType(transactionType) ?: TransactionType.EXPENSE
         val raw = amount ?: BigDecimal.ZERO
         val signed = if (type == TransactionType.EXPENSE) raw.negate() else raw
         return HistoryItem(
@@ -181,6 +188,8 @@ internal object RemoteMappers {
                 PaymentStatus.PAID
             },
             displayOrder = displayOrder,
+            paymentMethod = parsePaymentMethod(paymentMethod),
+            cardId = cardId,
         )
     }
 
@@ -236,6 +245,8 @@ internal object RemoteMappers {
                 idPaymentSource = null,
                 idSource = null,
                 tagIds = emptyList(),
+                paymentMethod = null,
+                cardId = null,
             ),
             tokens = emptyList(),
         )
@@ -260,9 +271,11 @@ internal object RemoteMappers {
             status = parseStatus(status),
             parsed = parsedDomain,
             suggestions = ClassificationSuggestion(
-                idPaymentSource = suggestions.idPaymentSource,
-                idSource = suggestions.idSource,
+                idPaymentSource = null,
+                idSource = null,
                 tagIds = suggestions.tagIds,
+                paymentMethod = parsePaymentMethod(suggestions.paymentMethod),
+                cardId = suggestions.cardId,
             ),
             tokens = NotificationTokenizer.tokenize(base.text, parsedDomain),
         )
