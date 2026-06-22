@@ -193,7 +193,7 @@ fun ResumoScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = if (state.kind == TransactionType.INCOME) "Por fonte" else "Por contexto",
+                    text = if (state.kind == TransactionType.INCOME) "Por categoria de renda" else "Por contexto",
                     style = PocketTheme.typography.sectionHeader,
                     color = PocketTheme.colors.text3,
                 )
