@@ -177,6 +177,43 @@ data class NotificationRequestDto(
 )
 
 @Serializable
+data class RecurringSeriesDto(
+    val id: String,
+    val idUser: String? = null,
+    val name: String,
+    val transactionType: String,                // "INCOME" | "EXPENSE"
+    val recurrenceDay: Int? = null,
+    val tagIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class CreateRecurringSeriesRequest(
+    val name: String,
+    val transactionType: String,                // TransactionType.name ("INCOME" | "EXPENSE")
+    val recurrenceDay: Int? = null,
+)
+
+@Serializable
+data class RenameRecurringSeriesRequest(val name: String)
+
+@Serializable
+data class CategorizeRecurringSeriesRequest(val tagIds: List<String>)
+
+@Serializable
+data class CarryForwardRequest(
+    val sourceRefYearMonth: Int,
+    val onlyRecurring: Boolean,
+)
+
+@Serializable
+data class CarryForwardResultDto(
+    val target: Int = 0,
+    val sourceRefYearMonth: Int = 0,
+    val createdCount: Int,
+    val skippedCount: Int,
+)
+
+@Serializable
 data class NotificationDto(
     val id: String,
     val app: String,

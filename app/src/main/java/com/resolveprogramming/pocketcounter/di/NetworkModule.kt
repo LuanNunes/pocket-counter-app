@@ -9,6 +9,7 @@ import com.resolveprogramming.pocketcounter.data.remote.api.CategoryApi
 import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.NotificationApi
 import com.resolveprogramming.pocketcounter.data.remote.api.PaymentSourceApi
+import com.resolveprogramming.pocketcounter.data.remote.api.SeriesApi
 import com.resolveprogramming.pocketcounter.data.remote.api.SourceApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TagApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
@@ -107,6 +108,11 @@ object NetworkModule {
     @Singleton
     fun provideClassificationRuleApi(retrofit: Retrofit): ClassificationRuleApi =
         retrofit.create(ClassificationRuleApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSeriesApi(retrofit: Retrofit): SeriesApi =
+        retrofit.create(SeriesApi::class.java)
 
     @Provides
     @Singleton

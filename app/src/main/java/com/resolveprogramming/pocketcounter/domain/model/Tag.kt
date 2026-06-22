@@ -6,4 +6,6 @@ data class Tag(
     val kind: TransactionType,
     val idContext: String? = null,
     val color: Long? = null,
+    /** Set when this tag is owned by a recurring series (Contas Fixas); null otherwise. */
+    val idSeries: String? = null,
 )

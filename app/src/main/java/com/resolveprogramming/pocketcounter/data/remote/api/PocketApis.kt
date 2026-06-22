@@ -6,12 +6,18 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDt
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifiedRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CarryForwardRequest
+import com.resolveprogramming.pocketcounter.data.remote.dto.CarryForwardResultDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CategorizeRecurringSeriesRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryReorderDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CreateRecurringSeriesRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.RecurringSeriesDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.RenameRecurringSeriesRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.SourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
@@ -19,9 +25,11 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionReorderRe
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface TransactionApi {
     @GET("api/v1/transactions/incomes/{refYearMonth}")
@@ -149,6 +157,42 @@ interface CategoryApi {
 interface AssistantApi {
     @POST("api/v1/assistant/ask")
     suspend fun ask(@Body body: AssistantAskRequestDto): AssistantAskResponseDto
+}
+
+interface SeriesApi {
+    @GET("api/v1/recurring-series")
+    suspend fun getAll(): List<RecurringSeriesDto>
+
+    @POST("api/v1/recurring-series")
+    suspend fun create(@Body body: CreateRecurringSeriesRequest): RecurringSeriesDto
+
+    @PATCH("api/v1/recurring-series/{id}")
+    suspend fun rename(@Path("id") id: String, @Body body: RenameRecurringSeriesRequest): RecurringSeriesDto
+
+    @DELETE("api/v1/recurring-series/{id}")
+    suspend fun delete(@Path("id") id: String)
+
+    @PUT("api/v1/recurring-series/{id}/tags")
+    suspend fun setTags(@Path("id") id: String, @Body body: CategorizeRecurringSeriesRequest)
+
+    @POST("api/v1/recurring-series/{seriesId}/transactions/{transactionId}")
+    suspend fun linkTransaction(
+        @Path("seriesId") seriesId: String,
+        @Path("transactionId") transactionId: String,
+        @Query("includePrevious") includePrevious: Boolean,
+    )
+
+    @DELETE("api/v1/recurring-series/{seriesId}/transactions/{transactionId}")
+    suspend fun unlinkTransaction(
+        @Path("seriesId") seriesId: String,
+        @Path("transactionId") transactionId: String,
+    )
+
+    @POST("api/v1/months/{target}/carry-forward")
+    suspend fun carryForward(
+        @Path("target") targetRefYearMonth: Int,
+        @Body body: CarryForwardRequest,
+    ): CarryForwardResultDto
 }
 
 interface NotificationApi {

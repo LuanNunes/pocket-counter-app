@@ -3,7 +3,9 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
+import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.SourceInput
 import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -97,6 +99,7 @@ class TransacoesViewModel @Inject constructor(
     private val paymentSourceRepository: PaymentSourceRepository,
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
+    private val seriesRepository: SeriesRepository,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
@@ -314,6 +317,27 @@ class TransacoesViewModel @Inject constructor(
                     loadMonth()
                 }
                 .onFailure { _state.update { it.copy(toastMessage = "Não foi possível salvar") } }
+        }
+    }
+
+    /**
+     * Seeds the viewed month with the previous month's recurring entries (carry-forward).
+     * Target = viewed month ref; source = the month before it. Best-effort: a toast reports the
+     * created/skipped counts and the month reloads to surface the new rows.
+     */
+    fun generateBalance() {
+        val viewed = YearMonth.parse(_state.value.monthKey)
+        val target = RemoteMappers.monthKeyToRef(viewed.toString())
+        val source = RemoteMappers.monthKeyToRef(viewed.minusMonths(1).toString())
+        viewModelScope.launch {
+            seriesRepository.carryForward(target, source, onlyRecurring = true)
+                .onSuccess { result ->
+                    _state.update {
+                        it.copy(toastMessage = "Gerado: ${result.createdCount} · ignorados: ${result.skippedCount}")
+                    }
+                    loadMonth()
+                }
+                .onFailure { _state.update { it.copy(toastMessage = "Não foi possível gerar o saldo") } }
         }
     }
 

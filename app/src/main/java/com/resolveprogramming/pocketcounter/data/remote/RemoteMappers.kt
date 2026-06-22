@@ -5,7 +5,9 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.CarryForwardResultDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.RecurringSeriesDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.SourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
@@ -22,6 +24,8 @@ import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
 import com.resolveprogramming.pocketcounter.domain.model.PaymentSourceKind
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
+import com.resolveprogramming.pocketcounter.domain.model.CarryForwardResult
+import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -146,6 +150,19 @@ internal object RemoteMappers {
         tags = tags,
     )
 
+    fun RecurringSeriesDto.toDomain(): Series = Series(
+        id = id,
+        name = name,
+        type = parseType(transactionType) ?: TransactionType.EXPENSE,
+        recurrenceDay = recurrenceDay,
+        tagIds = tagIds,
+    )
+
+    fun CarryForwardResultDto.toDomain(): CarryForwardResult = CarryForwardResult(
+        createdCount = createdCount,
+        skippedCount = skippedCount,
+    )
+
     fun ClassificationRuleDto.toDomain(): ClassificationRule = ClassificationRule(
         id = id,
         pattern = pattern,
@@ -169,6 +186,7 @@ internal object RemoteMappers {
         kind = parseType(kind) ?: TransactionType.EXPENSE,
         idContext = idCategory ?: idContextFallback,
         color = color?.let { parseColor(it, id ?: name) },
+        idSeries = idSeries,
     )
 
     /** A persisted transaction → the Home history row (amount carries an expense sign). */

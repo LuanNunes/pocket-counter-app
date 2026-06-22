@@ -5,9 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
@@ -46,6 +48,7 @@ data class WizardUiState(
     val tagSearchQuery: String = "",
     val tokens: List<Token> = emptyList(),
     val selectedTokenIndex: Int? = null,
+    val availableSeries: List<Series> = emptyList(),
     val pendingTransactionId: String? = null,
     val isConfirmingPending: Boolean = false,
     val isSaving: Boolean = false,
@@ -62,6 +65,7 @@ class WizardViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val transactionRepository: TransactionRepository,
+    private val seriesRepository: SeriesRepository,
 ) : ViewModel() {
 
     private val notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -90,6 +94,7 @@ class WizardViewModel @Inject constructor(
             val cards = cardRepository.getCards().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
+            val series = seriesRepository.getAll().getOrDefault(emptyList())
 
             val classifyResult = notificationRepository.classify(notificationId, base)
             val classified = classifyResult.getOrNull()
@@ -100,6 +105,7 @@ class WizardViewModel @Inject constructor(
                     cards = cards,
                     allTags = tags,
                     contexts = contexts,
+                    availableSeries = series,
                     pendingTransactionId = classified.pendingTransactionId,
                     isConfirmingPending = true,
                     isLoading = false,
@@ -122,6 +128,7 @@ class WizardViewModel @Inject constructor(
                 cards = cards,
                 allTags = tags,
                 contexts = contexts,
+                availableSeries = series,
                 tokens = tokens,
                 isLoading = false,
                 error = degradeError,
@@ -180,6 +187,10 @@ class WizardViewModel @Inject constructor(
 
     fun updateRecurrenceDay(day: Int?) {
         _state.update { it.copy(draft = it.draft.copy(recurrenceDay = day)) }
+    }
+
+    fun selectSeries(id: String?) {
+        _state.update { it.copy(draft = it.draft.copy(seriesId = id)) }
     }
 
     fun updateTagSearch(query: String) {
@@ -282,13 +293,42 @@ class WizardViewModel @Inject constructor(
     fun save() {
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
-            transactionRepository.save(_state.value.draft)
+            val draft = _state.value.draft
+            transactionRepository.save(draft)
                 .onSuccess { transactionId ->
+                    // The transaction is the source of truth and is never rolled back. The
+                    // recurring-series steps below are best-effort: a series create/link failure
+                    // is swallowed so it can't block isSuccess. Carry-forward later seeds each
+                    // instance's amount from the source month — the backend has no series
+                    // defaultAmount (handoff §3.3 divergence).
+                    linkSeries(draft, transactionId)
                     runCatching { notificationRepository.markClassified(notificationId, transactionId) }
                     _state.update { it.copy(isSaving = false, isSuccess = true) }
                 }
                 .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
         }
+    }
+
+    private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
+        if (!draft.isFixo) return
+        val existingSeriesId = draft.seriesId
+        if (existingSeriesId != null) {
+            runCatching {
+                seriesRepository.linkTransaction(existingSeriesId, transactionId, includePrevious = false)
+            }
+            return
+        }
+        val name = draft.merchant ?: draft.name ?: "Conta fixa"
+        val type = draft.type ?: return
+        seriesRepository.create(name = name, type = type, recurrenceDay = draft.recurrenceDay)
+            .onSuccess { series ->
+                if (draft.tagIds.isNotEmpty()) {
+                    runCatching { seriesRepository.setTags(series.id, draft.tagIds) }
+                }
+                runCatching {
+                    seriesRepository.linkTransaction(series.id, transactionId, includePrevious = false)
+                }
+            }
     }
 
     fun confirmPending() {
