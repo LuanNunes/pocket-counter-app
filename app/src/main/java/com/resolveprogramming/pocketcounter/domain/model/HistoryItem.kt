@@ -17,4 +17,7 @@ data class HistoryItem(
     val displayOrder: Int = 0,
     val paymentMethod: PaymentMethod? = null,
     val cardId: String? = null,
-)
+    val seriesId: String? = null,
+) {
+    val isFixo: Boolean get() = seriesId != null
+}

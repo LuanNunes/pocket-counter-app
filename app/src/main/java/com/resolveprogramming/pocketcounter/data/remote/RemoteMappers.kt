@@ -211,6 +211,7 @@ internal object RemoteMappers {
             displayOrder = displayOrder,
             paymentMethod = parsePaymentMethod(paymentMethod),
             cardId = cardId,
+            seriesId = idSeries,
         )
     }
 

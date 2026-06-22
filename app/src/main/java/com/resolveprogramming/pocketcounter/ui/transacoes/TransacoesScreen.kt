@@ -40,6 +40,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -108,6 +111,12 @@ fun TransacoesScreen(
                     SearchField(query = state.query, onQueryChange = viewModel::setQuery)
                 }
 
+                LedgerFilterBar(
+                    filter = state.ledgerFilter,
+                    fixoCount = state.fixoCount,
+                    onSelect = viewModel::setLedgerFilter,
+                )
+
                 GroupModeBar(mode = state.groupMode, onSelect = viewModel::setGroupMode)
 
                 val emptyForMode = if (state.groupMode == GroupMode.LISTA) {
@@ -120,13 +129,22 @@ fun TransacoesScreen(
                         CircularProgressIndicator(color = PocketTheme.colors.accent)
                     }
 
-                    emptyForMode -> EmptyState(searching = state.query.isNotBlank(), month = state.monthLabel)
+                    emptyForMode -> EmptyState(
+                        searching = state.query.isNotBlank(),
+                        // A non-empty month showing nothing under the FIXOS filter is a fixo-empty,
+                        // distinct from a month with no rows at all.
+                        fixoEmpty = state.ledgerFilter == LedgerFilter.FIXOS &&
+                            state.query.isBlank() &&
+                            state.items.isNotEmpty(),
+                        month = state.monthLabel,
+                    )
 
                     state.groupMode == GroupMode.LISTA -> LedgerList(
                         groups = state.dayGroups,
                         sourceName = { state.sources[it]?.name ?: "—" },
                         paymentName = { state.paymentSources[it]?.name.orEmpty() },
                         onRowClick = viewModel::openDetail,
+                        onTogglePin = viewModel::toggleFixo,
                     )
 
                     else -> GroupedLedgerList(
@@ -138,6 +156,7 @@ fun TransacoesScreen(
                         onToggleCollapse = viewModel::toggleGroupCollapsed,
                         onRowClick = viewModel::openDetail,
                         onMoveTo = viewModel::moveItemTo,
+                        onTogglePin = viewModel::toggleFixo,
                     )
                 }
             }
@@ -383,6 +402,7 @@ private fun LedgerList(
     sourceName: (String) -> String,
     paymentName: (String) -> String,
     onRowClick: (HistoryItem) -> Unit,
+    onTogglePin: (HistoryItem) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -404,6 +424,8 @@ private fun LedgerList(
                     sourceName = sourceName(item.idSource),
                     paymentName = paymentName(item.idPaymentSource),
                     onClick = { onRowClick(item) },
+                    pinned = item.isFixo,
+                    onTogglePin = { onTogglePin(item) },
                 )
             }
         }
@@ -417,45 +439,94 @@ private fun TxRow(
     sourceName: String,
     paymentName: String,
     onClick: () -> Unit,
+    pinned: Boolean,
+    onTogglePin: () -> Unit,
 ) {
-    Column(modifier = Modifier.clickable(onClick = onClick)) {
+    Column {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = sourceName,
-                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
-                    color = PocketTheme.colors.text,
-                )
-                Text(
-                    text = paymentName,
-                    style = PocketTheme.typography.bodyXs,
-                    color = PocketTheme.colors.text3,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (item.statusPayment == PaymentStatus.PENDING) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(PocketTheme.colors.warn, PocketTheme.shapes.pill),
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(onClick = onClick)
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = sourceName,
+                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
+                        color = PocketTheme.colors.text,
                     )
-                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        text = paymentName,
+                        style = PocketTheme.typography.bodyXs,
+                        color = PocketTheme.colors.text3,
+                    )
                 }
-                AmountText(
-                    amount = item.amount,
-                    type = item.type,
-                    showSign = true,
-                    style = PocketTheme.typography.monoSm,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (item.statusPayment == PaymentStatus.PENDING) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(PocketTheme.colors.warn, PocketTheme.shapes.pill),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                    }
+                    AmountText(
+                        amount = item.amount,
+                        type = item.type,
+                        showSign = true,
+                        style = PocketTheme.typography.monoSm,
+                    )
+                }
             }
+            PinToggle(pinned = pinned, onToggle = onTogglePin)
         }
         HorizontalDivider(color = PocketTheme.colors.line)
+    }
+}
+
+@Composable
+private fun PinToggle(pinned: Boolean, onToggle: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clickable(
+                role = Role.Switch,
+                onClickLabel = if (pinned) "Remover dos fixos" else "Marcar como fixo",
+                onClick = onToggle,
+            )
+            .semantics {
+                stateDescription = if (pinned) "Fixo" else "Avulso"
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "↻",
+            style = PocketTheme.typography.body,
+            color = if (pinned) PocketTheme.colors.accent else PocketTheme.colors.text3,
+        )
+    }
+}
+
+@Composable
+private fun LedgerFilterBar(
+    filter: LedgerFilter,
+    fixoCount: Int,
+    onSelect: (LedgerFilter) -> Unit,
+) {
+    val fixosLabel = if (fixoCount > 0) "Fixos · $fixoCount" else "Fixos"
+    val options = listOf(SegmentOption("Todos"), SegmentOption(fixosLabel))
+    Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+        PocketSegmented(
+            options = options,
+            selectedIndex = filter.ordinal,
+            onSelect = { onSelect(LedgerFilter.entries[it]) },
+        )
     }
 }
 
@@ -484,6 +555,7 @@ private fun GroupedLedgerList(
     onToggleCollapse: (String) -> Unit,
     onRowClick: (HistoryItem) -> Unit,
     onMoveTo: (LedgerGroup, HistoryItem, Int) -> Unit,
+    onTogglePin: (HistoryItem) -> Unit,
 ) {
     val reducedMotion = LocalReducedMotion.current
     var dragId by remember { mutableStateOf<String?>(null) }
@@ -537,6 +609,8 @@ private fun GroupedLedgerList(
                                     sourceName = sourceName(item.idSource),
                                     paymentName = paymentName(item.idPaymentSource),
                                     onClick = { onRowClick(item) },
+                                    pinned = item.isFixo,
+                                    onTogglePin = { onTogglePin(item) },
                                 )
                             }
                             if (canReorder && group.items.size > 1) {
@@ -636,10 +710,14 @@ private fun DragHandle(
 }
 
 @Composable
-private fun EmptyState(searching: Boolean, month: String) {
+private fun EmptyState(searching: Boolean, fixoEmpty: Boolean, month: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
         Text(
-            text = if (searching) "Nada encontrado" else "Nenhuma transação em $month",
+            text = when {
+                searching -> "Nada encontrado"
+                fixoEmpty -> "Nenhum lançamento fixo neste mês."
+                else -> "Nenhuma transação em $month"
+            },
             style = PocketTheme.typography.body,
             color = PocketTheme.colors.text3,
         )

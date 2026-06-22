@@ -61,6 +61,9 @@ internal fun reorderWithinGroup(
     return result
 }
 
+/** Ledger row filter: all rows, or only those linked to a recurring series ("fixos"). */
+enum class LedgerFilter { TODOS, FIXOS }
+
 /** Whether the transaction form sheet is adding a new row or editing an existing one. */
 sealed interface FormMode {
     data object Add : FormMode
@@ -77,6 +80,8 @@ data class TransacoesUiState(
     val collapsedGroupIds: Set<String> = emptySet(),
     val totals: TransactionTotals = TransactionTotals.ZERO,
     val query: String = "",
+    val ledgerFilter: LedgerFilter = LedgerFilter.TODOS,
+    val fixoCount: Int = 0,
     val searchOpen: Boolean = false,
     val detailTarget: HistoryItem? = null,
     val tagEditTarget: HistoryItem? = null,
@@ -175,6 +180,40 @@ class TransacoesViewModel @Inject constructor(
         _state.update { s ->
             val open = !s.searchOpen
             s.copy(searchOpen = open, query = if (open) s.query else "").recomputed()
+        }
+    }
+
+    fun setLedgerFilter(filter: LedgerFilter) {
+        _state.update { it.copy(ledgerFilter = filter).recomputed() }
+    }
+
+    /**
+     * Marks a row as "fixo" by linking it to a recurring series (creating one first if it has
+     * none), or unlinks it when it already belongs to a series. Best-effort: failures surface a
+     * toast and reload to reflect the committed truth.
+     */
+    fun toggleFixo(item: HistoryItem) {
+        viewModelScope.launch {
+            val seriesId = item.seriesId
+            if (seriesId == null) {
+                val name = _state.value.sources[item.idSource]?.name?.takeIf { it.isNotBlank() } ?: "Conta fixa"
+                seriesRepository.create(
+                    name = name,
+                    type = item.type,
+                    recurrenceDay = item.date.dayOfMonth,
+                )
+                    .onSuccess { series ->
+                        seriesRepository.linkTransaction(series.id, item.id, includePrevious = false)
+                            .onSuccess { _state.update { it.copy(toastMessage = "Marcado como fixo") } }
+                            .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
+                    }
+                    .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
+            } else {
+                seriesRepository.unlinkTransaction(seriesId, item.id)
+                    .onSuccess { _state.update { it.copy(toastMessage = "Removido dos fixos") } }
+                    .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
+            }
+            loadMonth()
         }
     }
 
@@ -345,7 +384,8 @@ class TransacoesViewModel @Inject constructor(
 
     /** Recomputes dayGroups (LISTA) and ledgerGroups (CONTEXTO/TAG) from the filtered items. */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
-        val filtered = filterItems(items, query, sources, paymentSources, tags)
+        val searched = filterItems(items, query, sources, paymentSources, tags)
+        val filtered = if (ledgerFilter == LedgerFilter.FIXOS) searched.filter { it.isFixo } else searched
         val days = filtered
             .groupBy { it.date }
             .toSortedMap(reverseOrder())
@@ -355,7 +395,7 @@ class TransacoesViewModel @Inject constructor(
         } else {
             groupLedger(filtered, groupMode, sources, tags, contexts, CuratedPalette.argb)
         }
-        return copy(dayGroups = days, ledgerGroups = ledger)
+        return copy(dayGroups = days, ledgerGroups = ledger, fixoCount = items.count { it.isFixo })
     }
 
     /** Filters by source/payment/effective-tag name + amount (merchant isn't on [HistoryItem]). */
