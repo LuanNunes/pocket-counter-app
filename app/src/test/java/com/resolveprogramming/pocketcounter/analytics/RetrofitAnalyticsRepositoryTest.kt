@@ -32,7 +32,7 @@ class RetrofitAnalyticsRepositoryTest {
 
     private fun stubCatalog() {
         coEvery { tagRepository.getAllTags() } returns Result.success(
-            listOf(Tag(id = "t1", name = "supermercado", idContext = "c1")),
+            listOf(Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "c1")),
         )
         coEvery { tagRepository.getAllContexts() } returns Result.success(
             listOf(TagContext(id = "c1", name = "Mercado", color = 0xFF112233)),
@@ -87,8 +87,8 @@ class RetrofitAnalyticsRepositoryTest {
     fun `own tag overrides the source default`() = runTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(
             listOf(
-                Tag(id = "t1", name = "supermercado", idContext = "c1"),
-                Tag(id = "t2", name = "ifood", idContext = "c2"),
+                Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "c1"),
+                Tag(id = "t2", name = "ifood", kind = TransactionType.EXPENSE, idContext = "c2"),
             ),
         )
         coEvery { tagRepository.getAllContexts() } returns Result.success(

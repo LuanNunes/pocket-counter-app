@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +27,12 @@ sealed interface ContextFormMode {
 }
 
 sealed interface TagFormMode {
+    /** Add an expense tag under a context. */
     data class Add(val idContext: String) : TagFormMode
+
+    /** Add an income category (flat, colored, no context). */
+    data object AddIncome : TagFormMode
+
     data class Edit(val id: String) : TagFormMode
 }
 
@@ -35,6 +41,7 @@ data class TagDeleteTarget(val id: String, val name: String)
 
 data class ContextosTagsUiState(
     val sections: List<ContextSection> = emptyList(),
+    val incomeCategories: List<Tag> = emptyList(),
     val contexts: List<TagContext> = emptyList(),
     val palette: List<Long> = CuratedPalette.argb,
     val contextForm: ContextFormMode? = null,
@@ -47,16 +54,24 @@ data class ContextosTagsUiState(
     val isLoading: Boolean = true,
 )
 
-/** Groups tags under their context (in context order), with a trailing "Sem contexto" bucket. Pure for testability. */
+/**
+ * Groups EXPENSE tags under their context (in context order), with a trailing "Sem contexto"
+ * bucket. Income tags are excluded entirely. Pure for testability.
+ */
 internal fun buildContextSections(contexts: List<TagContext>, tags: List<Tag>): List<ContextSection> {
-    val byContext = tags.groupBy { it.idContext }
+    val expenseTags = tags.filter { it.kind == TransactionType.EXPENSE }
+    val byContext = expenseTags.groupBy { it.idContext }
     val knownIds = contexts.map { it.id }.toSet()
     return buildList {
         contexts.forEach { ctx -> add(ContextSection(ctx, byContext[ctx.id].orEmpty())) }
-        val orphans = tags.filter { it.idContext.isBlank() || it.idContext !in knownIds }
+        val orphans = expenseTags.filter { it.idContext.isNullOrBlank() || it.idContext !in knownIds }
         if (orphans.isNotEmpty()) add(ContextSection(null, orphans))
     }
 }
+
+/** Flat list of income categories (INCOME tags, no context), preserving order. Pure for testability. */
+internal fun incomeCategories(tags: List<Tag>): List<Tag> =
+    tags.filter { it.kind == TransactionType.INCOME }
 
 @HiltViewModel
 class ContextosTagsViewModel @Inject constructor(
@@ -76,6 +91,7 @@ class ContextosTagsViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     sections = buildContextSections(contexts, tags),
+                    incomeCategories = incomeCategories(tags),
                     contexts = contexts,
                     isLoading = false,
                     // Distinguish a load failure from a genuinely empty list.
@@ -139,8 +155,11 @@ class ContextosTagsViewModel @Inject constructor(
     // ── Tag CRUD ─────────────────────────────────────────────────
     fun openAddTag(idContext: String) = _state.update { it.copy(tagForm = TagFormMode.Add(idContext), editingTag = null) }
 
+    fun openAddIncomeCategory() = _state.update { it.copy(tagForm = TagFormMode.AddIncome, editingTag = null) }
+
     fun openEditTag(id: String) {
-        val tag = _state.value.sections.flatMap { it.tags }.firstOrNull { it.id == id }
+        val tag = (_state.value.sections.flatMap { it.tags } + _state.value.incomeCategories)
+            .firstOrNull { it.id == id }
         _state.update { it.copy(tagForm = TagFormMode.Edit(id), editingTag = tag) }
     }
 
@@ -150,7 +169,7 @@ class ContextosTagsViewModel @Inject constructor(
         val mode = _state.value.tagForm ?: return
         viewModelScope.launch {
             val result = when (mode) {
-                is TagFormMode.Add -> tagRepository.createTag(input.name, input.idContext)
+                is TagFormMode.Add, TagFormMode.AddIncome -> tagRepository.createTag(input)
                 is TagFormMode.Edit -> tagRepository.updateTag(mode.id, input)
             }
             result
@@ -163,7 +182,8 @@ class ContextosTagsViewModel @Inject constructor(
     }
 
     fun requestDeleteTag(id: String) {
-        val tag = _state.value.sections.flatMap { it.tags }.firstOrNull { it.id == id } ?: return
+        val tag = (_state.value.sections.flatMap { it.tags } + _state.value.incomeCategories)
+            .firstOrNull { it.id == id } ?: return
         _state.update { it.copy(confirmDeleteTag = TagDeleteTarget(id, tag.name)) }
     }
 

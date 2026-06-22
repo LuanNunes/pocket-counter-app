@@ -164,6 +164,7 @@ fun TransacoesScreen(
     state.tagEditTarget?.let { item ->
         val source = state.sources[item.idSource]
         TagEditSheet(
+            type = item.type,
             initialTagIds = effectiveTagIds(item.tagIds, source?.tags ?: emptyList()),
             inheriting = item.tagIds == null,
             sourceName = source?.name ?: "fonte",

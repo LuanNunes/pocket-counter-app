@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.FormSwitchRow
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadge
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
@@ -30,6 +31,7 @@ import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepTags
  */
 @Composable
 fun TagEditSheet(
+    type: TransactionType,
     initialTagIds: List<String>,
     inheriting: Boolean,
     sourceName: String,
@@ -55,6 +57,7 @@ fun TagEditSheet(
         Spacer(Modifier.height(12.dp))
 
         StepTags(
+            type = type,
             tags = tags,
             contexts = contexts,
             selectedTagIds = selected,

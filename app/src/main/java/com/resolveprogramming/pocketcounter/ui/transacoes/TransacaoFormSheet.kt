@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -112,6 +113,7 @@ fun TransacaoFormSheet(
             )
 
             WizardStep.TAGS -> StepTags(
+                type = draft.type ?: TransactionType.EXPENSE,
                 tags = tags,
                 contexts = contexts,
                 selectedTagIds = draft.tagIds,

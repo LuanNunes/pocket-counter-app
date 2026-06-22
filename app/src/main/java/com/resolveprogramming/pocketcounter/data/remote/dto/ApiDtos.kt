@@ -77,13 +77,16 @@ data class CreditCardDto(
 data class TagDto(
     val id: String? = null,
     val idUser: String? = null,
-    val idContext: String? = null,
+    val idCategory: String? = null,
     val idTransaction: String? = null,
     val name: String,
+    val kind: String? = null,                   // TransactionType name (INCOME|EXPENSE)
+    val color: String? = null,
+    val idSeries: String? = null,
 )
 
 @Serializable
-data class ContextDto(
+data class CategoryDto(
     val id: String? = null,
     val idUser: String? = null,
     val name: String,
@@ -114,7 +117,7 @@ data class ReorderItemDto(val id: String, val displayOrder: Int)
 data class TransactionReorderRequest(val items: List<ReorderItemDto>)
 
 @Serializable
-data class ContextReorderDto(val items: List<ReorderItemDto>)
+data class CategoryReorderDto(val items: List<ReorderItemDto>)
 
 @Serializable
 data class ClassifyRequestDto(
