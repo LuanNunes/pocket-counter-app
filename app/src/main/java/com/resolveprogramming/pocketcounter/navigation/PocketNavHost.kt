@@ -30,9 +30,7 @@ import com.resolveprogramming.pocketcounter.ui.onboarding.OnboardingScreen
 import com.resolveprogramming.pocketcounter.ui.resumo.ResumoScreen
 import com.resolveprogramming.pocketcounter.ui.contextos.ContextosTagsScreen
 import com.resolveprogramming.pocketcounter.ui.fixas.ContasFixasScreen
-import com.resolveprogramming.pocketcounter.ui.fontes.FontesScreen
 import com.resolveprogramming.pocketcounter.ui.mais.MaisScreen
-import com.resolveprogramming.pocketcounter.ui.meios.MeiosScreen
 import com.resolveprogramming.pocketcounter.ui.regras.RegrasScreen
 import com.resolveprogramming.pocketcounter.ui.relatorio.RelatorioScreen
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -48,9 +46,7 @@ object Routes {
     const val RESUMO = "resumo"
     const val TRANSACOES = "transacoes"
     const val MAIS = "mais"
-    const val FONTES = "fontes"
     const val CONTAS_FIXAS = "contas-fixas"
-    const val MEIOS = "meios"
     const val REGRAS = "regras"
     const val CONTEXTOS = "contextos"
     const val RELATORIO = "relatorio"
@@ -172,22 +168,8 @@ fun PocketNavHost(
             )
         }
 
-        composable(Routes.FONTES) {
-            FontesScreen(
-                onBack = { navController.popBackStack() },
-                onNav = { tab -> navTab(navController, tab) },
-            )
-        }
-
         composable(Routes.CONTAS_FIXAS) {
             ContasFixasScreen(
-                onBack = { navController.popBackStack() },
-                onNav = { tab -> navTab(navController, tab) },
-            )
-        }
-
-        composable(Routes.MEIOS) {
-            MeiosScreen(
                 onBack = { navController.popBackStack() },
                 onNav = { tab -> navTab(navController, tab) },
             )

@@ -2,9 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
@@ -58,8 +56,6 @@ class TransacoesViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private val transactionRepository: TransactionRepository = mockk()
-    private val sourceRepository: SourceRepository = mockk()
-    private val paymentSourceRepository: PaymentSourceRepository = mockk()
     private val cardRepository: CardRepository = mockk()
     private val tagRepository: TagRepository = mockk()
     private val seriesRepository: SeriesRepository = mockk()
@@ -71,8 +67,6 @@ class TransacoesViewModelTest {
     private val avulsoItem1 = HistoryItem(
         id = "avulso-1",
         date = LocalDate.of(2026, 6, 4),
-        idSource = "src-1",
-        idPaymentSource = "pay-1",
         amount = BigDecimal("50.00"),
         type = TransactionType.EXPENSE,
         tagIds = null,
@@ -82,8 +76,6 @@ class TransacoesViewModelTest {
     private val avulsoItem2 = HistoryItem(
         id = "avulso-2",
         date = LocalDate.of(2026, 6, 10),
-        idSource = "src-1",
-        idPaymentSource = "pay-1",
         amount = BigDecimal("30.00"),
         type = TransactionType.EXPENSE,
         tagIds = null,
@@ -93,8 +85,6 @@ class TransacoesViewModelTest {
     private val fixoItem1 = HistoryItem(
         id = "fixo-1",
         date = LocalDate.of(2026, 6, 5),
-        idSource = "src-1",
-        idPaymentSource = "pay-1",
         amount = BigDecimal("200.00"),
         type = TransactionType.EXPENSE,
         tagIds = null,
@@ -104,8 +94,6 @@ class TransacoesViewModelTest {
     private val fixoItem2 = HistoryItem(
         id = "fixo-2",
         date = LocalDate.of(2026, 6, 15),
-        idSource = "src-2",
-        idPaymentSource = "pay-1",
         amount = BigDecimal("100.00"),
         type = TransactionType.INCOME,
         tagIds = null,
@@ -120,8 +108,6 @@ class TransacoesViewModelTest {
         Dispatchers.setMain(testDispatcher)
 
         // Default stubs for loadLookups()
-        coEvery { sourceRepository.getAll() } returns Result.success(emptyList())
-        coEvery { paymentSourceRepository.getAll() } returns Result.success(emptyList())
         coEvery { cardRepository.getCards() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
@@ -137,8 +123,6 @@ class TransacoesViewModelTest {
 
     private fun makeViewModel(): TransacoesViewModel = TransacoesViewModel(
         transactionRepository = transactionRepository,
-        sourceRepository = sourceRepository,
-        paymentSourceRepository = paymentSourceRepository,
         cardRepository = cardRepository,
         tagRepository = tagRepository,
         seriesRepository = seriesRepository,

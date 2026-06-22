@@ -4,10 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceInput
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.DayGroup
@@ -17,8 +14,6 @@ import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionTotals
@@ -30,7 +25,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.YearMonth
@@ -87,8 +81,6 @@ data class TransacoesUiState(
     val tagEditTarget: HistoryItem? = null,
     val formMode: FormMode? = null,
     val confirmDeleteId: String? = null,
-    val sources: Map<String, Source> = emptyMap(),
-    val paymentSources: Map<String, PaymentSource> = emptyMap(),
     val cards: List<CreditCard> = emptyList(),
     val tags: Map<String, Tag> = emptyMap(),
     val contexts: List<TagContext> = emptyList(),
@@ -100,8 +92,6 @@ data class TransacoesUiState(
 @HiltViewModel
 class TransacoesViewModel @Inject constructor(
     private val transactionRepository: TransactionRepository,
-    private val sourceRepository: SourceRepository,
-    private val paymentSourceRepository: PaymentSourceRepository,
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val seriesRepository: SeriesRepository,
@@ -124,15 +114,11 @@ class TransacoesViewModel @Inject constructor(
 
     private fun loadLookups() {
         viewModelScope.launch {
-            val sources = sourceRepository.getAll().getOrDefault(emptyList())
-            val paymentSources = paymentSourceRepository.getAll().getOrDefault(emptyList())
             val cards = cardRepository.getCards().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
             _state.update {
                 it.copy(
-                    sources = sources.associateBy { s -> s.id },
-                    paymentSources = paymentSources.associateBy { p -> p.id },
                     cards = cards,
                     tags = tags.associateBy { t -> t.id },
                     contexts = contexts,
@@ -196,7 +182,9 @@ class TransacoesViewModel @Inject constructor(
         viewModelScope.launch {
             val seriesId = item.seriesId
             if (seriesId == null) {
-                val name = _state.value.sources[item.idSource]?.name?.takeIf { it.isNotBlank() } ?: "Conta fixa"
+                val name = item.name?.takeIf { it.isNotBlank() }
+                    ?: item.displayTitle().takeIf { it != "—" }
+                    ?: "Conta fixa"
                 seriesRepository.create(
                     name = name,
                     type = item.type,
@@ -259,45 +247,14 @@ class TransacoesViewModel @Inject constructor(
     fun openTagEdit(item: HistoryItem) = _state.update { it.copy(tagEditTarget = item, detailTarget = null) }
     fun closeTagEdit() = _state.update { it.copy(tagEditTarget = null) }
 
-    /**
-     * Saves tags for one transaction. [updateSource] = true (default) writes the tags as the
-     * SOURCE's new defaults and sets this transaction back to inherit, so every still-inheriting
-     * row retroactively reflects them. false overrides just this transaction.
-     */
-    fun saveTags(item: HistoryItem, selectedTagIds: List<String>, updateSource: Boolean) {
+    /** Saves tags as a per-transaction override. */
+    fun saveTags(item: HistoryItem, selectedTagIds: List<String>) {
         viewModelScope.launch {
-            val source = _state.value.sources[item.idSource]
-            val result = if (updateSource && source != null) {
-                sourceRepository.update(
-                    source.id,
-                    SourceInput(
-                        name = source.name,
-                        idPaymentSource = source.idPaymentSource,
-                        allowsIncome = source.allowsIncome,
-                        allowsExpense = source.allowsExpense,
-                        refDayRecurring = source.refDayRecurring,
-                        amount = source.amount ?: BigDecimal.ZERO,
-                        tagIds = selectedTagIds,
-                    ),
-                ).mapCatching { transactionRepository.setTags(item, null).getOrThrow() }
-            } else {
-                // Keep an unchanged inheriting transaction inheriting; only override when the
-                // selection actually diverges from the currently-effective tags.
-                val effective = effectiveTagIds(item.tagIds, source?.tags ?: emptyList())
-                val ownTags = if (item.tagIds == null && selectedTagIds.toSet() == effective.toSet()) {
-                    null
-                } else {
-                    selectedTagIds
-                }
-                transactionRepository.setTags(item, ownTags)
-            }
-            result
+            transactionRepository.setTags(item, selectedTagIds)
                 .onSuccess {
-                    val msg = if (updateSource) "Fonte atualizada" else "Tags desta transação"
-                    _state.update { it.copy(tagEditTarget = null, toastMessage = msg) }
+                    _state.update { it.copy(tagEditTarget = null, toastMessage = "Tags desta transação") }
                 }
                 .onFailure { _state.update { it.copy(tagEditTarget = null, toastMessage = "Não foi possível salvar as tags") } }
-            // Reload regardless so the UI reflects whatever committed (incl. partial source update).
             loadLookups()
             loadMonth()
         }
@@ -384,7 +341,7 @@ class TransacoesViewModel @Inject constructor(
 
     /** Recomputes dayGroups (LISTA) and ledgerGroups (CONTEXTO/TAG) from the filtered items. */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
-        val searched = filterItems(items, query, sources, paymentSources, tags)
+        val searched = filterItems(items, query, tags)
         val filtered = if (ledgerFilter == LedgerFilter.FIXOS) searched.filter { it.isFixo } else searched
         val days = filtered
             .groupBy { it.date }
@@ -393,29 +350,26 @@ class TransacoesViewModel @Inject constructor(
         val ledger = if (groupMode == GroupMode.LISTA) {
             emptyList()
         } else {
-            groupLedger(filtered, groupMode, sources, tags, contexts, CuratedPalette.argb)
+            groupLedger(filtered, groupMode, tags, contexts, CuratedPalette.argb)
         }
         return copy(dayGroups = days, ledgerGroups = ledger, fixoCount = items.count { it.isFixo })
     }
 
-    /** Filters by source/payment/effective-tag name + amount (merchant isn't on [HistoryItem]). */
+    /** Filters by title/effective-tag name + amount. */
     private fun filterItems(
         items: List<HistoryItem>,
         query: String,
-        sources: Map<String, Source>,
-        paymentSources: Map<String, PaymentSource>,
         tags: Map<String, Tag>,
     ): List<HistoryItem> {
         if (query.isBlank()) return items
         val q = query.trim().lowercase(ptBr)
         return items.filter { item ->
-            val sourceName = sources[item.idSource]?.name?.lowercase(ptBr).orEmpty()
-            val payName = paymentSources[item.idPaymentSource]?.name?.lowercase(ptBr).orEmpty()
-            val effective = effectiveTagIds(item.tagIds, sources[item.idSource]?.tags ?: emptyList())
+            val title = item.displayTitle().lowercase(ptBr)
+            val effective = effectiveTagIds(item.tagIds, emptyList())
             val tagNames = effective.mapNotNull { tags[it]?.name?.lowercase(ptBr) }
             val shown = currencyFormat.format(item.amount.abs()).lowercase(ptBr)
             val raw = item.amount.abs().toPlainString()
-            sourceName.contains(q) || payName.contains(q) ||
+            title.contains(q) ||
                 shown.contains(q) || raw.contains(q) ||
                 tagNames.any { it.contains(q) }
         }

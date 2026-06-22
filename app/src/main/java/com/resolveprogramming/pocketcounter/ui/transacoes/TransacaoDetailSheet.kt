@@ -33,8 +33,6 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun TransacaoDetailSheet(
     item: HistoryItem,
-    sourceName: String,
-    paymentName: String,
     tagNames: List<String>,
     onDismiss: () -> Unit,
     onMarkPaid: () -> Unit,
@@ -85,9 +83,7 @@ fun TransacaoDetailSheet(
 
         DetailRow("Data", item.date.format(dateFormat))
         DetailDivider()
-        DetailRow("Fonte", sourceName)
-        DetailDivider()
-        DetailRow("Meio", paymentName)
+        DetailRow("Descrição", item.displayTitle())
 
         DetailDivider()
         Row(

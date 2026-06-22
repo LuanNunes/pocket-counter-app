@@ -99,8 +99,6 @@ class WizardViewModelTest {
             paymentHint = null,
         ),
         suggestions = ClassificationSuggestion(
-            idPaymentSource = null,
-            idSource = null,
             tagIds = tagIds,
             paymentMethod = paymentMethod,
             cardId = cardId,

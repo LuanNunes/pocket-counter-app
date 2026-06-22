@@ -6,9 +6,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CarryForwardResultDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.RecurringSeriesDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.SourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.domain.model.CapturedMessage
@@ -21,12 +19,9 @@ import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSourceKind
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.CarryForwardResult
 import com.resolveprogramming.pocketcounter.domain.model.Series
-import com.resolveprogramming.pocketcounter.domain.model.Source
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -115,41 +110,6 @@ internal object RemoteMappers {
         return "#%02X%02X%02X".format(r, g, b)
     }
 
-    fun PaymentSourceDto.toDomain(): PaymentSource {
-        val key = id ?: name
-        return PaymentSource(
-            id = key,
-            name = name,
-            sub = paymentTypeLabel(type),
-            kind = if (type == "CREDIT_CARD") PaymentSourceKind.CREDIT else PaymentSourceKind.CHECKING,
-            color = paletteFor(key),
-            type = type,
-            allowsIncome = allowsIncome,
-            allowsExpense = allowsExpense,
-            refDayBill = refDayBill,
-        )
-    }
-
-    private fun paymentTypeLabel(type: String): String = when (type) {
-        "CREDIT_CARD" -> "Cartão de crédito"
-        "DEBIT_CARD" -> "Cartão de débito"
-        "CASH" -> "Dinheiro"
-        "PIX" -> "Pix"
-        "BANK_TRANSFER" -> "Transferência"
-        else -> ""
-    }
-
-    fun SourceDto.toDomain(): Source = Source(
-        id = id ?: name,
-        name = name,
-        idPaymentSource = idPaymentSource,
-        allowsExpense = allowsExpense,
-        allowsIncome = allowsIncome,
-        refDayRecurring = refDayRecurring,
-        amount = amount,
-        tags = tags,
-    )
-
     fun RecurringSeriesDto.toDomain(): Series = Series(
         id = id,
         name = name,
@@ -200,8 +160,6 @@ internal object RemoteMappers {
         return HistoryItem(
             id = id.orEmpty(),
             date = parseDate(datePaid) ?: parseDate(dateDue) ?: LocalDate.now(),
-            idSource = idSource.orEmpty(),
-            idPaymentSource = idPaymentSource.orEmpty(),
             amount = signed,
             type = type,
             // Preserve null = inherit vs non-null = override (drop .orEmpty()).
@@ -269,8 +227,6 @@ internal object RemoteMappers {
                 installmentValue = parsedInstallmentValue,
             ),
             suggestions = ClassificationSuggestion(
-                idPaymentSource = null,
-                idSource = null,
                 tagIds = emptyList(),
                 paymentMethod = null,
                 cardId = null,
@@ -298,8 +254,6 @@ internal object RemoteMappers {
             status = parseStatus(status),
             parsed = parsedDomain,
             suggestions = ClassificationSuggestion(
-                idPaymentSource = null,
-                idSource = null,
                 tagIds = suggestions.tagIds,
                 paymentMethod = parsePaymentMethod(suggestions.paymentMethod),
                 cardId = suggestions.cardId,

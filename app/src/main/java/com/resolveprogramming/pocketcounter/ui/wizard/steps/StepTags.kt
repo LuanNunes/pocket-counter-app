@@ -305,7 +305,7 @@ fun StepTags(
                 Spacer(Modifier.height(4.dp))
                 val hint = paymentHint ?: merchant ?: "..."
                 Text(
-                    text = "Próximas notificações com \"$hint\" vão pré-preencher Source + tags automaticamente.",
+                    text = "Próximas notificações com \"$hint\" vão pré-preencher as tags automaticamente.",
                     style = PocketTheme.typography.bodyXs,
                     color = PocketTheme.colors.text2,
                 )

@@ -18,8 +18,6 @@ class TransactionTotalsTest {
     ) = HistoryItem(
         id = amount + type,
         date = LocalDate.of(2026, 6, 13),
-        idSource = "s",
-        idPaymentSource = "p",
         amount = BigDecimal(amount),
         type = type,
         tagIds = emptyList(),

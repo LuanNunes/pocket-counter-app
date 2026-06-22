@@ -33,34 +33,6 @@ data class TransactionDto(
     val amountOriginal: BigDecimal? = null,
     @Serializable(with = RemoteBigDecimalSerializer::class)
     val exchangeRate: BigDecimal? = null,
-    // Legacy read-only fields kept until analytics/faturas migrate off them (phase-3).
-    // The new backend no longer returns them, so they degrade to null on read.
-    val idSource: String? = null,
-    val idPaymentSource: String? = null,
-)
-
-@Serializable
-data class SourceDto(
-    val id: String? = null,
-    val idPaymentSource: String,
-    val name: String,
-    val allowsIncome: Boolean = false,
-    val allowsExpense: Boolean = false,
-    val refDayRecurring: Int? = null,
-    @Serializable(with = RemoteBigDecimalSerializer::class)
-    val amount: BigDecimal = BigDecimal.ZERO,
-    val tags: List<String> = emptyList(),
-)
-
-@Serializable
-data class PaymentSourceDto(
-    val id: String? = null,
-    val idUser: String? = null,
-    val name: String = "",
-    val type: String = "CREDIT_CARD",         // PaymentTypeEnum name
-    val allowsIncome: Boolean = false,
-    val allowsExpense: Boolean = false,
-    val refDayBill: Int? = null,
 )
 
 @Serializable
@@ -111,9 +83,6 @@ data class ClassificationRuleDto(
     val paymentMethod: String? = null,          // PaymentMethodEnum name (UPPERCASE)
     val cardId: String? = null,                 // UUID of the credit card
     val tagIds: List<ClassificationRuleTagDto> = emptyList(),
-    // Legacy fields — kept null on write, ignored on read.
-    val idPaymentSource: String? = null,
-    val idSource: String? = null,
 )
 
 @Serializable
