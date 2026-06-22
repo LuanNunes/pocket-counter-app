@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +55,8 @@ import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.ui.components.FormLabel
+import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketChip
 import com.resolveprogramming.pocketcounter.ui.components.PocketChipVariant
@@ -101,6 +104,7 @@ fun CartoesScreen(
                     cardCount = state.invoices.size,
                     grandTotal = formatter.format(state.grandTotal),
                     onBack = onBack,
+                    onAddCard = viewModel::openAddCard,
                 )
             },
             bottomBar = {
@@ -133,6 +137,16 @@ fun CartoesScreen(
             onSave = { selectedTags, learnRule ->
                 viewModel.classifyPurchase(target.item, target.card, selectedTags, learnRule)
                 classifyTarget = null
+            },
+        )
+    }
+
+    if (state.showAddCard) {
+        AddCardSheet(
+            isSaving = state.isSavingCard,
+            onDismiss = viewModel::dismissAddCard,
+            onSave = { name, brand, closingDay, color ->
+                viewModel.addCard(name, brand, closingDay, color)
             },
         )
     }
@@ -200,7 +214,7 @@ private fun CartoesCarousel(
         ) {
             item { Spacer(Modifier.height(12.dp)) }
 
-            items(current.items, key = { it.transactionId }) { item ->
+            items(current.items, key = { it.itemId ?: it.transactionId }) { item ->
                 InvoiceItemRow(
                     item = item,
                     formatter = formatter,
@@ -260,51 +274,73 @@ private fun CartoesHeader(
     cardCount: Int,
     grandTotal: String,
     onBack: () -> Unit,
+    onAddCard: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(PocketTheme.colors.bg)
             .padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Voltar",
-                    tint = PocketTheme.colors.text,
-                )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Voltar",
+                        tint = PocketTheme.colors.text,
+                    )
+                }
+                Column {
+                    Text(
+                        text = "Cartões",
+                        style = PocketTheme.typography.stepQuestion,
+                        color = PocketTheme.colors.text,
+                    )
+                    Text(
+                        text = "Faturas abertas · $cardCount cartões",
+                        style = PocketTheme.typography.bodySm,
+                        color = PocketTheme.colors.text3,
+                    )
+                }
             }
-            Column {
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = "Cartões",
-                    style = PocketTheme.typography.stepQuestion,
-                    color = PocketTheme.colors.text,
+                    text = "A PAGAR",
+                    style = PocketTheme.typography.sectionHeader,
+                    color = PocketTheme.colors.text3,
                 )
                 Text(
-                    text = "Faturas abertas · $cardCount cartões",
-                    style = PocketTheme.typography.bodySm,
-                    color = PocketTheme.colors.text3,
+                    text = grandTotal,
+                    style = PocketTheme.typography.monoSm.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                    color = PocketTheme.colors.text,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
         }
-        Column(horizontalAlignment = Alignment.End) {
+
+        Spacer(Modifier.height(4.dp))
+
+        Box(
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .clip(PocketTheme.shapes.pill)
+                .background(PocketTheme.colors.surface2)
+                .clickable(onClick = onAddCard)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
             Text(
-                text = "A PAGAR",
-                style = PocketTheme.typography.sectionHeader,
-                color = PocketTheme.colors.text3,
-            )
-            Text(
-                text = grandTotal,
-                style = PocketTheme.typography.monoSm.copy(
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-                color = PocketTheme.colors.text,
-                maxLines = 1,
-                softWrap = false,
+                text = "+ Adicionar cartão",
+                style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                color = PocketTheme.colors.text2,
             )
         }
     }
@@ -664,6 +700,92 @@ private fun ClassifyPurchaseSheet(
         ) {
             Text(
                 text = ctaLabel,
+                style = PocketTheme.typography.button,
+                color = if (canSave) PocketTheme.colors.accentInk else PocketTheme.colors.text3,
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun AddCardSheet(
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (name: String, brand: String?, closingDay: Int?, color: String?) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var brand by remember { mutableStateOf("") }
+    var closingDay by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf("") }
+
+    val parsedDay = closingDay.toIntOrNull()
+    val dayValid = parsedDay != null && parsedDay in 1..31
+    val canSave = !isSaving && name.isNotBlank() && dayValid
+
+    PocketBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            text = "Adicionar cartão",
+            style = PocketTheme.typography.stepQuestion,
+            color = PocketTheme.colors.text,
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        FormLabel("Nome")
+        Spacer(Modifier.height(6.dp))
+        FormTextField(value = name, onValueChange = { name = it }, placeholder = "Ex.: Nubank")
+
+        Spacer(Modifier.height(14.dp))
+
+        FormLabel("Dia de fechamento")
+        Spacer(Modifier.height(6.dp))
+        FormTextField(
+            value = closingDay,
+            onValueChange = { closingDay = it.filter { ch -> ch.isDigit() }.take(2) },
+            placeholder = "1 a 31",
+            keyboardType = KeyboardType.Number,
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        FormLabel("Bandeira (opcional)")
+        Spacer(Modifier.height(6.dp))
+        FormTextField(value = brand, onValueChange = { brand = it }, placeholder = "Ex.: Mastercard")
+
+        Spacer(Modifier.height(14.dp))
+
+        FormLabel("Cor (opcional)")
+        Spacer(Modifier.height(6.dp))
+        FormTextField(value = color, onValueChange = { color = it }, placeholder = "#8B00FF")
+
+        Spacer(Modifier.height(20.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(PocketTheme.shapes.card)
+                .background(if (canSave) PocketTheme.colors.accent else PocketTheme.colors.surface2)
+                .let {
+                    if (canSave) {
+                        it.clickable {
+                            onSave(
+                                name.trim(),
+                                brand.trim().takeIf { b -> b.isNotBlank() },
+                                parsedDay,
+                                color.trim().takeIf { c -> c.isNotBlank() },
+                            )
+                        }
+                    } else {
+                        it
+                    }
+                }
+                .padding(vertical = 16.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (isSaving) "Salvando…" else "Adicionar cartão",
                 style = PocketTheme.typography.button,
                 color = if (canSave) PocketTheme.colors.accentInk else PocketTheme.colors.text3,
             )

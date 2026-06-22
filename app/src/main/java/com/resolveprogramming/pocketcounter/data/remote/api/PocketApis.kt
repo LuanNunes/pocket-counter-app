@@ -21,6 +21,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.RenameRecurringSerie
 import com.resolveprogramming.pocketcounter.data.remote.dto.SourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionReorderRequest
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -76,6 +77,30 @@ interface CreditCardApi {
 
     @DELETE("api/v1/credit-cards/{id}")
     suspend fun delete(@Path("id") id: String)
+}
+
+interface InvoiceItemApi {
+    @GET("api/v1/transactions/{invoiceId}/items")
+    suspend fun getItems(@Path("invoiceId") invoiceId: String): List<TransactionItemDto>
+
+    @POST("api/v1/transactions/{invoiceId}/items")
+    suspend fun addItem(
+        @Path("invoiceId") invoiceId: String,
+        @Body dto: TransactionItemDto,
+    ): String
+
+    @PUT("api/v1/transactions/{invoiceId}/items/{itemId}")
+    suspend fun updateItem(
+        @Path("invoiceId") invoiceId: String,
+        @Path("itemId") itemId: String,
+        @Body dto: TransactionItemDto,
+    ): String
+
+    @DELETE("api/v1/transactions/{invoiceId}/items/{itemId}")
+    suspend fun deleteItem(
+        @Path("invoiceId") invoiceId: String,
+        @Path("itemId") itemId: String,
+    )
 }
 
 interface ClassificationRuleApi {

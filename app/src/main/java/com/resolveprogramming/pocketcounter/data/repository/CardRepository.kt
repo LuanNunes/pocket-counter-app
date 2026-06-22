@@ -9,17 +9,26 @@ interface CardRepository {
     suspend fun getOpenInvoices(): Result<List<OpenInvoice>>
 
     /**
-     * Persists [tags] onto the transaction (full-DTO PUT) and, when [learnRule] is set,
-     * creates a ClassificationRule for future auto-classification. The tag PUT is the
+     * Persists [tags] onto the invoice line item (PUT items/{itemId}) and, when [learnRule]
+     * is set, creates a ClassificationRule for future auto-classification. The item PUT is the
      * success criterion: a failed PUT fails the call; a succeeding PUT with a failed rule
      * POST still succeeds, with [ClassifyOutcome.ruleCreated] flagging the partial failure.
      */
     suspend fun classifyPurchase(
-        transactionId: String,
+        invoiceId: String,
+        itemId: String,
         tags: List<Tag>,
         learnRule: Boolean,
         card: CreditCard,
     ): Result<ClassifyOutcome>
+
+    /** Creates a credit card and returns the mapped domain model. */
+    suspend fun addCard(
+        name: String,
+        brand: String?,
+        closingDay: Int?,
+        color: String?,
+    ): Result<CreditCard>
 }
 
 /**

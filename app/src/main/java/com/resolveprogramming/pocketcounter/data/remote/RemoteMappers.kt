@@ -165,13 +165,16 @@ internal object RemoteMappers {
 
     fun ClassificationRuleDto.toDomain(): ClassificationRule = ClassificationRule(
         id = id,
-        pattern = pattern,
-        idPaymentSource = idPaymentSource,
-        idSource = idSource,
+        patterns = patterns,
+        matchType = matchType,
+        active = active,
+        appliedCount = appliedCount,
         transactionType = parseType(transactionType),
+        paymentMethod = parsePaymentMethod(paymentMethod),
+        cardId = cardId,
         // Names are resolved against the loaded tag list in the UI layer.
-        // Rule tags are always expense (the rule DTO keeps its own idContext field).
-        tags = tagIds.map { Tag(id = it.idTag, name = "", kind = TransactionType.EXPENSE, idContext = it.idContext) },
+        // Rule tags are always expense (the rule DTO keeps its own idCategory field).
+        tags = tagIds.map { Tag(id = it.idTag, name = "", kind = TransactionType.EXPENSE, idContext = it.idCategory) },
     )
 
     fun CategoryDto.toDomain(): TagContext = TagContext(

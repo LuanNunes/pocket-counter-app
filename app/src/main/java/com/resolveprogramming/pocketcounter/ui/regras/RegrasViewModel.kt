@@ -2,13 +2,11 @@ package com.resolveprogramming.pocketcounter.ui.regras
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.Source
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,8 +21,7 @@ data class RegraDeleteTarget(val id: String, val patternLabel: String)
 
 data class RegrasUiState(
     val rules: List<ClassificationRule> = emptyList(),
-    val sourcesById: Map<String, Source> = emptyMap(),
-    val paymentSourcesById: Map<String, PaymentSource> = emptyMap(),
+    val cardsById: Map<String, CreditCard> = emptyMap(),
     val tagsById: Map<String, Tag> = emptyMap(),
     val contextsById: Map<String, TagContext> = emptyMap(),
     val confirmDelete: RegraDeleteTarget? = null,
@@ -35,8 +32,7 @@ data class RegrasUiState(
 @HiltViewModel
 class RegrasViewModel @Inject constructor(
     private val ruleRepository: ClassificationRuleRepository,
-    private val sourceRepository: SourceRepository,
-    private val paymentSourceRepository: PaymentSourceRepository,
+    private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
 ) : ViewModel() {
 
@@ -48,15 +44,13 @@ class RegrasViewModel @Inject constructor(
     private fun load() {
         viewModelScope.launch {
             val rules = ruleRepository.getAll().getOrDefault(emptyList())
-            val sources = sourceRepository.getAll().getOrDefault(emptyList())
-            val payments = paymentSourceRepository.getAll().getOrDefault(emptyList())
+            val cards = cardRepository.getCards().getOrDefault(emptyList())
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
             _state.update {
                 it.copy(
                     rules = rules,
-                    sourcesById = sources.associateBy { s -> s.id },
-                    paymentSourcesById = payments.associateBy { p -> p.id },
+                    cardsById = cards.associateBy { c -> c.id },
                     tagsById = tags.associateBy { t -> t.id },
                     contextsById = contexts.associateBy { c -> c.id },
                     isLoading = false,
@@ -67,8 +61,9 @@ class RegrasViewModel @Inject constructor(
 
     fun requestDelete(id: String) {
         val rule = _state.value.rules.firstOrNull { it.id == id } ?: return
+        val label = rule.patterns.firstOrNull().orEmpty().take(40)
         _state.update {
-            it.copy(confirmDelete = RegraDeleteTarget(id, rule.pattern.take(40)))
+            it.copy(confirmDelete = RegraDeleteTarget(id, label))
         }
     }
 

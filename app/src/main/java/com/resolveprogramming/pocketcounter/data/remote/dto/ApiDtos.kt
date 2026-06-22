@@ -97,17 +97,35 @@ data class CategoryDto(
 @Serializable
 data class ClassificationRuleTagDto(
     val idTag: String,
-    val idContext: String,
+    val idCategory: String,
 )
 
 @Serializable
 data class ClassificationRuleDto(
     val id: String? = null,
-    val pattern: String,
+    val patterns: List<String> = emptyList(),
+    val matchType: String? = null,              // "CONTAINS" | "EXACT" | "REGEX"
+    val active: Boolean? = null,
+    val appliedCount: Int = 0,                  // read-only
+    val transactionType: String? = null,        // "INCOME" | "EXPENSE"
+    val paymentMethod: String? = null,          // PaymentMethodEnum name (UPPERCASE)
+    val cardId: String? = null,                 // UUID of the credit card
+    val tagIds: List<ClassificationRuleTagDto> = emptyList(),
+    // Legacy fields — kept null on write, ignored on read.
     val idPaymentSource: String? = null,
     val idSource: String? = null,
-    val transactionType: String? = null,        // "INCOME" | "EXPENSE"
-    val tagIds: List<ClassificationRuleTagDto> = emptyList(),
+)
+
+@Serializable
+data class TransactionItemDto(
+    val id: String? = null,
+    val idUser: String? = null,
+    val idTransaction: String,
+    val name: String,
+    @Serializable(with = RemoteBigDecimalSerializer::class)
+    val amount: BigDecimal,
+    val tagIds: List<String>? = null,
+    val tags: List<TagDto>? = null,
 )
 
 @Serializable
