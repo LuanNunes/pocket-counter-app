@@ -16,6 +16,10 @@ data class OpenInvoice(
 
 data class InvoiceItem(
     val transactionId: String,
+    /** id of the parent invoice TransactionDto */
+    val invoiceId: String,
+    /** id of the TransactionItemDto; null on the fallback path (plain credit expense) */
+    val itemId: String?,
     val name: String,
     val date: LocalDate,
     val amount: BigDecimal,

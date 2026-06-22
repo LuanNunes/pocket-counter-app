@@ -30,11 +30,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
-import com.resolveprogramming.pocketcounter.domain.model.PaymentSource
-import com.resolveprogramming.pocketcounter.domain.model.Source
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.ui.wizard.label
 import com.resolveprogramming.pocketcounter.ui.components.ManageTopBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadge
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
@@ -78,8 +78,7 @@ fun RegrasScreen(
                         items(state.rules.size, key = { state.rules[it].id ?: "idx_$it" }) { i ->
                             RegraCard(
                                 rule = state.rules[i],
-                                sourcesById = state.sourcesById,
-                                paymentsById = state.paymentSourcesById,
+                                cardsById = state.cardsById,
                                 tagsById = state.tagsById,
                                 contextsById = state.contextsById,
                                 onDelete = { id -> viewModel.requestDelete(id) },
@@ -138,8 +137,7 @@ private fun EmptyState() {
 @Composable
 private fun RegraCard(
     rule: ClassificationRule,
-    sourcesById: Map<String, Source>,
-    paymentsById: Map<String, PaymentSource>,
+    cardsById: Map<String, CreditCard>,
     tagsById: Map<String, Tag>,
     contextsById: Map<String, TagContext>,
     onDelete: (String) -> Unit,
@@ -148,7 +146,7 @@ private fun RegraCard(
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = rule.pattern,
+                    text = rule.patterns.joinToString(", ").ifBlank { "sem padrão" },
                     style = PocketTheme.typography.monoSm,
                     color = PocketTheme.colors.text,
                     modifier = Modifier.weight(1f),
@@ -169,9 +167,10 @@ private fun RegraCard(
 
             Spacer(Modifier.height(6.dp))
             val outcome = listOfNotNull(
-                rule.idPaymentSource?.let { paymentsById[it]?.name },
-                rule.idSource?.let { sourcesById[it]?.name },
+                rule.paymentMethod?.label(),
+                rule.cardId?.let { cardsById[it]?.name },
                 rule.tags.size.takeIf { it > 0 }?.let { "+ $it tags" },
+                rule.appliedCount.takeIf { it > 0 }?.let { "aplicada ${it}×" },
             ).joinToString(" · ")
             Text(
                 text = if (outcome.isBlank()) "sem destino" else "→ $outcome",
