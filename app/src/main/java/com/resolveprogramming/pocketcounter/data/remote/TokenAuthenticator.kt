@@ -19,6 +19,15 @@ class TokenAuthenticator @Inject constructor(
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
+        // A 401 from an /auth/ endpoint (e.g. the token-refresh call itself, with a dead refresh
+        // token) must NOT trigger another refresh — this authenticator is attached to the same
+        // client the refresh runs on, so refreshing here recurses into an infinite refresh loop.
+        // Give up and clear the session so the app falls back to the login screen.
+        if (response.request.url.encodedPath.contains("/auth/")) {
+            runBlocking { tokenStore.clear() }
+            return null
+        }
+
         if (response.responseCount >= 2) {
             runBlocking { tokenStore.clear() }
             return null
