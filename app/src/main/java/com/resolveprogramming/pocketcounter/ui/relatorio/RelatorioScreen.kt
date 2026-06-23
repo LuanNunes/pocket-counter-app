@@ -26,21 +26,28 @@ import com.resolveprogramming.pocketcounter.domain.model.ReportDetailMode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.ReportData
 import com.resolveprogramming.pocketcounter.domain.model.ReportPeriod
 import com.resolveprogramming.pocketcounter.domain.model.ReportSeries
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.model.reportToCsv
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.ManageTopBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
 import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
+import com.resolveprogramming.pocketcounter.ui.components.SegmentTone
+import com.resolveprogramming.pocketcounter.ui.components.SquareIconButton
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+import android.content.Intent
+import java.io.File
 import java.math.BigDecimal
 import kotlin.math.abs
 
@@ -51,9 +58,24 @@ fun RelatorioScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val isExpense = state.kind == TransactionType.EXPENSE
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize().background(PocketTheme.colors.bg)) {
-        ManageTopBar(title = "Relatório", onBack = onBack)
+        ManageTopBar(
+            title = "Relatório",
+            onBack = onBack,
+            actions = {
+                val report = state.report
+                SquareIconButton(
+                    glyph = "↑",
+                    enabled = report != null,
+                    contentDescription = "Exportar",
+                    onClick = {
+                        if (report != null) exportReportCsv(context, report, state.kind)
+                    },
+                )
+            },
+        )
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -78,7 +100,10 @@ fun RelatorioScreen(
             }
             item {
                 PocketSegmented(
-                    options = listOf(SegmentOption("Despesas"), SegmentOption("Receitas")),
+                    options = listOf(
+                        SegmentOption("Despesas", SegmentTone.EXPENSE),
+                        SegmentOption("Receitas", SegmentTone.INCOME),
+                    ),
                     selectedIndex = if (isExpense) 0 else 1,
                     onSelect = { viewModel.setKind(if (it == 0) TransactionType.EXPENSE else TransactionType.INCOME) },
                 )
@@ -186,10 +211,12 @@ private fun ChartCard(
                 color = PocketTheme.colors.text,
             )
             Spacer(Modifier.height(10.dp))
+            val chipTypes = listOf(ReportChartType.BARS, ReportChartType.LINES, ReportChartType.PIE)
+            val activeChipType = if (chartType == ReportChartType.AREA) ReportChartType.BARS else chartType
             PocketSegmented(
-                options = listOf(SegmentOption("Barras"), SegmentOption("Área"), SegmentOption("Linhas"), SegmentOption("Pizza")),
-                selectedIndex = chartType.ordinal,
-                onSelect = { onChartType(ReportChartType.entries[it]) },
+                options = listOf(SegmentOption("Barras"), SegmentOption("Linhas"), SegmentOption("Pizza")),
+                selectedIndex = chipTypes.indexOf(activeChipType).coerceAtLeast(0),
+                onSelect = { onChartType(chipTypes[it]) },
             )
             Spacer(Modifier.height(14.dp))
             when (chartType) {
@@ -390,3 +417,26 @@ private fun num(value: BigDecimal): String = numberFmt.format(value)
 
 private fun pct(part: BigDecimal, whole: BigDecimal): String =
     if (whole.signum() > 0) "${(part.toFloat() / whole.toFloat() * 100).toInt()}%" else "—"
+
+private fun exportReportCsv(
+    context: android.content.Context,
+    report: ReportData,
+    kind: TransactionType,
+) {
+    val csv = reportToCsv(report, kind)
+    val slug = report.rangeLabel
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), "-")
+        .trim('-')
+        .ifEmpty { "periodo" }
+    val file = File(context.cacheDir, "relatorio-$slug.csv")
+    file.writeText(csv)
+
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/csv"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(send, "Exportar"))
+}
