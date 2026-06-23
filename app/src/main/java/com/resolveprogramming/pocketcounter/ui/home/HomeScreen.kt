@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +62,10 @@ import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadge
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
+import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
 import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
+import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
+import com.resolveprogramming.pocketcounter.ui.components.SegmentTone
 import com.resolveprogramming.pocketcounter.ui.components.TabId
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -77,6 +81,7 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var historyKind by rememberSaveable { mutableStateOf(TransactionType.EXPENSE) }
 
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -150,6 +155,10 @@ fun HomeScreen(
             }
 
             if (state.history.isNotEmpty()) {
+                val expenses = state.history.filter { it.type == TransactionType.EXPENSE }
+                val incomes = state.history.filter { it.type == TransactionType.INCOME }
+                val shown = if (historyKind == TransactionType.EXPENSE) expenses else incomes
+
                 item {
                     Text(
                         text = "HISTÓRICO",
@@ -159,8 +168,36 @@ fun HomeScreen(
                     )
                 }
 
-                items(state.history, key = { it.id }) { item ->
-                    HistoryRow(item = item, state = state)
+                item {
+                    PocketSegmented(
+                        options = listOf(
+                            SegmentOption("Despesas · ${expenses.size}", SegmentTone.EXPENSE),
+                            SegmentOption("Receitas · ${incomes.size}", SegmentTone.INCOME),
+                        ),
+                        selectedIndex = if (historyKind == TransactionType.EXPENSE) 0 else 1,
+                        onSelect = {
+                            historyKind = if (it == 0) TransactionType.EXPENSE else TransactionType.INCOME
+                        },
+                    )
+                }
+
+                if (shown.isEmpty()) {
+                    item {
+                        Text(
+                            text = if (historyKind == TransactionType.EXPENSE) {
+                                "Nenhuma despesa recente"
+                            } else {
+                                "Nenhuma receita recente"
+                            },
+                            style = PocketTheme.typography.bodySm,
+                            color = PocketTheme.colors.text3,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                        )
+                    }
+                } else {
+                    items(shown, key = { it.id }) { item ->
+                        HistoryRow(item = item, state = state)
+                    }
                 }
             }
 
