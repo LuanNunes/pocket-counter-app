@@ -17,7 +17,6 @@ import java.util.UUID
 import javax.inject.Inject
 
 const val ASSISTANT_MAX_CHARS = 500
-const val ASSISTANT_DAILY_LIMIT = 5
 
 data class AssistantUiState(
     val items: List<AssistantMessage> = emptyList(),

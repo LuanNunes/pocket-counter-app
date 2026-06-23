@@ -1,7 +1,5 @@
 package com.resolveprogramming.pocketcounter.domain.model
 
-enum class AssistantRole { USER, ASSISTANT }
-
 data class AssistantAnswer(
     val markdown: String,
     val elapsedMs: Long,
