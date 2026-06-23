@@ -41,9 +41,7 @@ fun MaisScreen(
     data class Entry(val label: String, val sub: String, val glyph: String, val onClick: () -> Unit)
 
     val entries = listOf(
-        Entry("Fontes", "Templates de receita e despesa", "◆") { onOpenRoute("fontes") },
         Entry("Contas Fixas", "Lançamentos que se repetem", "↻") { onOpenRoute("contas-fixas") },
-        Entry("Meios de pagamento", "Cartões e contas", "▢") { onOpenRoute("meios") },
         Entry("Relatório", "Tendências por mês, trimestre, ano", "▦") { onOpenRoute("relatorio") },
         Entry("Regras aprendidas", "Classificação automática", "✦") { onOpenRoute("regras") },
         Entry("Contextos & Tags", "Organize suas análises", "#") { onOpenRoute("contextos") },

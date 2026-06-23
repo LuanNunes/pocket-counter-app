@@ -15,10 +15,8 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.CreateRecurringSerie
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.PaymentSourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.RecurringSeriesDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.RenameRecurringSeriesRequest
-import com.resolveprogramming.pocketcounter.data.remote.dto.SourceDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
@@ -114,34 +112,6 @@ interface ClassificationRuleApi {
     suspend fun update(@Path("id") id: String, @Body dto: ClassificationRuleDto): String
 
     @DELETE("api/v1/classification-rules/{id}")
-    suspend fun delete(@Path("id") id: String)
-}
-
-interface SourceApi {
-    @GET("api/v1/sources")
-    suspend fun getSources(): List<SourceDto>
-
-    @POST("api/v1/sources")
-    suspend fun addSource(@Body dto: SourceDto): String
-
-    @PUT("api/v1/sources/{id}")
-    suspend fun update(@Path("id") id: String, @Body dto: SourceDto): String
-
-    @DELETE("api/v1/sources/{id}")
-    suspend fun delete(@Path("id") id: String)
-}
-
-interface PaymentSourceApi {
-    @GET("api/v1/payment-sources")
-    suspend fun getPaymentSources(): List<PaymentSourceDto>
-
-    @POST("api/v1/payment-sources")
-    suspend fun create(@Body dto: PaymentSourceDto): String
-
-    @PUT("api/v1/payment-sources/{id}")
-    suspend fun update(@Path("id") id: String, @Body dto: PaymentSourceDto): String
-
-    @DELETE("api/v1/payment-sources/{id}")
     suspend fun delete(@Path("id") id: String)
 }
 

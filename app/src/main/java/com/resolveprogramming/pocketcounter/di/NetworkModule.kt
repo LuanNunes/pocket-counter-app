@@ -9,9 +9,7 @@ import com.resolveprogramming.pocketcounter.data.remote.api.CategoryApi
 import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
 import com.resolveprogramming.pocketcounter.data.remote.api.NotificationApi
-import com.resolveprogramming.pocketcounter.data.remote.api.PaymentSourceApi
 import com.resolveprogramming.pocketcounter.data.remote.api.SeriesApi
-import com.resolveprogramming.pocketcounter.data.remote.api.SourceApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TagApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
 import dagger.Module
@@ -74,16 +72,6 @@ object NetworkModule {
     @Singleton
     fun provideTransactionApi(retrofit: Retrofit): TransactionApi =
         retrofit.create(TransactionApi::class.java)
-
-    @Provides
-    @Singleton
-    fun provideSourceApi(retrofit: Retrofit): SourceApi =
-        retrofit.create(SourceApi::class.java)
-
-    @Provides
-    @Singleton
-    fun providePaymentSourceApi(retrofit: Retrofit): PaymentSourceApi =
-        retrofit.create(PaymentSourceApi::class.java)
 
     @Provides
     @Singleton

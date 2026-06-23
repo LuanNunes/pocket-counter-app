@@ -16,44 +16,27 @@ import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
-import com.resolveprogramming.pocketcounter.ui.components.FormSwitchRow
-import com.resolveprogramming.pocketcounter.ui.components.PocketBadge
-import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepTags
 
-/**
- * Edits a transaction's tags. By default the change updates the SOURCE's defaults (so every
- * still-inheriting transaction reflects it); the switch lets the user scope it to this one.
- */
+/** Edits a single transaction's tags. */
 @Composable
 fun TagEditSheet(
     type: TransactionType,
     initialTagIds: List<String>,
-    inheriting: Boolean,
-    sourceName: String,
     tags: List<Tag>,
     contexts: List<TagContext>,
-    onSave: (selectedTagIds: List<String>, updateSource: Boolean) -> Unit,
+    onSave: (selectedTagIds: List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var selected by remember { mutableStateOf(initialTagIds) }
-    var updateSource by remember { mutableStateOf(true) }
     var search by remember { mutableStateOf("") }
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("Tags", style = PocketTheme.typography.stepQuestion, color = PocketTheme.colors.text)
-            if (inheriting) {
-                PocketBadge(text = "herda da fonte", variant = PocketBadgeVariant.SOFT)
-            }
-        }
+        Text("Tags", style = PocketTheme.typography.stepQuestion, color = PocketTheme.colors.text)
         Spacer(Modifier.height(12.dp))
 
         StepTags(
@@ -71,22 +54,6 @@ fun TagEditSheet(
             showLearnToggle = false,
         )
 
-        Spacer(Modifier.height(8.dp))
-        FormSwitchRow(
-            label = "Atualizar a fonte “$sourceName”",
-            checked = updateSource,
-            onCheckedChange = { updateSource = it },
-        )
-        Text(
-            text = if (updateSource) {
-                "Reflete nos lançamentos que herdam desta fonte."
-            } else {
-                "Aplica só a esta transação."
-            },
-            style = PocketTheme.typography.bodyXs,
-            color = PocketTheme.colors.text3,
-        )
-
         Spacer(Modifier.height(16.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PocketButton(
@@ -98,7 +65,7 @@ fun TagEditSheet(
             )
             PocketButton(
                 text = "Salvar",
-                onClick = { onSave(selected, updateSource) },
+                onClick = { onSave(selected) },
                 fillMaxWidth = true,
                 modifier = Modifier.weight(1.5f),
             )

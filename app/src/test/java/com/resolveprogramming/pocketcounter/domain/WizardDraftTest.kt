@@ -282,8 +282,6 @@ class WizardDraftTest {
                 installmentValue = BigDecimal("51.33"),
             ),
             suggestions = ClassificationSuggestion(
-                idPaymentSource = "itau",
-                idSource = "src-pao",
                 tagIds = listOf("tag-1"),
                 paymentMethod = PaymentMethod.CREDIT,
                 cardId = "card-abc",
@@ -319,7 +317,7 @@ class WizardDraftTest {
                 type = null, amount = null, date = null,
                 merchantRaw = null, paymentHint = null,
             ),
-            suggestions = ClassificationSuggestion(null, null, emptyList()),
+            suggestions = ClassificationSuggestion(emptyList()),
             tokens = emptyList(),
         )
 
@@ -346,8 +344,6 @@ class WizardDraftTest {
                 paymentHint = null,
             ),
             suggestions = ClassificationSuggestion(
-                idPaymentSource = null,
-                idSource = null,
                 tagIds = emptyList(),
                 paymentMethod = PaymentMethod.PIX,
                 cardId = null,
@@ -382,8 +378,6 @@ class WizardDraftTest {
                 paymentHint = null,
             ),
             suggestions = ClassificationSuggestion(
-                idPaymentSource = null,
-                idSource = null,
                 tagIds = emptyList(),
                 paymentMethod = PaymentMethod.CREDIT,
                 cardId = "card-abc",

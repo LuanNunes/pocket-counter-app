@@ -4,12 +4,9 @@ import java.math.BigDecimal
 
 /**
  * Client-side credit-card display model. Backend mapping (see /pocket-counter):
- * - [id]/[name] ← PaymentSource (a credit card IS a PaymentSource with type CREDIT_CARD)
- * - [billDay]   ← PaymentSourceDto.refDayBill (the only billing field that exists today)
- * - [brand], [last4], [limit], [gradientStart]/[gradientEnd] have NO backend column yet —
- *   they are app-only metadata. Wiring the real Cartões screen needs either new
- *   PaymentSource fields (brand/last4/creditLimit) or a separate card-metadata store;
- *   the gradient can stay client-derived from [brand].
+ * - [id]/[name]/[brand] ← CreditCardDto
+ * - [last4], [limit], [billDay], [gradientStart]/[gradientEnd] have NO backend column yet —
+ *   they are app-only metadata. The gradient stays client-derived from [brand].
  */
 data class CreditCard(
     val id: String,

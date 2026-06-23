@@ -4,7 +4,7 @@ import java.math.BigDecimal
 
 enum class GroupMode { LISTA, CONTEXTO, TAG }
 
-/** A ledger section: despesas bucket by Contexto, receitas by Fonte (CONTEXTO), or by first tag (TAG). */
+/** A ledger section: despesas bucket by Contexto, receitas by categoria de renda (CONTEXTO), or by first tag (TAG). */
 data class LedgerGroup(
     val id: String,
     val title: String,
@@ -23,13 +23,12 @@ private const val NO_CTX = "__none"
 fun groupLedger(
     items: List<HistoryItem>,
     mode: GroupMode,
-    sources: Map<String, Source>,
     tags: Map<String, Tag>,
     contexts: List<TagContext>,
     incomePalette: List<Long>,
 ): List<LedgerGroup> {
     fun firstTagId(item: HistoryItem): String? =
-        effectiveTagIds(item.tagIds, sources[item.idSource]?.tags ?: emptyList()).firstOrNull()
+        effectiveTagIds(item.tagIds, emptyList()).firstOrNull()
 
     fun rowContextId(item: HistoryItem): String {
         val tagId = firstTagId(item) ?: return NO_CTX
@@ -56,10 +55,15 @@ fun groupLedger(
                 LedgerGroup("ctx_$cid", ctx?.name ?: "Sem contexto", ctx?.color, list, subtotal(list), TransactionType.EXPENSE)
             }
 
-            // Incomes by source, ordered by subtotal desc, colored from the income palette.
-            val incomeGroups = incomes.groupBy { it.idSource }
-                .map { (sid, list) ->
-                    LedgerGroup("src_$sid", sources[sid]?.name ?: "—", null, list, subtotal(list), TransactionType.INCOME)
+            // Incomes by categoria de renda (the effective kind=INCOME tag), ordered by subtotal
+            // desc, colored from the income palette. "Sem categoria" when no income tag resolves.
+            fun incomeCategoryId(item: HistoryItem): String =
+                effectiveTagIds(item.tagIds, emptyList())
+                    .firstOrNull { tags[it]?.kind == TransactionType.INCOME }
+                    ?: NO_CTX
+            val incomeGroups = incomes.groupBy { incomeCategoryId(it) }
+                .map { (tid, list) ->
+                    LedgerGroup("inc_$tid", tags[tid]?.name ?: "Sem categoria", null, list, subtotal(list), TransactionType.INCOME)
                 }
                 .sortedByDescending { it.subtotal }
                 .mapIndexed { i, g ->

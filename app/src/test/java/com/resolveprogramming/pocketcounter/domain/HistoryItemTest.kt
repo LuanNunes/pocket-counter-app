@@ -20,8 +20,6 @@ class HistoryItemTest {
     ) = HistoryItem(
         id = id,
         date = LocalDate.of(2026, 6, 4),
-        idSource = "src-1",
-        idPaymentSource = "pay-1",
         amount = BigDecimal("100.00"),
         type = TransactionType.EXPENSE,
         tagIds = null,

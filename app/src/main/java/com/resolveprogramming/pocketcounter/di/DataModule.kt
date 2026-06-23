@@ -5,19 +5,15 @@ import com.resolveprogramming.pocketcounter.data.repository.AssistantRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
-import com.resolveprogramming.pocketcounter.data.repository.PaymentSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAssistantRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitNotificationRepository
-import com.resolveprogramming.pocketcounter.data.repository.RetrofitPaymentSourceRepository
-import com.resolveprogramming.pocketcounter.data.repository.RetrofitSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTagRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitSeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTransactionRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
-import com.resolveprogramming.pocketcounter.data.repository.SourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import dagger.Binds
@@ -37,16 +33,6 @@ abstract class DataModule {
     abstract fun bindNotificationRepository(
         impl: RetrofitNotificationRepository,
     ): NotificationRepository
-
-    @Binds
-    abstract fun bindPaymentSourceRepository(
-        impl: RetrofitPaymentSourceRepository,
-    ): PaymentSourceRepository
-
-    @Binds
-    abstract fun bindSourceRepository(
-        impl: RetrofitSourceRepository,
-    ): SourceRepository
 
     @Binds
     abstract fun bindTagRepository(

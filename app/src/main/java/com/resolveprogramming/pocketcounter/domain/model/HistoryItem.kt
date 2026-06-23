@@ -6,8 +6,6 @@ import java.time.LocalDate
 data class HistoryItem(
     val id: String,
     val date: LocalDate,
-    val idSource: String,
-    val idPaymentSource: String,
     val amount: BigDecimal,
     val type: TransactionType,
     /** The transaction's OWN tags: null = inherit the source's defaults, non-null = override. */

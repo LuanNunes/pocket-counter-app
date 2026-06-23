@@ -52,7 +52,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.ExperimentalFoundationApi
 import com.resolveprogramming.pocketcounter.domain.model.DayGroup
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
+import androidx.compose.ui.text.style.TextOverflow
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.ui.wizard.label
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
@@ -141,8 +146,7 @@ fun TransacoesScreen(
 
                     state.groupMode == GroupMode.LISTA -> LedgerList(
                         groups = state.dayGroups,
-                        sourceName = { state.sources[it]?.name ?: "—" },
-                        paymentName = { state.paymentSources[it]?.name.orEmpty() },
+                        meta = { txMeta(it, state.cards, state.tags) },
                         onRowClick = viewModel::openDetail,
                         onTogglePin = viewModel::toggleFixo,
                     )
@@ -151,8 +155,7 @@ fun TransacoesScreen(
                         groups = state.ledgerGroups,
                         collapsedIds = state.collapsedGroupIds,
                         canReorder = state.query.isBlank(),
-                        sourceName = { state.sources[it]?.name ?: "—" },
-                        paymentName = { state.paymentSources[it]?.name.orEmpty() },
+                        meta = { txMeta(it, state.cards, state.tags) },
                         onToggleCollapse = viewModel::toggleGroupCollapsed,
                         onRowClick = viewModel::openDetail,
                         onMoveTo = viewModel::moveItemTo,
@@ -168,9 +171,7 @@ fun TransacoesScreen(
     state.detailTarget?.let { item ->
         TransacaoDetailSheet(
             item = item,
-            sourceName = state.sources[item.idSource]?.name ?: "—",
-            paymentName = state.paymentSources[item.idPaymentSource]?.name.orEmpty(),
-            tagNames = effectiveTagIds(item.tagIds, state.sources[item.idSource]?.tags ?: emptyList())
+            tagNames = effectiveTagIds(item.tagIds, emptyList())
                 .mapNotNull { state.tags[it]?.name },
             onDismiss = viewModel::closeDetail,
             onMarkPaid = { viewModel.markPaid(item.id) },
@@ -182,15 +183,12 @@ fun TransacoesScreen(
     }
 
     state.tagEditTarget?.let { item ->
-        val source = state.sources[item.idSource]
         TagEditSheet(
             type = item.type,
-            initialTagIds = effectiveTagIds(item.tagIds, source?.tags ?: emptyList()),
-            inheriting = item.tagIds == null,
-            sourceName = source?.name ?: "fonte",
+            initialTagIds = effectiveTagIds(item.tagIds, emptyList()),
             tags = state.tags.values.toList(),
             contexts = state.contexts,
-            onSave = { selected, updateSource -> viewModel.saveTags(item, selected, updateSource) },
+            onSave = { selected -> viewModel.saveTags(item, selected) },
             onDismiss = viewModel::closeTagEdit,
         )
     }
@@ -384,7 +382,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
                 ) {
                     if (query.isEmpty()) {
                         Text(
-                            "Buscar por fonte, meio, tag ou valor…",
+                            "Buscar por descrição, tag ou valor…",
                             style = PocketTheme.typography.body,
                             color = PocketTheme.colors.text3,
                         )
@@ -399,8 +397,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 @Composable
 private fun LedgerList(
     groups: List<DayGroup>,
-    sourceName: (String) -> String,
-    paymentName: (String) -> String,
+    meta: (HistoryItem) -> String,
     onRowClick: (HistoryItem) -> Unit,
     onTogglePin: (HistoryItem) -> Unit,
 ) {
@@ -421,8 +418,7 @@ private fun LedgerList(
             items(group.items, key = { it.id }) { item ->
                 TxRow(
                     item = item,
-                    sourceName = sourceName(item.idSource),
-                    paymentName = paymentName(item.idPaymentSource),
+                    meta = meta(item),
                     onClick = { onRowClick(item) },
                     pinned = item.isFixo,
                     onTogglePin = { onTogglePin(item) },
@@ -433,11 +429,27 @@ private fun LedgerList(
     }
 }
 
+/** Secondary row line: payment method (card name for credit) + a tag preview — consistent with Home. */
+private fun txMeta(item: HistoryItem, cards: List<CreditCard>, tags: Map<String, Tag>): String {
+    val payment = if (item.paymentMethod == PaymentMethod.CREDIT) {
+        val cardName = item.cardId?.let { id -> cards.firstOrNull { it.id == id }?.name }
+        if (cardName != null) "Cartão $cardName" else "Crédito"
+    } else {
+        item.paymentMethod?.label().orEmpty()
+    }
+    val tagNames = item.tagIds.orEmpty().mapNotNull { tags[it]?.name }
+    val tagPreview = when {
+        tagNames.isEmpty() -> ""
+        tagNames.size == 1 -> tagNames.first()
+        else -> "${tagNames.first()} +${tagNames.size - 1}"
+    }
+    return listOf(payment, tagPreview).filter { it.isNotBlank() }.joinToString(" · ")
+}
+
 @Composable
 private fun TxRow(
     item: HistoryItem,
-    sourceName: String,
-    paymentName: String,
+    meta: String,
     onClick: () -> Unit,
     pinned: Boolean,
     onTogglePin: () -> Unit,
@@ -457,15 +469,21 @@ private fun TxRow(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = sourceName,
+                        text = item.displayTitle(),
                         style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
                         color = PocketTheme.colors.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        text = paymentName,
-                        style = PocketTheme.typography.bodyXs,
-                        color = PocketTheme.colors.text3,
-                    )
+                    if (meta.isNotBlank()) {
+                        Text(
+                            text = meta,
+                            style = PocketTheme.typography.bodyXs,
+                            color = PocketTheme.colors.text3,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (item.statusPayment == PaymentStatus.PENDING) {
@@ -550,8 +568,7 @@ private fun GroupedLedgerList(
     groups: List<LedgerGroup>,
     collapsedIds: Set<String>,
     canReorder: Boolean,
-    sourceName: (String) -> String,
-    paymentName: (String) -> String,
+    meta: (HistoryItem) -> String,
     onToggleCollapse: (String) -> Unit,
     onRowClick: (HistoryItem) -> Unit,
     onMoveTo: (LedgerGroup, HistoryItem, Int) -> Unit,
@@ -606,8 +623,7 @@ private fun GroupedLedgerList(
                             Box(Modifier.weight(1f)) {
                                 TxRow(
                                     item = item,
-                                    sourceName = sourceName(item.idSource),
-                                    paymentName = paymentName(item.idPaymentSource),
+                                    meta = meta(item),
                                     onClick = { onRowClick(item) },
                                     pinned = item.isFixo,
                                     onTogglePin = { onTogglePin(item) },
