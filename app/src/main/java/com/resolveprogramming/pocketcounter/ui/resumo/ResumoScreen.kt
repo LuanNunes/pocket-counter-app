@@ -663,13 +663,13 @@ private fun DeltaBadge(
         Box(
             modifier = Modifier
                 .clip(PocketTheme.shapes.pill)
-                .background(PocketTheme.colors.surface2)
+                .background(PocketTheme.colors.accentBg)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
             Text(
                 text = "novo",
                 style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
-                color = PocketTheme.colors.text3,
+                color = PocketTheme.colors.accent,
             )
         }
         return

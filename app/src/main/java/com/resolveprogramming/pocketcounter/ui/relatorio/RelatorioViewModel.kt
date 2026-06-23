@@ -42,7 +42,14 @@ class RelatorioViewModel @Inject constructor(
 
     init {
         load()
-        viewModelScope.launch { prefsStore.chartType.collect { c -> _state.update { it.copy(chartType = c) } } }
+        // AREA is no longer offered on mobile; migrate a stale persisted pref so the chip
+        // selection and the rendered chart agree without a tap.
+        viewModelScope.launch {
+            prefsStore.chartType.collect { c ->
+                val coerced = if (c == ReportChartType.AREA) ReportChartType.BARS else c
+                _state.update { it.copy(chartType = coerced) }
+            }
+        }
         viewModelScope.launch { prefsStore.detailMode.collect { m -> _state.update { it.copy(detailMode = m) } } }
     }
 

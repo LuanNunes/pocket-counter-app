@@ -13,13 +13,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 /** Shared management-screen top bar: 36dp back square + title + optional 36dp "+" action. */
 @Composable
-fun ManageTopBar(title: String, onBack: () -> Unit, onAdd: (() -> Unit)? = null) {
+fun ManageTopBar(
+    title: String,
+    onBack: () -> Unit,
+    onAdd: (() -> Unit)? = null,
+    actions: @Composable (() -> Unit)? = null,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -33,24 +40,42 @@ fun ManageTopBar(title: String, onBack: () -> Unit, onAdd: (() -> Unit)? = null)
                 Text(title, style = PocketTheme.typography.screenH1, color = PocketTheme.colors.text)
             }
         }
-        if (onAdd != null) SquareIconButton(glyph = "+", onClick = onAdd)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            actions?.invoke()
+            if (onAdd != null) SquareIconButton(glyph = "+", onClick = onAdd)
+        }
     }
 }
 
 @Composable
-fun SquareIconButton(glyph: String, onClick: () -> Unit) {
+fun SquareIconButton(
+    glyph: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    contentDescription: String? = null,
+) {
     Box(
         modifier = Modifier
             .size(36.dp)
             .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.icon)
             .background(PocketTheme.colors.surface, PocketTheme.shapes.icon)
-            .clickable(onClick = onClick),
+            .clickable(enabled = enabled, onClick = onClick)
+            .then(
+                if (contentDescription != null) {
+                    Modifier.semantics { this.contentDescription = contentDescription }
+                } else {
+                    Modifier
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             glyph,
             style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text,
+            color = if (enabled) PocketTheme.colors.text else PocketTheme.colors.text3,
         )
     }
 }
