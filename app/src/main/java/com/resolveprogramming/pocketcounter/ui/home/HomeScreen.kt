@@ -1,6 +1,10 @@
 package com.resolveprogramming.pocketcounter.ui.home
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,10 +30,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -53,6 +63,7 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
 import com.resolveprogramming.pocketcounter.ui.components.TabId
+import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.label
 import java.math.BigDecimal
@@ -123,10 +134,6 @@ fun HomeScreen(
                         onClick = { onNavigate("cartoes") },
                     )
                 }
-            }
-
-            item {
-                ReportStrip(onClick = { onNavigate("relatorio") })
             }
 
             item { PendingReviewHeader(count = state.pendingReview.size) }
@@ -230,12 +237,40 @@ private fun BalanceCard(state: HomeUiState) {
     val isDark = PocketTheme.isDark
     val cardBg = if (isDark) PocketTheme.colors.surface else PocketTheme.colors.text
     val ink = if (isDark) PocketTheme.colors.text else PocketTheme.colors.bg
+    val accent = PocketTheme.colors.accent
+    val reducedMotion = LocalReducedMotion.current
+
+    val target = state.balance.toFloat()
+    val animated = remember { Animatable(if (reducedMotion) target else 0f) }
+    LaunchedEffect(target) {
+        if (reducedMotion) {
+            animated.snapTo(target)
+        } else {
+            animated.snapTo(0f)
+            animated.animateTo(
+                targetValue = target,
+                animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+            )
+        }
+    }
 
     PocketCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(PocketTheme.shapes.card),
         backgroundColor = cardBg,
     ) {
-        Column {
+        // Decorative accent glow, top-right, clipped to the card shape. Drawn via drawBehind so
+        // it never participates in layout (a sized Box would inflate the card height).
+        Column(
+            modifier = Modifier.drawBehind {
+                drawCircle(
+                    color = accent.copy(alpha = 0.14f),
+                    radius = 90.dp.toPx(),
+                    center = Offset(x = size.width + 40.dp.toPx(), y = -40.dp.toPx()),
+                )
+            },
+        ) {
             Text(
                 text = "SALDO DO MÊS · ${state.monthLabel}",
                 style = PocketTheme.typography.sectionHeader,
@@ -243,7 +278,7 @@ private fun BalanceCard(state: HomeUiState) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = formatter.format(state.balance),
+                text = formatter.format(animated.value.toDouble()),
                 style = PocketTheme.typography.monoBalance,
                 color = ink,
             )
@@ -522,6 +557,19 @@ private fun AutomationCard(
 ) {
     val isEmpty = stat.monthTotal == 0
     val pct = automationPercent(stat.autoDone, stat.monthTotal)
+    val reducedMotion = LocalReducedMotion.current
+
+    var pctTarget by remember { mutableStateOf(if (reducedMotion) pct else 0) }
+    LaunchedEffect(pct) {
+        pctTarget = pct
+    }
+    val animatedPct by animateIntAsState(
+        targetValue = pctTarget,
+        animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
+        label = "automationPct",
+    )
+    val displayPct = if (reducedMotion) pct else animatedPct
+
     val fillFraction by animateFloatAsState(
         targetValue = pct / 100f,
         label = "automationFill",
@@ -556,7 +604,7 @@ private fun AutomationCard(
                     )
                 }
                 Text(
-                    text = "$pct%",
+                    text = "$displayPct%",
                     style = PocketTheme.typography.monoSm.copy(
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
@@ -651,51 +699,6 @@ private fun ResumoStrip(monthLabel: String, onClick: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                     ),
                     color = PocketTheme.colors.text,
-                )
-            }
-            Text(
-                text = "›",
-                style = PocketTheme.typography.stepQuestion,
-                color = PocketTheme.colors.text3,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ReportStrip(onClick: () -> Unit) {
-    PocketCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(PocketTheme.colors.accentBg, PocketTheme.shapes.chip),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "▦",
-                    fontSize = 18.sp,
-                    color = PocketTheme.colors.accent,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Relatório",
-                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                    color = PocketTheme.colors.text,
-                )
-                Text(
-                    text = "Tendências por mês, trimestre, ano",
-                    style = PocketTheme.typography.bodyXs,
-                    color = PocketTheme.colors.text3,
                 )
             }
             Text(
