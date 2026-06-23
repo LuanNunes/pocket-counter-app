@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
@@ -177,9 +178,9 @@ private fun MessageItem(message: AssistantMessage, loadingPhase: Int, onRetry: (
         when (message.status) {
             AssistantMessageStatus.LOADING -> PocketCard(modifier = Modifier.fillMaxWidth()) {
                 val phase = when (loadingPhase) {
-                    0 -> "Analisando sua pergunta…"
-                    1 -> "Consultando suas transações…"
-                    else -> "Preparando a resposta…"
+                    0 -> "Consultando seus dados…"
+                    1 -> "Analisando os resultados…"
+                    else -> "Escrevendo a resposta…"
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Spinner()
@@ -296,6 +297,17 @@ private fun Composer(
             ) {
                 Text("➤", color = PocketTheme.colors.accentInk)
             }
+        }
+        // Reveal the counter only as the user nears the cap (last ~60 chars).
+        val counterRevealAt = ASSISTANT_MAX_CHARS - 60
+        if (input.length >= counterRevealAt) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${input.length}/$ASSISTANT_MAX_CHARS",
+                style = PocketTheme.typography.bodyXs,
+                color = if (input.length >= ASSISTANT_MAX_CHARS) PocketTheme.colors.warn else PocketTheme.colors.text3,
+                modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.End),
+            )
         }
     }
 }

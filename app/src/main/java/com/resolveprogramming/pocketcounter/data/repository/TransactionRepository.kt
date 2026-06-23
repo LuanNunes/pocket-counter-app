@@ -7,7 +7,7 @@ interface TransactionRepository {
     suspend fun save(draft: WizardDraft): Result<String>
     suspend fun update(transactionId: String, draft: WizardDraft): Result<String>
 
-    /** Sets a transaction's own tags. null = inherit the source defaults; non-null = override. */
+    /** Sets a transaction's own tags. null = clear own tags; non-null = override with these tags. */
     suspend fun setTags(item: HistoryItem, tagIds: List<String>?): Result<Unit>
     /** Persists a manual order: each id's index becomes its displayOrder. */
     suspend fun reorder(orderedIds: List<String>): Result<Unit>

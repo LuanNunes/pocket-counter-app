@@ -8,7 +8,7 @@ data class HistoryItem(
     val date: LocalDate,
     val amount: BigDecimal,
     val type: TransactionType,
-    /** The transaction's OWN tags: null = inherit the source's defaults, non-null = override. */
+    /** The transaction's OWN tags: null = no own tags, non-null = override. (Series-tag inheritance is not applied at render time today — see [effectiveTagIds].) */
     val tagIds: List<String>?,
     val statusPayment: PaymentStatus = PaymentStatus.PAID,
     /** Backend-managed manual sort key (group-reorder); 0 until the user reorders. */
