@@ -1,5 +1,7 @@
 package com.resolveprogramming.pocketcounter.di
 
+import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleSignIn
+import com.resolveprogramming.pocketcounter.data.remote.GoogleSignInClient
 import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.AssistantRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
@@ -68,4 +70,9 @@ abstract class DataModule {
     abstract fun bindAssistantRepository(
         impl: RetrofitAssistantRepository,
     ): AssistantRepository
+
+    @Binds
+    abstract fun bindGoogleSignInClient(
+        impl: CredentialManagerGoogleSignIn,
+    ): GoogleSignInClient
 }

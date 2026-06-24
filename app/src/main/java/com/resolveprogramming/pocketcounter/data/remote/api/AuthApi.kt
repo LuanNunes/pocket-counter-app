@@ -15,6 +15,9 @@ interface AuthApi {
     @POST("api/v1/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<TokenResponse>
 
+    @POST("api/v1/auth/google")
+    suspend fun googleLogin(@Body request: LoginRequest): Response<TokenResponse>
+
     @POST("api/v1/auth/refresh")
     suspend fun refresh(@Body request: LoginRequest): Response<TokenResponse>
 

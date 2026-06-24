@@ -31,6 +31,10 @@ class AuthRepository @Inject constructor(
         authApi.register(RegisterRequest(email = email, name = name, password = password))
     }
 
+    suspend fun loginWithGoogle(idToken: String): Result<Unit> = runAuth {
+        authApi.googleLogin(LoginRequest(token = idToken))
+    }
+
     suspend fun logout() {
         val refreshToken = tokenStore.getRefreshToken()
         if (refreshToken != null) {

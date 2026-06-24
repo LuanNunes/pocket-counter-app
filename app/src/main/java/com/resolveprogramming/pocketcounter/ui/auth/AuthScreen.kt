@@ -4,10 +4,13 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,7 +32,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -37,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.resolveprogramming.pocketcounter.R
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 @Composable
@@ -45,6 +52,7 @@ fun AuthScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -210,6 +218,70 @@ fun AuthScreen(
                     style = PocketTheme.typography.button,
                     color = PocketTheme.colors.accentInk,
                 )
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(1.dp)
+                    .background(PocketTheme.colors.line),
+            )
+            Text(
+                text = "ou",
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text3,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(1.dp)
+                    .background(PocketTheme.colors.line),
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+
+        val googleEnabled = !state.isLoading && !state.isGoogleLoading
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .background(PocketTheme.colors.surface, PocketTheme.shapes.chip)
+                .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
+                .then(
+                    if (googleEnabled) Modifier.clickable { viewModel.signInWithGoogle(context) }
+                    else Modifier,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (state.isGoogleLoading) {
+                CircularProgressIndicator(
+                    color = PocketTheme.colors.text,
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_google),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "Continuar com Google",
+                        style = PocketTheme.typography.button,
+                        color = PocketTheme.colors.text,
+                    )
+                }
             }
         }
 
