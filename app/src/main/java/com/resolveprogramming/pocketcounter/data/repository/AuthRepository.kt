@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
+import com.resolveprogramming.pocketcounter.data.local.AppLockState
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.remote.api.AuthApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ErrorResponse
@@ -20,6 +21,7 @@ class AuthRepository @Inject constructor(
     private val authApi: AuthApi,
     private val tokenStore: TokenStore,
     private val json: Json,
+    private val appLockState: AppLockState,
 ) {
     val isLoggedIn: Flow<Boolean> = tokenStore.isLoggedIn
 
@@ -54,6 +56,7 @@ class AuthRepository @Inject constructor(
             if (response.isSuccessful) {
                 val body = response.body()!!
                 tokenStore.saveTokens(body.accessToken, body.refreshToken)
+                appLockState.unlock()
                 return@run Result.success(Unit)
             }
             val errorBody = response.errorBody()?.string()

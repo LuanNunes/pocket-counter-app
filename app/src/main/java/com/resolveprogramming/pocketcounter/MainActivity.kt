@@ -3,12 +3,14 @@ package com.resolveprogramming.pocketcounter
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.fragment.app.FragmentActivity
 import com.resolveprogramming.pocketcounter.data.capture.CaptureIngestor
+import com.resolveprogramming.pocketcounter.data.local.AppLockState
+import com.resolveprogramming.pocketcounter.data.local.BiometricSettingsStore
 import com.resolveprogramming.pocketcounter.data.local.CaptureSettingsStore
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.domain.model.CapturedMessage
@@ -22,13 +24,19 @@ import java.time.Instant
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var tokenStore: TokenStore
 
     @Inject
     lateinit var captureSettingsStore: CaptureSettingsStore
+
+    @Inject
+    lateinit var biometricSettingsStore: BiometricSettingsStore
+
+    @Inject
+    lateinit var appLockState: AppLockState
 
     @Inject
     lateinit var ingestor: CaptureIngestor
@@ -44,7 +52,12 @@ class MainActivity : ComponentActivity() {
             val darkTheme = controller.darkTheme ?: isSystemInDarkTheme()
             CompositionLocalProvider(LocalPocketThemeController provides controller) {
                 PocketTheme(darkTheme = darkTheme, density = controller.density) {
-                    PocketNavHost(tokenStore, captureSettingsStore)
+                    PocketNavHost(
+                        tokenStore,
+                        captureSettingsStore,
+                        biometricSettingsStore,
+                        appLockState,
+                    )
                 }
             }
         }

@@ -18,12 +18,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.resolveprogramming.pocketcounter.data.local.AppLockState
+import com.resolveprogramming.pocketcounter.data.local.BiometricSettingsStore
 import com.resolveprogramming.pocketcounter.data.local.CaptureSettingsStore
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.ui.assistente.AssistantScreen
 import com.resolveprogramming.pocketcounter.ui.auth.AuthScreen
 import com.resolveprogramming.pocketcounter.ui.cards.CartoesScreen
 import com.resolveprogramming.pocketcounter.ui.home.HomeScreen
+import com.resolveprogramming.pocketcounter.ui.lock.LockScreen
 import androidx.navigation.NavHostController
 import com.resolveprogramming.pocketcounter.ui.components.TabId
 import com.resolveprogramming.pocketcounter.ui.onboarding.OnboardingScreen
@@ -72,19 +75,38 @@ private fun navTab(navController: NavHostController, tab: TabId) {
     }
 }
 
+/**
+ * The lock-gate truth table, extracted for unit testing. Gate the app behind the biometric
+ * lock only when the user is logged in, the lock setting is on, and the current process has
+ * not yet been unlocked. Cold-start-only: [isUnlocked] is process-scoped and resets on death.
+ * A null (still-loading) [isLoggedIn]/[lockEnabled] never locks — the loader covers that.
+ */
+internal fun shouldLock(isLoggedIn: Boolean?, lockEnabled: Boolean?, isUnlocked: Boolean): Boolean =
+    isLoggedIn == true && lockEnabled == true && !isUnlocked
+
 @Composable
 fun PocketNavHost(
     tokenStore: TokenStore,
     captureSettingsStore: CaptureSettingsStore,
+    biometricSettingsStore: BiometricSettingsStore,
+    appLockState: AppLockState,
 ) {
     val isLoggedIn by tokenStore.isLoggedIn.collectAsStateWithLifecycle(initialValue = null)
     val onboardingSeen by captureSettingsStore.onboardingSeen
         .collectAsStateWithLifecycle(initialValue = null)
+    val lockEnabled by biometricSettingsStore.lockEnabled
+        .collectAsStateWithLifecycle(initialValue = null)
+    val isUnlocked by appLockState.isUnlocked.collectAsStateWithLifecycle()
 
-    if (isLoggedIn == null || onboardingSeen == null) {
+    if (isLoggedIn == null || onboardingSeen == null || lockEnabled == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = PocketTheme.colors.accent)
         }
+        return
+    }
+
+    if (shouldLock(isLoggedIn, lockEnabled, isUnlocked)) {
+        LockScreen()
         return
     }
 
