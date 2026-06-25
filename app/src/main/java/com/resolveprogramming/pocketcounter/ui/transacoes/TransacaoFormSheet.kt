@@ -48,8 +48,9 @@ fun TransacaoFormSheet(
     contexts: List<TagContext>,
     onSave: (WizardDraft) -> Unit,
     onDismiss: () -> Unit,
+    defaultDate: LocalDate? = null,
 ) {
-    var draft by remember { mutableStateOf(seedDraft(initialItem)) }
+    var draft by remember { mutableStateOf(seedDraft(initialItem, defaultDate)) }
     var step by remember { mutableStateOf(WizardStep.TYPE) }
     var tagSearch by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -167,8 +168,8 @@ fun TransacaoFormSheet(
     }
 }
 
-private fun seedDraft(item: HistoryItem?): WizardDraft {
-    if (item == null) return WizardDraft(date = LocalDate.now())
+private fun seedDraft(item: HistoryItem?, defaultDate: LocalDate?): WizardDraft {
+    if (item == null) return WizardDraft(date = defaultDate ?: LocalDate.now())
     return WizardDraft(
         type = item.type,
         amount = item.amount.abs(),

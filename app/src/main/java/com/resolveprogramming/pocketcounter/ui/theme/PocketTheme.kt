@@ -83,4 +83,11 @@ object PocketTheme {
 
     val isDark: Boolean
         @Composable get() = LocalPocketIsDark.current
+
+    /**
+     * Always-dark palette, for surfaces that stay dark in every theme (the Home balance hero).
+     * KPI dots/values read their type/state colors from here so they remain legible on the dark
+     * card even under the light theme.
+     */
+    val darkColors: PocketColors get() = DarkPocketColors
 }
