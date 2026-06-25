@@ -52,10 +52,12 @@ internal object RemoteMappers {
     fun parseDate(value: String?): LocalDate? =
         value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
-    fun parseType(value: String?): TransactionType? = when (value?.uppercase()) {
-        "INCOME" -> TransactionType.INCOME
-        "EXPENSE" -> TransactionType.EXPENSE
-        else -> null
+    fun parseType(value: String?): TransactionType? = run {
+        when (value?.uppercase()) {
+            "INCOME" -> return@run TransactionType.INCOME
+            "EXPENSE" -> return@run TransactionType.EXPENSE
+        }
+        null
     }
 
     /** PaymentMethodEnum name (UPPERCASE on the wire) → domain enum; null when absent/unknown. */
@@ -74,7 +76,7 @@ internal object RemoteMappers {
     )
 
     private fun paletteFor(seed: String): Long =
-        palette[(seed.hashCode().let { if (it < 0) -it else it }) % palette.size]
+        palette[(seed.hashCode().let { h -> run { if (h < 0) return@run -h; h } }) % palette.size]
 
     /** Two ARGB stops for a credit-card tile gradient (the backend stores no gradient). */
     fun cardGradient(seed: String): Pair<Long, Long> {
@@ -95,7 +97,8 @@ internal object RemoteMappers {
         val hex = value?.trim()?.removePrefix("#")
         if (hex != null && (hex.length == 6 || hex.length == 8) && hex.all { it.isHexDigit() }) {
             val rgb = hex.toLong(16)
-            return if (hex.length == 6) 0xFF000000L or rgb else rgb
+            if (hex.length == 6) return 0xFF000000L or rgb
+            return rgb
         }
         return paletteFor(seed)
     }
@@ -156,7 +159,7 @@ internal object RemoteMappers {
     fun TransactionDto.toHistoryItem(): HistoryItem {
         val type = parseType(transactionType) ?: TransactionType.EXPENSE
         val raw = amount ?: BigDecimal.ZERO
-        val signed = if (type == TransactionType.EXPENSE) raw.negate() else raw
+        val signed = raw.negate().takeIf { type == TransactionType.EXPENSE } ?: raw
         return HistoryItem(
             id = id.orEmpty(),
             date = parseDate(datePaid) ?: parseDate(dateDue) ?: LocalDate.now(),
@@ -164,11 +167,8 @@ internal object RemoteMappers {
             type = type,
             // Preserve null = inherit vs non-null = override (drop .orEmpty()).
             tagIds = tags?.mapNotNull { it.id },
-            statusPayment = if (statusPayment?.uppercase() == "PENDING") {
-                PaymentStatus.PENDING
-            } else {
-                PaymentStatus.PAID
-            },
+            statusPayment = PaymentStatus.PENDING.takeIf { statusPayment?.uppercase() == "PENDING" }
+                ?: PaymentStatus.PAID,
             displayOrder = displayOrder,
             paymentMethod = parsePaymentMethod(paymentMethod),
             cardId = cardId,
@@ -209,14 +209,13 @@ internal object RemoteMappers {
         return NotificationItem(
             id = id,
             app = app,
-            channel = if (channel.equals("PUSH", ignoreCase = true)) NotificationChannel.PUSH else NotificationChannel.SMS,
+            channel = NotificationChannel.PUSH.takeIf { channel.equals("PUSH", ignoreCase = true) }
+                ?: NotificationChannel.SMS,
             time = localTime?.toLocalTime()?.format(timeFormatter).orEmpty(),
             received = receivedAt.orEmpty(),
             text = text,
-            status = when (status.uppercase()) {
-                "CLASSIFIED" -> NotificationStatus.AUTO
-                else -> NotificationStatus.NEEDS_REVIEW
-            },
+            status = NotificationStatus.AUTO.takeIf { status.uppercase() == "CLASSIFIED" }
+                ?: NotificationStatus.NEEDS_REVIEW,
             parsed = ParsedNotification(
                 type = parseType(parsedType),
                 amount = parsedAmount,
@@ -266,9 +265,11 @@ internal object RemoteMappers {
         )
     }
 
-    private fun parseStatus(value: String): NotificationStatus = when (value.uppercase()) {
-        "AUTO", "CLASSIFIED" -> NotificationStatus.AUTO
-        "NEEDS_TAGS" -> NotificationStatus.NEEDS_TAGS
-        else -> NotificationStatus.NEEDS_REVIEW
+    private fun parseStatus(value: String): NotificationStatus = run {
+        when (value.uppercase()) {
+            "AUTO", "CLASSIFIED" -> return@run NotificationStatus.AUTO
+            "NEEDS_TAGS" -> return@run NotificationStatus.NEEDS_TAGS
+        }
+        NotificationStatus.NEEDS_REVIEW
     }
 }

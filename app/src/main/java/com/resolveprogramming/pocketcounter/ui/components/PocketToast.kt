@@ -53,15 +53,13 @@ fun PocketToastHost(
     ) {
         AnimatedVisibility(
             visible = message != null,
-            enter = if (reducedMotion) {
-                fadeIn(animationSpec = tween(0))
-            } else {
+            enter = run {
+                if (reducedMotion) return@run fadeIn(animationSpec = tween(0))
                 slideInVertically(animationSpec = tween(250)) { slideOffset } +
                     fadeIn(animationSpec = tween(250))
             },
-            exit = if (reducedMotion) {
-                fadeOut(animationSpec = tween(0))
-            } else {
+            exit = run {
+                if (reducedMotion) return@run fadeOut(animationSpec = tween(0))
                 slideOutVertically(animationSpec = tween(250)) { slideOffset } +
                     fadeOut(animationSpec = tween(250))
             },

@@ -43,8 +43,8 @@ fun PocketTabBar(
                         modifier = Modifier
                             .size(24.dp)
                             .background(
-                                if (selected) PocketTheme.colors.accent
-                                else PocketTheme.colors.line,
+                                PocketTheme.colors.accent.takeIf { selected }
+                                    ?: PocketTheme.colors.line,
                                 PocketTheme.shapes.icon,
                             ),
                     )

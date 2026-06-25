@@ -195,8 +195,8 @@ private fun CartoesCarousel(
         // affordance obvious. The invoice list lives below, full-width.
         HorizontalPager(
             state = pagerState,
-            contentPadding = if (multi) PaddingValues(horizontal = 28.dp) else PaddingValues(horizontal = 20.dp),
-            pageSpacing = if (multi) 12.dp else 0.dp,
+            contentPadding = PaddingValues(horizontal = 28.dp).takeIf { multi } ?: PaddingValues(horizontal = 20.dp),
+            pageSpacing = 12.dp.takeIf { multi } ?: 0.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 4.dp),
@@ -254,14 +254,14 @@ private fun CardPillRow(
             Box(
                 modifier = Modifier
                     .clip(PocketTheme.shapes.pill)
-                    .background(if (isActive) PocketTheme.colors.text else PocketTheme.colors.surface2)
+                    .background(PocketTheme.colors.text.takeIf { isActive } ?: PocketTheme.colors.surface2)
                     .clickable { onSelect(index) }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
                 Text(
                     text = invoice.card.name,
                     style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (isActive) PocketTheme.colors.bg else PocketTheme.colors.text3,
+                    color = PocketTheme.colors.bg.takeIf { isActive } ?: PocketTheme.colors.text3,
                     maxLines = 1,
                 )
             }
@@ -507,7 +507,7 @@ private fun InvoiceItemRow(
     val dateStr = item.date.format(dayFormatter).lowercase(Locale("pt", "BR"))
     val firstTag = item.tags.firstOrNull()?.name
     val tagLabel = firstTag ?: "classificar"
-    val tagColor = if (firstTag == null) PocketTheme.colors.warn else PocketTheme.colors.text3
+    val tagColor = PocketTheme.colors.warn.takeIf { firstTag == null } ?: PocketTheme.colors.text3
 
     Row(
         modifier = Modifier
@@ -639,9 +639,9 @@ private fun ClassifyPurchaseSheet(
                 val isSelected = tag.id in selectedIds
                 PocketChip(
                     label = tag.name,
-                    variant = if (isSelected) PocketChipVariant.ON else PocketChipVariant.DEFAULT,
+                    variant = PocketChipVariant.ON.takeIf { isSelected } ?: PocketChipVariant.DEFAULT,
                     onClick = {
-                        selectedIds = if (isSelected) selectedIds - tag.id else selectedIds + tag.id
+                        selectedIds = (selectedIds - tag.id).takeIf { isSelected } ?: (selectedIds + tag.id)
                     },
                 )
             }
@@ -685,23 +685,23 @@ private fun ClassifyPurchaseSheet(
 
         val selectedTags = allTags.filter { it.id in selectedIds }
         val canSave = selectedTags.isNotEmpty()
-        val ctaLabel = if (learnRule) "Salvar e criar regra" else "Salvar classificação"
+        val ctaLabel = "Salvar e criar regra".takeIf { learnRule } ?: "Salvar classificação"
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(PocketTheme.shapes.card)
                 .background(
-                    if (canSave) PocketTheme.colors.accent else PocketTheme.colors.surface2,
+                    PocketTheme.colors.accent.takeIf { canSave } ?: PocketTheme.colors.surface2,
                 )
-                .let { if (canSave) it.clickable { onSave(selectedTags, learnRule) } else it }
+                .let { base -> run { if (canSave) return@run base.clickable { onSave(selectedTags, learnRule) }; base } }
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = ctaLabel,
                 style = PocketTheme.typography.button,
-                color = if (canSave) PocketTheme.colors.accentInk else PocketTheme.colors.text3,
+                color = PocketTheme.colors.accentInk.takeIf { canSave } ?: PocketTheme.colors.text3,
             )
         }
 
@@ -766,28 +766,29 @@ private fun AddCardSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(PocketTheme.shapes.card)
-                .background(if (canSave) PocketTheme.colors.accent else PocketTheme.colors.surface2)
-                .let {
-                    if (canSave) {
-                        it.clickable {
-                            onSave(
-                                name.trim(),
-                                brand.trim().takeIf { b -> b.isNotBlank() },
-                                parsedDay,
-                                color.trim().takeIf { c -> c.isNotBlank() },
-                            )
+                .background(PocketTheme.colors.accent.takeIf { canSave } ?: PocketTheme.colors.surface2)
+                .let { base ->
+                    run {
+                        if (canSave) {
+                            return@run base.clickable {
+                                onSave(
+                                    name.trim(),
+                                    brand.trim().takeIf { b -> b.isNotBlank() },
+                                    parsedDay,
+                                    color.trim().takeIf { c -> c.isNotBlank() },
+                                )
+                            }
                         }
-                    } else {
-                        it
+                        base
                     }
                 }
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = if (isSaving) "Salvando…" else "Adicionar cartão",
+                text = "Salvando…".takeIf { isSaving } ?: "Adicionar cartão",
                 style = PocketTheme.typography.button,
-                color = if (canSave) PocketTheme.colors.accentInk else PocketTheme.colors.text3,
+                color = PocketTheme.colors.accentInk.takeIf { canSave } ?: PocketTheme.colors.text3,
             )
         }
 
@@ -814,8 +815,8 @@ private fun SummaryRow(
         Spacer(Modifier.width(12.dp))
         Text(
             text = value,
-            style = if (mono) PocketTheme.typography.monoSm
-            else PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Medium),
+            style = PocketTheme.typography.monoSm.takeIf { mono }
+                ?: PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Medium),
             color = PocketTheme.colors.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

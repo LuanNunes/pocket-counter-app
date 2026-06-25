@@ -15,11 +15,9 @@ object BillingCycle {
      */
     fun closingDate(billDay: Int, today: LocalDate = LocalDate.now()): LocalDate {
         val candidate = today.withDayOfMonth(billDay.coerceIn(1, today.lengthOfMonth()))
-        return if (today.dayOfMonth <= billDay) candidate
-        else {
-            val next = today.plusMonths(1)
-            next.withDayOfMonth(billDay.coerceIn(1, next.lengthOfMonth()))
-        }
+        if (today.dayOfMonth <= billDay) return candidate
+        val next = today.plusMonths(1)
+        return next.withDayOfMonth(billDay.coerceIn(1, next.lengthOfMonth()))
     }
 
     /** Days until closing date (≥ 0). */

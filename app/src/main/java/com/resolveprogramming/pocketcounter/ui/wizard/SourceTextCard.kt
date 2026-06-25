@@ -46,7 +46,7 @@ fun SourceTextCard(
         ) {
             Text(
                 text = buildString {
-                    append(if (notification.channel == NotificationChannel.SMS) "SMS" else "Push")
+                    append("SMS".takeIf { notification.channel == NotificationChannel.SMS } ?: "Push")
                     append(" • ")
                     append(notification.app.uppercase())
                     append(" • ")
@@ -72,24 +72,26 @@ fun SourceTextCard(
                 val bg = tokenBackground(token.role)
                 val textColor = tokenTextColor(token.role)
                 val isSelected = selectedTokenIndex == index
-                val borderMod = if (isSelected) {
-                    Modifier.border(2.dp, PocketTheme.colors.accent, PocketTheme.shapes.icon)
-                } else if (token.role != null) {
-                    Modifier.border(1.dp, bg.copy(alpha = 0.5f), PocketTheme.shapes.icon)
-                } else {
+                val borderMod = run {
+                    if (isSelected) {
+                        return@run Modifier.border(2.dp, PocketTheme.colors.accent, PocketTheme.shapes.icon)
+                    }
+                    if (token.role != null) {
+                        return@run Modifier.border(1.dp, bg.copy(alpha = 0.5f), PocketTheme.shapes.icon)
+                    }
                     Modifier
                 }
 
                 Text(
                     text = token.text,
                     style = PocketTheme.typography.monoSm.copy(
-                        fontWeight = if (token.role != null) FontWeight.Medium else FontWeight.Normal,
+                        fontWeight = FontWeight.Medium.takeIf { token.role != null } ?: FontWeight.Normal,
                     ),
                     color = textColor,
                     modifier = Modifier
                         .then(borderMod)
                         .background(
-                            if (token.role != null) bg.copy(alpha = 0.15f) else Color.Transparent,
+                            bg.copy(alpha = 0.15f).takeIf { token.role != null } ?: Color.Transparent,
                             PocketTheme.shapes.icon,
                         )
                         .clickable { onTokenTap(index) }

@@ -101,7 +101,7 @@ fun WizardScreen(
             step = state.step,
             onBack = {
                 if (state.step == WizardStep.TYPE) onDismiss()
-                else viewModel.previousStep()
+                if (state.step != WizardStep.TYPE) viewModel.previousStep()
             },
             onIgnore = onDismiss,
         )
@@ -141,9 +141,10 @@ fun WizardScreen(
             AnimatedContent(
                 targetState = state.step,
                 transitionSpec = {
-                    if (targetState.index > initialState.index) {
-                        slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
-                    } else {
+                    run {
+                        if (targetState.index > initialState.index) {
+                            return@run slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
+                        }
                         slideInHorizontally { -it } togetherWith slideOutHorizontally { it }
                     }
                 },
@@ -222,11 +223,11 @@ fun WizardScreen(
             isSaving = state.isSaving,
             onBack = {
                 if (state.step == WizardStep.TYPE) onDismiss()
-                else viewModel.previousStep()
+                if (state.step != WizardStep.TYPE) viewModel.previousStep()
             },
             onNext = {
                 if (state.step == WizardStep.TAGS) viewModel.save()
-                else viewModel.nextStep()
+                if (state.step != WizardStep.TAGS) viewModel.nextStep()
             },
         )
     }
@@ -326,10 +327,10 @@ private fun WizardProgressBar(step: WizardStep) {
     ) {
         WizardStep.entries.forEach { s ->
             // Done steps read as --text, the active step as --accent, upcoming as --line.
-            val color = when {
-                s.index < step.index -> PocketTheme.colors.text
-                s.index == step.index -> PocketTheme.colors.accent
-                else -> PocketTheme.colors.line
+            val color = run {
+                if (s.index < step.index) return@run PocketTheme.colors.text
+                if (s.index == step.index) return@run PocketTheme.colors.accent
+                PocketTheme.colors.line
             }
             Box(
                 modifier = Modifier
@@ -357,10 +358,10 @@ private fun WizardFooter(
     }
 
     val nextLabel = when (step) {
-        WizardStep.TAGS -> {
-            if (draft.tagIds.isEmpty()) "Salvar sem tags" else "Salvar transação"
-        }
-        else -> "Continuar"
+        WizardStep.TAGS -> "Salvar transação".takeUnless { draft.tagIds.isEmpty() } ?: "Salvar sem tags"
+        WizardStep.TYPE -> "Continuar"
+        WizardStep.AMOUNT -> "Continuar"
+        WizardStep.PAYMENT -> "Continuar"
     }
 
     Row(
@@ -378,7 +379,7 @@ private fun WizardFooter(
             modifier = Modifier.weight(1f),
         )
         PocketButton(
-            text = if (isSaving) "Salvando..." else nextLabel,
+            text = "Salvando...".takeIf { isSaving } ?: nextLabel,
             onClick = onNext,
             variant = PocketButtonVariant.PRIMARY,
             enabled = canAdvance && !isSaving,

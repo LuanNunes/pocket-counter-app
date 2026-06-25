@@ -99,7 +99,8 @@ fun HomeScreen(
                     when (tab) {
                         TabId.TRANSACOES -> onNavigate("transacoes")
                         TabId.CARTOES -> onNavigate("cartoes")
-                        else -> Unit
+                        TabId.INICIO -> Unit
+                        TabId.MAIS -> Unit
                     }
                 },
             )
@@ -145,7 +146,8 @@ fun HomeScreen(
 
             if (state.pendingReview.isEmpty()) {
                 item { ReviewEmptyState() }
-            } else {
+            }
+            if (state.pendingReview.isNotEmpty()) {
                 items(state.pendingReview, key = { it.id }) { notification ->
                     NotificationCard(
                         notification = notification,
@@ -157,7 +159,7 @@ fun HomeScreen(
             if (state.history.isNotEmpty()) {
                 val expenses = state.history.filter { it.type == TransactionType.EXPENSE }
                 val incomes = state.history.filter { it.type == TransactionType.INCOME }
-                val shown = if (historyKind == TransactionType.EXPENSE) expenses else incomes
+                val shown = expenses.takeIf { historyKind == TransactionType.EXPENSE } ?: incomes
 
                 item {
                     Text(
@@ -174,9 +176,9 @@ fun HomeScreen(
                             SegmentOption("Despesas · ${expenses.size}", SegmentTone.EXPENSE),
                             SegmentOption("Receitas · ${incomes.size}", SegmentTone.INCOME),
                         ),
-                        selectedIndex = if (historyKind == TransactionType.EXPENSE) 0 else 1,
+                        selectedIndex = 1.takeUnless { historyKind == TransactionType.EXPENSE } ?: 0,
                         onSelect = {
-                            historyKind = if (it == 0) TransactionType.EXPENSE else TransactionType.INCOME
+                            historyKind = TransactionType.EXPENSE.takeIf { _ -> it == 0 } ?: TransactionType.INCOME
                         },
                     )
                 }
@@ -184,17 +186,16 @@ fun HomeScreen(
                 if (shown.isEmpty()) {
                     item {
                         Text(
-                            text = if (historyKind == TransactionType.EXPENSE) {
-                                "Nenhuma despesa recente"
-                            } else {
-                                "Nenhuma receita recente"
-                            },
+                            text = "Nenhuma despesa recente".takeIf {
+                                historyKind == TransactionType.EXPENSE
+                            } ?: "Nenhuma receita recente",
                             style = PocketTheme.typography.bodySm,
                             color = PocketTheme.colors.text3,
                             modifier = Modifier.padding(vertical = 12.dp),
                         )
                     }
-                } else {
+                }
+                if (shown.isNotEmpty()) {
                     items(shown, key = { it.id }) { item ->
                         HistoryRow(item = item, state = state)
                     }
@@ -272,17 +273,18 @@ private fun HeaderSection(userName: String, onAssistant: () -> Unit = {}) {
 private fun BalanceCard(state: HomeUiState) {
     val formatter = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
     val isDark = PocketTheme.isDark
-    val cardBg = if (isDark) PocketTheme.colors.surface else PocketTheme.colors.text
-    val ink = if (isDark) PocketTheme.colors.text else PocketTheme.colors.bg
+    val cardBg = PocketTheme.colors.surface.takeIf { isDark } ?: PocketTheme.colors.text
+    val ink = PocketTheme.colors.text.takeIf { isDark } ?: PocketTheme.colors.bg
     val accent = PocketTheme.colors.accent
     val reducedMotion = LocalReducedMotion.current
 
     val target = state.balance.toFloat()
-    val animated = remember { Animatable(if (reducedMotion) target else 0f) }
+    val animated = remember { Animatable(target.takeIf { reducedMotion } ?: 0f) }
     LaunchedEffect(target) {
         if (reducedMotion) {
             animated.snapTo(target)
-        } else {
+        }
+        if (!reducedMotion) {
             animated.snapTo(0f)
             animated.animateTo(
                 targetValue = target,
@@ -569,18 +571,19 @@ private fun HistoryRow(
 }
 
 private fun historyMeta(item: HistoryItem, state: HomeUiState): String {
-    val payment = if (item.paymentMethod == PaymentMethod.CREDIT) {
-        val cardName = item.cardId?.let { state.cards[it]?.name }
-        if (cardName != null) "Cartão $cardName" else "Crédito"
-    } else {
+    val payment = run {
+        if (item.paymentMethod == PaymentMethod.CREDIT) {
+            val cardName = item.cardId?.let { state.cards[it]?.name }
+            return@run cardName?.let { "Cartão $it" } ?: "Crédito"
+        }
         item.paymentMethod?.label().orEmpty()
     }
 
     val tagNames = item.tagIds.orEmpty().mapNotNull { state.tags[it]?.name }
-    val tagPreview = when {
-        tagNames.isEmpty() -> ""
-        tagNames.size == 1 -> tagNames.first()
-        else -> "${tagNames.first()} +${tagNames.size - 1}"
+    val tagPreview = run {
+        if (tagNames.isEmpty()) return@run ""
+        if (tagNames.size == 1) return@run tagNames.first()
+        "${tagNames.first()} +${tagNames.size - 1}"
     }
 
     return listOf(payment, tagPreview).filter { it.isNotBlank() }.joinToString(" · ")
@@ -596,7 +599,7 @@ private fun AutomationCard(
     val pct = automationPercent(stat.autoDone, stat.monthTotal)
     val reducedMotion = LocalReducedMotion.current
 
-    var pctTarget by remember { mutableStateOf(if (reducedMotion) pct else 0) }
+    var pctTarget by remember { mutableStateOf(pct.takeIf { reducedMotion } ?: 0) }
     LaunchedEffect(pct) {
         pctTarget = pct
     }
@@ -605,7 +608,7 @@ private fun AutomationCard(
         animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing),
         label = "automationPct",
     )
-    val displayPct = if (reducedMotion) pct else animatedPct
+    val displayPct = pct.takeIf { reducedMotion } ?: animatedPct
 
     val fillFraction by animateFloatAsState(
         targetValue = pct / 100f,
@@ -679,7 +682,8 @@ private fun AutomationCard(
                     style = PocketTheme.typography.bodySm,
                     color = PocketTheme.colors.text3,
                 )
-            } else {
+            }
+            if (!isEmpty) {
                 Text(
                     text = buildAnnotatedString {
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = PocketTheme.colors.text)) {

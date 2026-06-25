@@ -55,19 +55,19 @@ fun PocketSegmented(
     ) {
         options.forEachIndexed { index, option ->
             val selected = index == selectedIndex
-            val labelColor = when {
-                !selected -> colors.text3
-                option.tone == SegmentTone.INCOME -> colors.income
-                option.tone == SegmentTone.EXPENSE -> colors.expense
-                option.tone == SegmentTone.WARN -> colors.warn
-                else -> colors.text
+            val labelColor = run {
+                if (!selected) return@run colors.text3
+                if (option.tone == SegmentTone.INCOME) return@run colors.income
+                if (option.tone == SegmentTone.EXPENSE) return@run colors.expense
+                if (option.tone == SegmentTone.WARN) return@run colors.warn
+                colors.text
             }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 40.dp)
-                    .then(if (selected) Modifier.pocketCardShadow(segShape) else Modifier)
-                    .background(if (selected) colors.surface else Color.Transparent, segShape)
+                    .then(run { if (selected) return@run Modifier.pocketCardShadow(segShape); Modifier })
+                    .background(colors.surface.takeIf { selected } ?: Color.Transparent, segShape)
                     .clickable(
                         interactionSource = remember(index) { MutableInteractionSource() },
                         indication = null,

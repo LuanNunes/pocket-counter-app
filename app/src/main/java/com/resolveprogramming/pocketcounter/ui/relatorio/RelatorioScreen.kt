@@ -104,8 +104,8 @@ fun RelatorioScreen(
                         SegmentOption("Despesas", SegmentTone.EXPENSE),
                         SegmentOption("Receitas", SegmentTone.INCOME),
                     ),
-                    selectedIndex = if (isExpense) 0 else 1,
-                    onSelect = { viewModel.setKind(if (it == 0) TransactionType.EXPENSE else TransactionType.INCOME) },
+                    selectedIndex = 0.takeIf { isExpense } ?: 1,
+                    onSelect = { index -> viewModel.setKind(TransactionType.EXPENSE.takeIf { index == 0 } ?: TransactionType.INCOME) },
                 )
             }
 
@@ -119,12 +119,12 @@ fun RelatorioScreen(
                 report == null -> item {
                     Text("Sem dados no período.", style = PocketTheme.typography.body, color = PocketTheme.colors.text3)
                 }
-                else -> {
+                report != null -> {
                     item { KpiGrid(report) }
                     item { ChartCard(report, isExpense, state.chartType, viewModel::setChartType) }
                     item { FluxoCard(report) }
                     item { SparkrowsCard(report, isExpense) }
-                    val series = if (isExpense) report.expSeries else report.incSeries
+                    val series = report.expSeries.takeIf { isExpense } ?: report.incSeries
                     item { DetailHeader(isExpense, state.detailMode, viewModel::setDetailMode) }
                     when (state.detailMode) {
                         ReportDetailMode.CARTOES -> {
@@ -151,7 +151,7 @@ private fun KpiGrid(report: ReportData) {
             KpiTile("Receitas", k.inc, PocketTheme.colors.income, Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            KpiTile("Saldo", k.saldo, if (k.saldo.signum() < 0) PocketTheme.colors.expense else PocketTheme.colors.income, Modifier.weight(1f), showSign = true)
+            KpiTile("Saldo", k.saldo, PocketTheme.colors.expense.takeIf { k.saldo.signum() < 0 } ?: PocketTheme.colors.income, Modifier.weight(1f), showSign = true)
             KpiTile("Meses", null, PocketTheme.colors.text, Modifier.weight(1f), rawValue = "${k.months}")
         }
     }
@@ -183,7 +183,8 @@ private fun KpiTile(
                     maxLines = 1,
                     softWrap = false,
                 )
-            } else {
+            }
+            if (amount == null) {
                 Text(rawValue.orEmpty(), style = valueStyle, color = color, maxLines = 1, softWrap = false)
             }
             if (sub != null) {
@@ -201,18 +202,20 @@ private fun ChartCard(
     chartType: ReportChartType,
     onChartType: (ReportChartType) -> Unit,
 ) {
-    val series = if (isExpense) report.expSeries else report.incSeries
+    val series = report.expSeries.takeIf { isExpense } ?: report.incSeries
     val labels = report.months.map { it.label }
     PocketCard(modifier = Modifier.fillMaxWidth()) {
         Column {
+            val kindWord = "Despesas".takeIf { isExpense } ?: "Receitas"
+            val groupWord = "contexto".takeIf { isExpense } ?: "categoria de renda"
             Text(
-                "${if (isExpense) "Despesas" else "Receitas"} por ${if (isExpense) "contexto" else "categoria de renda"}",
+                "$kindWord por $groupWord",
                 style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                 color = PocketTheme.colors.text,
             )
             Spacer(Modifier.height(10.dp))
             val chipTypes = listOf(ReportChartType.BARS, ReportChartType.LINES, ReportChartType.PIE)
-            val activeChipType = if (chartType == ReportChartType.AREA) ReportChartType.BARS else chartType
+            val activeChipType = ReportChartType.BARS.takeIf { chartType == ReportChartType.AREA } ?: chartType
             PocketSegmented(
                 options = listOf(SegmentOption("Barras"), SegmentOption("Linhas"), SegmentOption("Pizza")),
                 selectedIndex = chipTypes.indexOf(activeChipType).coerceAtLeast(0),
@@ -223,7 +226,7 @@ private fun ChartCard(
                 ReportChartType.BARS -> StackedMonthlyBars(labels, series)
                 ReportChartType.AREA -> AreaChart(labels, series)
                 ReportChartType.LINES -> LinesChart(labels, series)
-                ReportChartType.PIE -> ReportDonut(series, centerLabel = money(if (isExpense) report.kpis.exp else report.kpis.inc))
+                ReportChartType.PIE -> ReportDonut(series, centerLabel = money(report.kpis.exp.takeIf { isExpense } ?: report.kpis.inc))
             }
             if (chartType != ReportChartType.PIE) Legend(series)
         }
@@ -256,12 +259,12 @@ private fun LegendDot(label: String, color: Color) {
 
 @Composable
 private fun SparkrowsCard(report: ReportData, isExpense: Boolean) {
-    val opposite = if (isExpense) report.incSeries else report.expSeries
+    val opposite = report.incSeries.takeIf { isExpense } ?: report.expSeries
     if (opposite.isEmpty()) return
     PocketCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                if (isExpense) "Receitas por categoria" else "Despesas por contexto",
+                "Receitas por categoria".takeIf { isExpense } ?: "Despesas por contexto",
                 style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                 color = PocketTheme.colors.text,
             )
@@ -285,7 +288,7 @@ private fun DetailHeader(isExpense: Boolean, mode: ReportDetailMode, onMode: (Re
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            "Detalhe por ${if (isExpense) "contexto" else "categoria de renda"}",
+            "Detalhe por ${"contexto".takeIf { isExpense } ?: "categoria de renda"}",
             style = PocketTheme.typography.sectionHeader,
             color = PocketTheme.colors.text3,
         )
@@ -311,7 +314,7 @@ private fun DetailTable(report: ReportData, series: List<ReportSeries>, isExpens
         Row {
             // Pinned group column.
             Column {
-                Cell(if (isExpense) "Contexto" else "Categoria", nameW, rowH, header = true)
+                Cell("Contexto".takeIf { isExpense } ?: "Categoria", nameW, rowH, header = true)
                 series.forEach { Cell(it.name, nameW, rowH) }
                 Cell("Total", nameW, rowH, bold = true)
             }
@@ -333,7 +336,7 @@ private fun DetailTable(report: ReportData, series: List<ReportSeries>, isExpens
                     }
                 }
                 Row {
-                    months.forEach { Cell(num(if (isExpense) it.exp else it.inc), colW, rowH, end = true, mono = true, bold = true) }
+                    months.forEach { m -> Cell(num(m.exp.takeIf { isExpense } ?: m.inc), colW, rowH, end = true, mono = true, bold = true) }
                     Cell("", colW, rowH)
                     Cell(num(totalAll), colW, rowH, end = true, mono = true, bold = true)
                     Cell("100%", pctW, rowH, end = true, mono = true)
@@ -355,17 +358,17 @@ private fun Cell(
 ) {
     Box(
         modifier = Modifier.width(width).height(height).padding(horizontal = 8.dp),
-        contentAlignment = if (end) Alignment.CenterEnd else Alignment.CenterStart,
+        contentAlignment = Alignment.CenterEnd.takeIf { end } ?: Alignment.CenterStart,
     ) {
-        val style = when {
-            header -> PocketTheme.typography.label
-            mono -> PocketTheme.typography.monoSm
-            else -> PocketTheme.typography.bodySm
+        val style = run {
+            if (header) return@run PocketTheme.typography.label
+            if (mono) return@run PocketTheme.typography.monoSm
+            PocketTheme.typography.bodySm
         }
         Text(
             text,
-            style = if (bold) style.copy(fontWeight = FontWeight.SemiBold) else style,
-            color = if (header) PocketTheme.colors.text3 else PocketTheme.colors.text2,
+            style = style.copy(fontWeight = FontWeight.SemiBold).takeIf { bold } ?: style,
+            color = PocketTheme.colors.text3.takeIf { header } ?: PocketTheme.colors.text2,
             maxLines = 1,
         )
     }
@@ -383,7 +386,7 @@ private fun SeriesCard(series: ReportSeries, maxTotal: BigDecimal, isExpense: Bo
                 AmountText(amount = series.total, style = PocketTheme.typography.monoSm, color = PocketTheme.colors.text)
             }
             Spacer(Modifier.height(8.dp))
-            val frac = if (maxTotal.signum() > 0) series.total.toFloat() / maxTotal.toFloat() else 0f
+            val frac = (series.total.toFloat() / maxTotal.toFloat()).takeIf { maxTotal.signum() > 0 } ?: 0f
             ProportionBar(fraction = frac, color = Color(series.color))
         }
     }
@@ -391,15 +394,14 @@ private fun SeriesCard(series: ReportSeries, maxTotal: BigDecimal, isExpense: Bo
 
 @Composable
 private fun DeltaBadge(delta: Float?, isExpense: Boolean) {
-    val (text, color) = when {
-        delta == null -> "novo" to PocketTheme.colors.text3
-        abs(delta) < 0.005f -> "—" to PocketTheme.colors.text3
-        else -> {
-            val up = delta > 0
-            val good = if (isExpense) !up else up // for expense, up is bad
-            val arrow = if (up) "▲" else "▼"
-            "$arrow ${(abs(delta) * 100).toInt()}%" to if (good) PocketTheme.colors.income else PocketTheme.colors.expense
-        }
+    val (text, color) = run {
+        if (delta == null) return@run "novo" to PocketTheme.colors.text3
+        if (abs(delta) < 0.005f) return@run "—" to PocketTheme.colors.text3
+        val up = delta > 0
+        val good = (!up).takeIf { isExpense } ?: up // for expense, up is bad
+        val arrow = "▲".takeIf { up } ?: "▼"
+        val deltaColor = PocketTheme.colors.income.takeIf { good } ?: PocketTheme.colors.expense
+        "$arrow ${(abs(delta) * 100).toInt()}%" to deltaColor
     }
     Text(text, style = PocketTheme.typography.bodyXs, color = color)
 }
@@ -416,7 +418,7 @@ private val numberFmt = java.text.NumberFormat.getNumberInstance(java.util.Local
 private fun num(value: BigDecimal): String = numberFmt.format(value)
 
 private fun pct(part: BigDecimal, whole: BigDecimal): String =
-    if (whole.signum() > 0) "${(part.toFloat() / whole.toFloat() * 100).toInt()}%" else "—"
+    "${(part.toFloat() / whole.toFloat() * 100).toInt()}%".takeIf { whole.signum() > 0 } ?: "—"
 
 private fun exportReportCsv(
     context: android.content.Context,

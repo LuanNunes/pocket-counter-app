@@ -36,7 +36,10 @@ class RetrofitTransactionRepository @Inject constructor(
     override suspend fun save(draft: WizardDraft): Result<String> = runCatching {
         val type = draft.type ?: error("Type is required")
         val dto = draft.toDto()
-        if (type == TransactionType.INCOME) api.addIncome(dto) else api.addExpense(dto)
+        run {
+            if (type == TransactionType.INCOME) return@run api.addIncome(dto)
+            api.addExpense(dto)
+        }
     }
 
     override suspend fun update(transactionId: String, draft: WizardDraft): Result<String> = runCatching {
@@ -47,7 +50,10 @@ class RetrofitTransactionRepository @Inject constructor(
         // Fetch the existing DTO and copy only its tags, so description/currency/FX/displayOrder
         // survive a tag-only edit (the backend update copies those verbatim from the body).
         val ref = RemoteMappers.refYearMonth(item.date)
-        val existing = if (item.type == TransactionType.INCOME) api.getIncomes(ref) else api.getExpenses(ref)
+        val existing = run {
+            if (item.type == TransactionType.INCOME) return@run api.getIncomes(ref)
+            api.getExpenses(ref)
+        }
         val dto = existing.firstOrNull { it.id == item.id } ?: error("Transaction ${item.id} not found")
         // null = inherit (clears override); non-null = override with these tags.
         val updated = dto.copy(tags = tagIds?.map { TagDto(id = it, name = "") })
@@ -80,12 +86,12 @@ class RetrofitTransactionRepository @Inject constructor(
         // linkage (idSeries). The WizardViewModel creates/links the recurring series after a
         // successful save. The new backend has no isFixo column.
         return TransactionDto(
-            transactionType = if (type == TransactionType.INCOME) "INCOME" else "EXPENSE",
+            transactionType = "INCOME".takeIf { type == TransactionType.INCOME } ?: "EXPENSE",
             amount = amount,
-            statusPayment = if (isPaid) "PAID" else "PENDING",
+            statusPayment = "PAID".takeIf { isPaid } ?: "PENDING",
             refYearMonth = RemoteMappers.refYearMonth(date),
             dateDue = date.toString(),
-            datePaid = if (isPaid) date.toString() else null,
+            datePaid = date.toString().takeIf { isPaid },
             tags = tagIds.map { TagDto(id = it, name = "") },
             // Preserve manual sort position across edits (0 for new rows).
             displayOrder = displayOrder,

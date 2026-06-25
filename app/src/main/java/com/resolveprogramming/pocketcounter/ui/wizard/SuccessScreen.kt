@@ -69,7 +69,7 @@ fun SuccessScreen(
     val cardName = draft.cardId?.let { id -> cards.find { it.id == id }?.name }
     val paymentLabel = draft.paymentMethod?.let { method ->
         val base = method.label()
-        if (cardName != null) "$base · $cardName" else base
+        "$base · $cardName".takeIf { cardName != null } ?: base
     } ?: "—"
     val selectedTags = allTags.filter { it.id in draft.tagIds }
     val contextMap = contexts.associateBy { it.id }
@@ -109,7 +109,8 @@ fun SuccessScreen(
                     if (checkProgress.value <= 0.5f) {
                         val t = checkProgress.value / 0.5f
                         drawLine(accentColor, start, Offset(start.x + (mid.x - start.x) * t, start.y + (mid.y - start.y) * t), stroke.width, StrokeCap.Round)
-                    } else {
+                    }
+                    if (checkProgress.value > 0.5f) {
                         drawLine(accentColor, start, mid, stroke.width, StrokeCap.Round)
                         val t = (checkProgress.value - 0.5f) / 0.5f
                         drawLine(accentColor, mid, Offset(mid.x + (end.x - mid.x) * t, mid.y + (end.y - mid.y) * t), stroke.width, StrokeCap.Round)
@@ -120,7 +121,7 @@ fun SuccessScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        val title = if (draft.statusPayment == PaymentStatus.PAID) "Transação salva" else "Transação agendada"
+        val title = "Transação salva".takeIf { draft.statusPayment == PaymentStatus.PAID } ?: "Transação agendada"
         Text(
             text = title,
             style = PocketTheme.typography.stepQuestion,
@@ -141,9 +142,9 @@ fun SuccessScreen(
 
         PocketCard(modifier = Modifier.fillMaxWidth()) {
             Column {
-                SummaryRow("Tipo", if (draft.type == TransactionType.EXPENSE) "Despesa ↑" else "Receita ↓")
+                SummaryRow("Tipo", "Despesa ↑".takeIf { draft.type == TransactionType.EXPENSE } ?: "Receita ↓")
                 SummaryDivider()
-                SummaryRow("Status", if (draft.statusPayment == PaymentStatus.PAID) "Efetuada" else "Pendente")
+                SummaryRow("Status", "Efetuada".takeIf { draft.statusPayment == PaymentStatus.PAID } ?: "Pendente")
                 SummaryDivider()
                 SummaryRow("Data", draft.date?.format(dateFormatter) ?: "—")
                 SummaryDivider()
@@ -298,21 +299,19 @@ fun WizardButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val bg = when {
-        !enabled -> PocketTheme.colors.accent.copy(alpha = 0.4f)
-        isPrimary -> PocketTheme.colors.accent
-        else -> PocketTheme.colors.surface
+    val bg = run {
+        if (!enabled) return@run PocketTheme.colors.accent.copy(alpha = 0.4f)
+        if (isPrimary) return@run PocketTheme.colors.accent
+        PocketTheme.colors.surface
     }
-    val textColor = when {
-        isPrimary -> PocketTheme.colors.accentInk
-        else -> PocketTheme.colors.text
-    }
+    val textColor = PocketTheme.colors.accentInk.takeIf { isPrimary } ?: PocketTheme.colors.text
     // The non-primary ("Ver transação") button reads as a soft surface tile with a line border.
-    val surfaceMod = if (!isPrimary) {
-        Modifier
-            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
-            .background(bg, PocketTheme.shapes.chip)
-    } else {
+    val surfaceMod = run {
+        if (!isPrimary) {
+            return@run Modifier
+                .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
+                .background(bg, PocketTheme.shapes.chip)
+        }
         Modifier.background(bg, PocketTheme.shapes.chip)
     }
 
@@ -320,7 +319,7 @@ fun WizardButton(
         modifier = modifier
             .then(surfaceMod)
             .then(
-                if (enabled) Modifier.clickable(onClick = onClick) else Modifier
+                Modifier.clickable(onClick = onClick).takeIf { enabled } ?: Modifier
             )
             .padding(vertical = 14.dp),
         contentAlignment = Alignment.Center,

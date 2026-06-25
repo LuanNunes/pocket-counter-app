@@ -5,6 +5,18 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.detekt)
+}
+
+detekt {
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    // Only PocketCounter's custom rules run; detekt's built-in rulesets stay off.
+    disableDefaultRuleSets = true
+    buildUponDefaultConfig = false
+}
+
+dependencies {
+    detektPlugins(project(":detekt-rules"))
 }
 
 android {

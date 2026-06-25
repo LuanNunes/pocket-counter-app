@@ -64,9 +64,10 @@ fun SquareIconButton(
             .background(PocketTheme.colors.surface, PocketTheme.shapes.icon)
             .clickable(enabled = enabled, onClick = onClick)
             .then(
-                if (contentDescription != null) {
-                    Modifier.semantics { this.contentDescription = contentDescription }
-                } else {
+                run {
+                    if (contentDescription != null) {
+                        return@run Modifier.semantics { this.contentDescription = contentDescription }
+                    }
                     Modifier
                 },
             ),
@@ -75,7 +76,7 @@ fun SquareIconButton(
         Text(
             glyph,
             style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = if (enabled) PocketTheme.colors.text else PocketTheme.colors.text3,
+            color = PocketTheme.colors.text.takeIf { enabled } ?: PocketTheme.colors.text3,
         )
     }
 }

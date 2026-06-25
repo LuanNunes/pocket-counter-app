@@ -30,16 +30,17 @@ fun StepType(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
-        val questionText = if (suggestedType != null) {
-            val typeName = if (suggestedType == TransactionType.EXPENSE) "despesa" else "receita"
-            buildAnnotatedString {
-                append("O texto parece indicar uma\n")
-                withStyle(SpanStyle(color = PocketTheme.colors.accent, fontWeight = FontWeight.Bold)) {
-                    append(typeName)
+        val questionText = run {
+            if (suggestedType != null) {
+                val typeName = "receita".takeIf { suggestedType == TransactionType.INCOME } ?: "despesa"
+                return@run buildAnnotatedString {
+                    append("O texto parece indicar uma\n")
+                    withStyle(SpanStyle(color = PocketTheme.colors.accent, fontWeight = FontWeight.Bold)) {
+                        append(typeName)
+                    }
+                    append(". Confirma?")
                 }
-                append(". Confirma?")
             }
-        } else {
             buildAnnotatedString {
                 append("Não consegui identificar o tipo. ")
                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
@@ -89,8 +90,8 @@ private fun TypeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
-    val bgColor = if (isSelected) PocketTheme.colors.accentBg else PocketTheme.colors.surface
+    val borderColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
+    val bgColor = PocketTheme.colors.accentBg.takeIf { isSelected } ?: PocketTheme.colors.surface
 
     Column(
         modifier = modifier

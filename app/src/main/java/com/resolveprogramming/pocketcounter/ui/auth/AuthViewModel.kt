@@ -70,28 +70,33 @@ class AuthViewModel @Inject constructor(
         _state.update { it.copy(isLoading = true, errorMessage = null) }
 
         viewModelScope.launch {
-            val result = if (current.isRegisterMode) {
-                authRepository.register(current.name, current.email, current.password)
-            } else {
+            val result = run {
+                if (current.isRegisterMode) {
+                    return@run authRepository.register(current.name, current.email, current.password)
+                }
                 authRepository.login(current.email, current.password)
             }
 
             result.fold(
                 onSuccess = { /* navigation handled by isLoggedIn flow */ },
                 onFailure = { error ->
-                    val message = when (val authError = (error as? AuthException)?.error) {
-                        is AuthError.Api -> when (authError.code) {
-                            "UNAUTHORIZED" -> "E-mail ou senha incorretos"
-                            "CONFLICT" -> "Este e-mail já está cadastrado"
-                            "VALIDATION_ERROR" -> authError.details.firstOrNull() ?: authError.message
-                            else -> authError.message
-                        }
-                        is AuthError.Network -> "Sem conexão com o servidor"
-                        else -> "Erro inesperado"
-                    }
-                    _state.update { it.copy(isLoading = false, errorMessage = message) }
+                    _state.update { it.copy(isLoading = false, errorMessage = mapAuthError(error)) }
                 },
             )
         }
     }
+
+    private fun mapAuthError(error: Throwable): String =
+        when (val authError = (error as? AuthException)?.error) {
+            is AuthError.Api -> run {
+                when (authError.code) {
+                    "UNAUTHORIZED" -> return@run "E-mail ou senha incorretos"
+                    "CONFLICT" -> return@run "Este e-mail já está cadastrado"
+                    "VALIDATION_ERROR" -> return@run authError.details.firstOrNull() ?: authError.message
+                }
+                authError.message
+            }
+            is AuthError.Network -> "Sem conexão com o servidor"
+            null -> "Erro inesperado"
+        }
 }

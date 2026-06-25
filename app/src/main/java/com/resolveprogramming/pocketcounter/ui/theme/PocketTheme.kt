@@ -39,9 +39,9 @@ fun PocketTheme(
     density: PocketDensity = PocketDensity.COMFORTABLE,
     content: @Composable () -> Unit,
 ) {
-    val colors = if (darkTheme) DarkPocketColors else LightPocketColors
+    val colors = DarkPocketColors.takeIf { darkTheme } ?: LightPocketColors
     val spacing = spacingFor(density)
-    val m3Scheme = if (darkTheme) darkScheme(colors) else lightScheme(colors)
+    val m3Scheme = darkScheme(colors).takeIf { darkTheme } ?: lightScheme(colors)
 
     val context = LocalContext.current
     val reducedMotion = remember(context) {

@@ -32,27 +32,26 @@ data class WizardDraft(
 
     fun isStep4Valid(): Boolean = true
 
-    fun withPaymentMethod(method: PaymentMethod?): WizardDraft =
-        if (method == PaymentMethod.CREDIT && type == TransactionType.INCOME) {
-            this
-        } else {
-            copy(
-                paymentMethod = method,
-                cardId = if (method == PaymentMethod.CREDIT) cardId else null,
-            )
-        }
+    fun withPaymentMethod(method: PaymentMethod?): WizardDraft {
+        if (method == PaymentMethod.CREDIT && type == TransactionType.INCOME) return this
+        return copy(
+            paymentMethod = method,
+            cardId = cardId.takeIf { method == PaymentMethod.CREDIT },
+        )
+    }
 
-    fun withTagToggled(tagId: String): WizardDraft =
-        if (tagId in tagIds) copy(tagIds = tagIds - tagId)
-        else copy(tagIds = tagIds + tagId)
+    fun withTagToggled(tagId: String): WizardDraft {
+        if (tagId in tagIds) return copy(tagIds = tagIds - tagId)
+        return copy(tagIds = tagIds + tagId)
+    }
 
     /** Sets the type, dropping a credit payment that an income can't hold (mirrors [withPaymentMethod]). */
-    fun withType(type: TransactionType): WizardDraft =
+    fun withType(type: TransactionType): WizardDraft {
         if (type == TransactionType.INCOME && paymentMethod == PaymentMethod.CREDIT) {
-            copy(type = type, paymentMethod = null, cardId = null)
-        } else {
-            copy(type = type)
+            return copy(type = type, paymentMethod = null, cardId = null)
         }
+        return copy(type = type)
+    }
 
     companion object {
         fun fromNotification(
@@ -72,11 +71,10 @@ data class WizardDraft(
             // Route the suggested method through the credit guard so an income+CREDIT
             // suggestion can't yield a credit draft; keep cardId only when it survives.
             val withMethod = base.withPaymentMethod(notification.suggestions.paymentMethod)
-            return if (withMethod.paymentMethod == PaymentMethod.CREDIT) {
-                withMethod.copy(cardId = notification.suggestions.cardId)
-            } else {
-                withMethod
+            if (withMethod.paymentMethod == PaymentMethod.CREDIT) {
+                return withMethod.copy(cardId = notification.suggestions.cardId)
             }
+            return withMethod
         }
     }
 }

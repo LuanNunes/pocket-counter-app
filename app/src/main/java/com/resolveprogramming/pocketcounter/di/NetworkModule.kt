@@ -45,8 +45,8 @@ object NetworkModule {
         .addInterceptor(authInterceptor)
         .addInterceptor(
             HttpLoggingInterceptor().apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY
-                else HttpLoggingInterceptor.Level.NONE
+                level = HttpLoggingInterceptor.Level.BODY.takeIf { BuildConfig.DEBUG }
+                    ?: HttpLoggingInterceptor.Level.NONE
             },
         )
         .authenticator(tokenAuthenticator)

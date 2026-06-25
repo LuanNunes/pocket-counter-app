@@ -81,9 +81,10 @@ fun seriesFrom(
         val total = vals.fold(BigDecimal.ZERO, BigDecimal::add)
         val prev = vals.getOrNull(vals.size - 2) ?: BigDecimal.ZERO
         val last = vals.lastOrNull() ?: BigDecimal.ZERO
-        val delta = if (prev > BigDecimal.ONE) {
-            last.subtract(prev).divide(prev, 4, java.math.RoundingMode.HALF_UP).toFloat()
-        } else {
+        val delta = run {
+            if (prev > BigDecimal.ONE) {
+                return@run last.subtract(prev).divide(prev, 4, java.math.RoundingMode.HALF_UP).toFloat()
+            }
             null
         }
         ReportSeries(id, nameColor.first, nameColor.second, vals, total, delta)

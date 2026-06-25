@@ -63,10 +63,13 @@ class MainActivity : ComponentActivity() {
      * the ingestor's relevance gate.
      */
     private fun handleSharedText(intent: Intent?) {
-        val text = when (intent?.action) {
-            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
-            Intent.ACTION_PROCESS_TEXT -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
-            else -> null
+        val text = run {
+            when (intent?.action) {
+                Intent.ACTION_SEND -> return@run intent.getStringExtra(Intent.EXTRA_TEXT)
+                Intent.ACTION_PROCESS_TEXT ->
+                    return@run intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            }
+            null
         }?.trim()
         if (!text.isNullOrBlank()) {
             ingestor.submit(

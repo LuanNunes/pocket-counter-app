@@ -110,7 +110,8 @@ fun StepPayment(
                             color = PocketTheme.colors.text3,
                         )
                     }
-                } else {
+                }
+                if (cards.isNotEmpty()) {
                     cards.forEach { card ->
                         CardRow(
                             card = card,
@@ -131,9 +132,9 @@ private fun MethodChip(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
-    val bgColor = if (isSelected) PocketTheme.colors.accentBg else PocketTheme.colors.surface
-    val inkColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.text
+    val borderColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
+    val bgColor = PocketTheme.colors.accentBg.takeIf { isSelected } ?: PocketTheme.colors.surface
+    val inkColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.text
 
     Row(
         modifier = Modifier
@@ -164,8 +165,8 @@ private fun CardRow(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
-    val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
-    val bgColor = if (isSelected) PocketTheme.colors.accentBg else PocketTheme.colors.surface
+    val borderColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
+    val bgColor = PocketTheme.colors.accentBg.takeIf { isSelected } ?: PocketTheme.colors.surface
 
     Row(
         modifier = Modifier

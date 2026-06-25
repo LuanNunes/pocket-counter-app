@@ -44,9 +44,12 @@ fun ColorSwatchPicker(
                     modifier = Modifier
                         .size(32.dp)
                         .then(
-                            if (isSelected) {
-                                Modifier.border(2.dp, PocketTheme.colors.text, CircleShape).padding(3.dp)
-                            } else {
+                            run {
+                                if (isSelected) {
+                                    return@run Modifier
+                                        .border(2.dp, PocketTheme.colors.text, CircleShape)
+                                        .padding(3.dp)
+                                }
                                 Modifier
                             },
                         )

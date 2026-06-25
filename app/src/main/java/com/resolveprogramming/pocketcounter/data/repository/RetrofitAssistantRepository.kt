@@ -21,12 +21,14 @@ class RetrofitAssistantRepository @Inject constructor(
                 AssistantAnswer(markdown = res.answer, elapsedMs = res.elapsedMs, remaining = res.remainingQuestions),
             )
         } catch (e: HttpException) {
-            when (e.code()) {
-                400 -> AssistantResult.Validation("Não consegui entender. Reformule a pergunta (máx. 500 caracteres).")
-                429 -> AssistantResult.QuotaExhausted
-                503 -> AssistantResult.Unavailable
+            run {
+                when (e.code()) {
+                    400 -> return@run AssistantResult.Validation("Não consegui entender. Reformule a pergunta (máx. 500 caracteres).")
+                    429 -> return@run AssistantResult.QuotaExhausted
+                    503 -> return@run AssistantResult.Unavailable
+                }
                 // 401 (token refresh exhausted) and other 5xx fall here intentionally.
-                else -> AssistantResult.ServerError
+                AssistantResult.ServerError
             }
         } catch (e: IOException) {
             AssistantResult.ServerError

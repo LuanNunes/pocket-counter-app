@@ -165,7 +165,7 @@ class TransacoesViewModel @Inject constructor(
     fun toggleSearch() {
         _state.update { s ->
             val open = !s.searchOpen
-            s.copy(searchOpen = open, query = if (open) s.query else "").recomputed()
+            s.copy(searchOpen = open, query = s.query.takeIf { open } ?: "").recomputed()
         }
     }
 
@@ -181,6 +181,11 @@ class TransacoesViewModel @Inject constructor(
     fun toggleFixo(item: HistoryItem) {
         viewModelScope.launch {
             val seriesId = item.seriesId
+            if (seriesId != null) {
+                seriesRepository.unlinkTransaction(seriesId, item.id)
+                    .onSuccess { _state.update { it.copy(toastMessage = "Removido dos fixos") } }
+                    .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
+            }
             if (seriesId == null) {
                 val name = item.name?.takeIf { it.isNotBlank() }
                     ?: item.displayTitle().takeIf { it != "—" }
@@ -196,10 +201,6 @@ class TransacoesViewModel @Inject constructor(
                             .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
                     }
                     .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
-            } else {
-                seriesRepository.unlinkTransaction(seriesId, item.id)
-                    .onSuccess { _state.update { it.copy(toastMessage = "Removido dos fixos") } }
-                    .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
             }
             loadMonth()
         }
@@ -211,7 +212,8 @@ class TransacoesViewModel @Inject constructor(
 
     fun toggleGroupCollapsed(groupId: String) {
         _state.update {
-            val next = if (groupId in it.collapsedGroupIds) it.collapsedGroupIds - groupId else it.collapsedGroupIds + groupId
+            val collapsed = groupId in it.collapsedGroupIds
+            val next = (it.collapsedGroupIds - groupId).takeIf { collapsed } ?: (it.collapsedGroupIds + groupId)
             it.copy(collapsedGroupIds = next)
         }
     }
@@ -308,7 +310,7 @@ class TransacoesViewModel @Inject constructor(
             }
             result
                 .onSuccess {
-                    val msg = if (mode is FormMode.Edit) "Transação atualizada" else "Transação salva"
+                    val msg = "Transação atualizada".takeIf { mode is FormMode.Edit } ?: "Transação salva"
                     _state.update { it.copy(formMode = null, toastMessage = msg) }
                     loadMonth()
                 }
@@ -342,14 +344,13 @@ class TransacoesViewModel @Inject constructor(
     /** Recomputes dayGroups (LISTA) and ledgerGroups (CONTEXTO/TAG) from the filtered items. */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
         val searched = filterItems(items, query, tags)
-        val filtered = if (ledgerFilter == LedgerFilter.FIXOS) searched.filter { it.isFixo } else searched
+        val filtered = searched.filter { it.isFixo }.takeIf { ledgerFilter == LedgerFilter.FIXOS } ?: searched
         val days = filtered
             .groupBy { it.date }
             .toSortedMap(reverseOrder())
             .map { (date, dayItems) -> DayGroup(date = date, label = dayLabel(date), items = dayItems) }
-        val ledger = if (groupMode == GroupMode.LISTA) {
-            emptyList()
-        } else {
+        val ledger = run {
+            if (groupMode == GroupMode.LISTA) return@run emptyList()
             groupLedger(filtered, groupMode, tags, contexts, CuratedPalette.argb)
         }
         return copy(dayGroups = days, ledgerGroups = ledger, fixoCount = items.count { it.isFixo })
@@ -377,13 +378,11 @@ class TransacoesViewModel @Inject constructor(
 
     private fun dayLabel(date: LocalDate): String {
         val today = LocalDate.now()
-        return when (date) {
-            today -> "Hoje"
-            today.minusDays(1) -> "Ontem"
-            else -> {
-                val month = date.month.getDisplayName(TextStyle.SHORT, ptBr).trimEnd('.').lowercase(ptBr)
-                "%02d %s".format(date.dayOfMonth, month)
-            }
+        return run {
+            if (date == today) return@run "Hoje"
+            if (date == today.minusDays(1)) return@run "Ontem"
+            val month = date.month.getDisplayName(TextStyle.SHORT, ptBr).trimEnd('.').lowercase(ptBr)
+            "%02d %s".format(date.dayOfMonth, month)
         }
     }
 

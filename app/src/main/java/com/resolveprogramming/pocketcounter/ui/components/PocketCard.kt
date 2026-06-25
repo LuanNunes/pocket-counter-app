@@ -24,11 +24,10 @@ fun PocketCard(
     val shape = PocketTheme.shapes.card
     Box(
         modifier = modifier
-            .then(if (elevated) Modifier.pocketCardShadow(shape) else Modifier)
+            .then(run { if (elevated) return@run Modifier.pocketCardShadow(shape); Modifier })
             .then(
-                if (borderColor != null) {
-                    Modifier.border(1.dp, borderColor, shape)
-                } else {
+                run {
+                    if (borderColor != null) return@run Modifier.border(1.dp, borderColor, shape)
                     Modifier
                 }
             )
