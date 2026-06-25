@@ -32,8 +32,23 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+        // Same OAuth Web client ID across environments.
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"387853581038-tu9fjbge0rjqfraf168n4ovt6iq34jsv.apps.googleusercontent.com\"")
+    }
+
+    flavorDimensions += "environment"
+    productFlavors {
+        // Emulator → host loopback. Requires the backend running locally and the
+        // cleartext allow-list in network_security_config.xml (10.0.2.2 / localhost).
+        create("local") {
+            dimension = "environment"
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+        }
+        // Shared dev backend over HTTPS — works on physical devices.
+        create("dev") {
+            dimension = "environment"
+            buildConfigField("String", "API_BASE_URL", "\"https://api-dev.pocket-counter.com/\"")
+        }
     }
 
     buildTypes {
