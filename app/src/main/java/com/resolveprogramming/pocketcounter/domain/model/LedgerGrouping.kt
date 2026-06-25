@@ -4,6 +4,8 @@ import java.math.BigDecimal
 
 enum class GroupMode { LISTA, CONTEXTO, TAG }
 
+enum class GroupSort { CONTEXT_ORDER, SUBTOTAL_DESC }
+
 /** A ledger section: despesas bucket by Contexto, receitas by categoria de renda (CONTEXTO), or by first tag (TAG). */
 data class LedgerGroup(
     val id: String,
@@ -26,6 +28,7 @@ fun groupLedger(
     tags: Map<String, Tag>,
     contexts: List<TagContext>,
     incomePalette: List<Long>,
+    expenseSort: GroupSort = GroupSort.CONTEXT_ORDER,
 ): List<LedgerGroup> {
     fun firstTagId(item: HistoryItem): String? =
         effectiveTagIds(item.tagIds, emptyList()).firstOrNull()
@@ -50,10 +53,14 @@ fun groupLedger(
             // Expenses by context, in context order, "Sem contexto" last.
             val byCtx = expenses.groupBy { rowContextId(it) }
             val ctxOrder = contexts.map { it.id } + NO_CTX
-            val expenseGroups = ctxOrder.mapNotNull { cid ->
+            val expenseGroupsOrdered = ctxOrder.mapNotNull { cid ->
                 val list = byCtx[cid] ?: return@mapNotNull null
                 val ctx = contexts.firstOrNull { it.id == cid }
-                LedgerGroup("ctx_$cid", ctx?.name ?: "Sem contexto", ctx?.color, list, subtotal(list), TransactionType.EXPENSE)
+                LedgerGroup("ctx_$cid", ctx?.name ?: "Sem categoria", ctx?.color, list, subtotal(list), TransactionType.EXPENSE)
+            }
+            val expenseGroups = when (expenseSort) {
+                GroupSort.CONTEXT_ORDER -> expenseGroupsOrdered
+                GroupSort.SUBTOTAL_DESC -> expenseGroupsOrdered.sortedByDescending { it.subtotal }
             }
 
             // Incomes by categoria de renda (the effective kind=INCOME tag), ordered by subtotal

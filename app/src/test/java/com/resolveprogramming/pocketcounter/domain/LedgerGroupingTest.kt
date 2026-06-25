@@ -1,6 +1,7 @@
 package com.resolveprogramming.pocketcounter.domain
 
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
+import com.resolveprogramming.pocketcounter.domain.model.GroupSort
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -42,9 +43,9 @@ class LedgerGroupingTest {
 
         val groups = groupLedger(items, GroupMode.CONTEXTO, tags, contexts, palette)
 
-        // Expense context groups first, in context order, Sem contexto last; then incomes by subtotal desc.
+        // Expense context groups first, in context order, Sem categoria last; then incomes by subtotal desc.
         assertEquals(
-            listOf("Alimentação", "Transporte", "Sem contexto", "Freela", "Salário"),
+            listOf("Alimentação", "Transporte", "Sem categoria", "Freela", "Salário"),
             groups.map { it.title },
         )
         assertEquals(BigDecimal("8000"), groups.first { it.title == "Freela" }.subtotal)
@@ -88,5 +89,39 @@ class LedgerGroupingTest {
     @Test
     fun `LISTA mode returns no ledger groups`() {
         assertEquals(emptyList<Any>(), groupLedger(emptyList(), GroupMode.LISTA, tags, contexts, palette))
+    }
+
+    @Test
+    fun `CONTEXTO SUBTOTAL_DESC sorts expense groups by subtotal descending`() {
+        val items = listOf(
+            expense("e1", "10", listOf("t1")),   // Alimentação subtotal = 10
+            expense("e2", "200", listOf("t2")),  // Transporte subtotal = 200
+            expense("e3", "5", null),            // Sem categoria subtotal = 5
+        )
+
+        val groups = groupLedger(
+            items, GroupMode.CONTEXTO, tags, contexts, palette,
+            expenseSort = GroupSort.SUBTOTAL_DESC,
+        ).filter { it.type == TransactionType.EXPENSE }
+
+        assertEquals(
+            listOf("Transporte", "Alimentação", "Sem categoria"),
+            groups.map { it.title },
+        )
+    }
+
+    @Test
+    fun `CONTEXTO CONTEXT_ORDER default preserves context-declaration order`() {
+        val items = listOf(
+            expense("e1", "10", listOf("t1")),   // Alimentação — context index 0
+            expense("e2", "200", listOf("t2")),  // Transporte — context index 1
+        )
+
+        val groups = groupLedger(
+            items, GroupMode.CONTEXTO, tags, contexts, palette,
+            expenseSort = GroupSort.CONTEXT_ORDER,
+        ).filter { it.type == TransactionType.EXPENSE }
+
+        assertEquals(listOf("Alimentação", "Transporte"), groups.map { it.title })
     }
 }
