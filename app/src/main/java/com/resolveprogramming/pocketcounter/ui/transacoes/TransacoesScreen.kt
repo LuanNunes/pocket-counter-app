@@ -124,11 +124,9 @@ fun TransacoesScreen(
 
                 GroupModeBar(mode = state.groupMode, onSelect = viewModel::setGroupMode)
 
-                val emptyForMode = if (state.groupMode == GroupMode.LISTA) {
-                    state.dayGroups.isEmpty()
-                } else {
-                    state.ledgerGroups.isEmpty()
-                }
+                val isLista = state.groupMode == GroupMode.LISTA
+                val emptyForMode = state.dayGroups.isEmpty().takeIf { isLista }
+                    ?: state.ledgerGroups.isEmpty()
                 when {
                     state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                         CircularProgressIndicator(color = PocketTheme.colors.accent)
@@ -144,14 +142,14 @@ fun TransacoesScreen(
                         month = state.monthLabel,
                     )
 
-                    state.groupMode == GroupMode.LISTA -> LedgerList(
+                    isLista -> LedgerList(
                         groups = state.dayGroups,
                         meta = { txMeta(it, state.cards, state.tags) },
                         onRowClick = viewModel::openDetail,
                         onTogglePin = viewModel::toggleFixo,
                     )
 
-                    else -> GroupedLedgerList(
+                    !isLista -> GroupedLedgerList(
                         groups = state.ledgerGroups,
                         collapsedIds = state.collapsedGroupIds,
                         canReorder = state.query.isBlank(),
@@ -275,17 +273,17 @@ private fun MonthStepperBar(
                     .size(36.dp)
                     .border(
                         1.dp,
-                        if (searchOpen) PocketTheme.colors.accent else PocketTheme.colors.line,
+                        PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.line,
                         PocketTheme.shapes.icon,
                     )
                     .background(
-                        if (searchOpen) PocketTheme.colors.accentBg else PocketTheme.colors.surface,
+                        PocketTheme.colors.accentBg.takeIf { searchOpen } ?: PocketTheme.colors.surface,
                         PocketTheme.shapes.icon,
                     )
                     .clickable(onClick = onToggleSearch),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("⌕", color = if (searchOpen) PocketTheme.colors.accent else PocketTheme.colors.text2)
+                Text("⌕", color = PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.text2)
             }
         }
     }
@@ -327,7 +325,7 @@ private fun TotalsStrip(
             label = "Saldo",
             amount = balance,
             // Saldo is signed: red when negative, green when positive (matches Relatório).
-            color = if (balance.signum() < 0) PocketTheme.colors.expense else PocketTheme.colors.income,
+            color = PocketTheme.colors.expense.takeIf { balance.signum() < 0 } ?: PocketTheme.colors.income,
             modifier = Modifier.weight(1f),
             showSign = true,
         )
@@ -431,17 +429,16 @@ private fun LedgerList(
 
 /** Secondary row line: payment method (card name for credit) + a tag preview — consistent with Home. */
 private fun txMeta(item: HistoryItem, cards: List<CreditCard>, tags: Map<String, Tag>): String {
-    val payment = if (item.paymentMethod == PaymentMethod.CREDIT) {
+    val payment = run {
+        if (item.paymentMethod != PaymentMethod.CREDIT) return@run item.paymentMethod?.label().orEmpty()
         val cardName = item.cardId?.let { id -> cards.firstOrNull { it.id == id }?.name }
-        if (cardName != null) "Cartão $cardName" else "Crédito"
-    } else {
-        item.paymentMethod?.label().orEmpty()
+        "Cartão $cardName".takeIf { cardName != null } ?: "Crédito"
     }
     val tagNames = item.tagIds.orEmpty().mapNotNull { tags[it]?.name }
-    val tagPreview = when {
-        tagNames.isEmpty() -> ""
-        tagNames.size == 1 -> tagNames.first()
-        else -> "${tagNames.first()} +${tagNames.size - 1}"
+    val tagPreview = run {
+        if (tagNames.isEmpty()) return@run ""
+        if (tagNames.size == 1) return@run tagNames.first()
+        "${tagNames.first()} +${tagNames.size - 1}"
     }
     return listOf(payment, tagPreview).filter { it.isNotBlank() }.joinToString(" · ")
 }
@@ -515,18 +512,18 @@ private fun PinToggle(pinned: Boolean, onToggle: () -> Unit) {
             .size(48.dp)
             .clickable(
                 role = Role.Switch,
-                onClickLabel = if (pinned) "Remover dos fixos" else "Marcar como fixo",
+                onClickLabel = "Remover dos fixos".takeIf { pinned } ?: "Marcar como fixo",
                 onClick = onToggle,
             )
             .semantics {
-                stateDescription = if (pinned) "Fixo" else "Avulso"
+                stateDescription = "Fixo".takeIf { pinned } ?: "Avulso"
             },
         contentAlignment = Alignment.Center,
     ) {
         Text(
             "↻",
             style = PocketTheme.typography.body,
-            color = if (pinned) PocketTheme.colors.accent else PocketTheme.colors.text3,
+            color = PocketTheme.colors.accent.takeIf { pinned } ?: PocketTheme.colors.text3,
         )
     }
 }
@@ -537,7 +534,7 @@ private fun LedgerFilterBar(
     fixoCount: Int,
     onSelect: (LedgerFilter) -> Unit,
 ) {
-    val fixosLabel = if (fixoCount > 0) "Fixos · $fixoCount" else "Fixos"
+    val fixosLabel = "Fixos · $fixoCount".takeIf { fixoCount > 0 } ?: "Fixos"
     val options = listOf(SegmentOption("Todos"), SegmentOption(fixosLabel))
     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
         PocketSegmented(
@@ -598,23 +595,27 @@ private fun GroupedLedgerList(
                 itemsIndexed(group.items, key = { _, it -> "${group.id}_${it.id}" }) { index, item ->
                     val dragging = item.id == dragId && group.id == dragGroupId
                     val groupActive = dragGroupId == group.id
-                    val target = if (groupActive) targetIndex(group.items.size) else -1
+                    val target = run {
+                        if (groupActive) return@run targetIndex(group.items.size)
+                        -1
+                    }
                     Column {
                         if (groupActive && !dragging && index == target) DropLine()
                         Row(
                             modifier = Modifier
                                 .onSizeChanged { if (dragId == null && it.height > 0) rowHeightPx = it.height.toFloat() }
                                 .then(
-                                    if (dragging) {
-                                        Modifier.zIndex(1f).graphicsLayer {
-                                            translationY = dragOffset
-                                            if (!reducedMotion) {
-                                                shadowElevation = 10f
-                                                scaleX = 1.02f
-                                                scaleY = 1.02f
+                                    run {
+                                        if (dragging) {
+                                            return@run Modifier.zIndex(1f).graphicsLayer {
+                                                translationY = dragOffset
+                                                if (!reducedMotion) {
+                                                    shadowElevation = 10f
+                                                    scaleX = 1.02f
+                                                    scaleY = 1.02f
+                                                }
                                             }
                                         }
-                                    } else {
                                         Modifier
                                     },
                                 ),
@@ -692,7 +693,7 @@ private fun GroupHeader(group: LedgerGroup, collapsed: Boolean, onClick: () -> U
             style = PocketTheme.typography.monoSm,
         )
         Spacer(Modifier.size(6.dp))
-        Text(if (collapsed) "▸" else "▾", color = PocketTheme.colors.text3)
+        Text("▸".takeIf { collapsed } ?: "▾", color = PocketTheme.colors.text3)
     }
 }
 
@@ -729,10 +730,10 @@ private fun DragHandle(
 private fun EmptyState(searching: Boolean, fixoEmpty: Boolean, month: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
         Text(
-            text = when {
-                searching -> "Nada encontrado"
-                fixoEmpty -> "Nenhum lançamento fixo neste mês."
-                else -> "Nenhuma transação em $month"
+            text = run {
+                if (searching) return@run "Nada encontrado"
+                if (fixoEmpty) return@run "Nenhum lançamento fixo neste mês."
+                "Nenhuma transação em $month"
             },
             style = PocketTheme.typography.body,
             color = PocketTheme.colors.text3,

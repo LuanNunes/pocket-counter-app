@@ -30,10 +30,10 @@ fun AmountText(
 
     val formatter = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
     val formatted = formatter.format(amount.abs())
-    val prefix = when {
-        showSign && amount < BigDecimal.ZERO -> "−  "
-        showSign && amount > BigDecimal.ZERO -> "+  "
-        else -> ""
+    val prefix = run {
+        if (showSign && amount < BigDecimal.ZERO) return@run "−  "
+        if (showSign && amount > BigDecimal.ZERO) return@run "+  "
+        ""
     }
 
     Text(

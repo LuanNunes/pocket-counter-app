@@ -70,7 +70,8 @@ fun AssistantScreen(
     LaunchedEffect(state.items.size, state.loadingPhase) {
         if (state.items.isNotEmpty()) {
             val target = state.items.size - 1
-            if (reducedMotion) listState.scrollToItem(target) else listState.animateScrollToItem(target)
+            if (reducedMotion) listState.scrollToItem(target)
+            if (!reducedMotion) listState.animateScrollToItem(target)
         }
     }
 
@@ -86,7 +87,7 @@ fun AssistantScreen(
                 Text("Assistente", style = PocketTheme.typography.screenH1, color = PocketTheme.colors.text)
                 state.remaining?.let { r ->
                     Text(
-                        if (r == 1) "1 pergunta restante hoje" else "$r perguntas restantes hoje",
+                        "1 pergunta restante hoje".takeIf { r == 1 } ?: "$r perguntas restantes hoje",
                         style = PocketTheme.typography.bodyXs,
                         color = PocketTheme.colors.text3,
                     )
@@ -177,10 +178,12 @@ private fun MessageItem(message: AssistantMessage, loadingPhase: Int, onRetry: (
         // Assistant card (left)
         when (message.status) {
             AssistantMessageStatus.LOADING -> PocketCard(modifier = Modifier.fillMaxWidth()) {
-                val phase = when (loadingPhase) {
-                    0 -> "Consultando seus dados…"
-                    1 -> "Analisando os resultados…"
-                    else -> "Escrevendo a resposta…"
+                val phase = run {
+                    when (loadingPhase) {
+                        0 -> return@run "Consultando seus dados…"
+                        1 -> return@run "Analisando os resultados…"
+                    }
+                    "Escrevendo a resposta…"
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Spinner()
@@ -223,7 +226,7 @@ private fun Spinner() {
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = if (reducedMotion) 2400 else 900, easing = LinearEasing),
+            animation = tween(durationMillis = 2400.takeIf { reducedMotion } ?: 900, easing = LinearEasing),
             repeatMode = RepeatMode.Restart,
         ),
         label = "assistant-spin",
@@ -256,7 +259,8 @@ private fun Composer(
         if (inlineError != null) {
             Text(inlineError, style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.expense)
             Spacer(Modifier.height(6.dp))
-        } else if (quotaExhausted) {
+        }
+        if (inlineError == null && quotaExhausted) {
             Text("Limite diário atingido — renova à meia-noite", style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.expense)
             Spacer(Modifier.height(6.dp))
         }
@@ -278,7 +282,7 @@ private fun Composer(
                     decorationBox = { inner ->
                         if (input.isEmpty()) {
                             Text(
-                                if (busy) "Analisando sua pergunta…" else "Pergunte algo…",
+                                "Analisando sua pergunta…".takeIf { busy } ?: "Pergunte algo…",
                                 style = PocketTheme.typography.body,
                                 color = PocketTheme.colors.text3,
                             )
@@ -290,7 +294,7 @@ private fun Composer(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .alpha(if (canSend) 1f else 0.35f)
+                    .alpha(1f.takeIf { canSend } ?: 0.35f)
                     .background(PocketTheme.colors.accent, PocketTheme.shapes.chip)
                     .clickable(enabled = canSend, onClick = onSend),
                 contentAlignment = Alignment.Center,
@@ -305,7 +309,7 @@ private fun Composer(
             Text(
                 "${input.length}/$ASSISTANT_MAX_CHARS",
                 style = PocketTheme.typography.bodyXs,
-                color = if (input.length >= ASSISTANT_MAX_CHARS) PocketTheme.colors.warn else PocketTheme.colors.text3,
+                color = PocketTheme.colors.warn.takeIf { input.length >= ASSISTANT_MAX_CHARS } ?: PocketTheme.colors.text3,
                 modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.End),
             )
         }

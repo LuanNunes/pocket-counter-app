@@ -5,6 +5,18 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.detekt)
+}
+
+detekt {
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    // Only PocketCounter's custom rules run; detekt's built-in rulesets stay off.
+    disableDefaultRuleSets = true
+    buildUponDefaultConfig = false
+}
+
+dependencies {
+    detektPlugins(project(":detekt-rules"))
 }
 
 android {
@@ -21,6 +33,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"387853581038-tu9fjbge0rjqfraf168n4ovt6iq34jsv.apps.googleusercontent.com\"")
     }
 
     buildTypes {
@@ -86,6 +99,11 @@ dependencies {
 
     // DataStore
     implementation(libs.datastore.preferences)
+
+    // Auth
+    implementation(libs.credentials)
+    implementation(libs.credentials.play.services.auth)
+    implementation(libs.googleid)
 
     // Core
     implementation(libs.core.ktx)

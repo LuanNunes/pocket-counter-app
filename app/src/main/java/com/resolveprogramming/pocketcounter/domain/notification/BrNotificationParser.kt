@@ -56,11 +56,9 @@ object BrNotificationParser {
             EXPENSE_WORDS.any { lower.containsWord(it) }
         val income = INCOME_PHRASES.any { lower.contains(it) } ||
             INCOME_WORDS.any { lower.containsWord(it) }
-        return when {
-            income && !expense -> TransactionType.INCOME
-            expense && !income -> TransactionType.EXPENSE
-            else -> null
-        }
+        if (income && !expense) return TransactionType.INCOME
+        if (expense && !income) return TransactionType.EXPENSE
+        return null
     }
 
     private fun parseInstallments(text: String): Int? {
@@ -97,7 +95,7 @@ object BrNotificationParser {
     private fun parseDate(text: String, now: LocalDate): LocalDate? {
         val match = DATE_REGEX.find(text) ?: return null
         val value = match.value
-        val formatter = if (match.groupValues[3].isNotEmpty()) DATE_FORMAT_FULL else shortDateFormat(now)
+        val formatter = DATE_FORMAT_FULL.takeIf { match.groupValues[3].isNotEmpty() } ?: shortDateFormat(now)
         return runCatching { LocalDate.parse(value, formatter) }.getOrNull()
     }
 

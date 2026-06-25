@@ -136,11 +136,10 @@ class WizardViewModel @Inject constructor(
         }
     }
 
-    private fun resolveStartStep(notification: NotificationItem): WizardStep =
-        when (notification.status) {
-            NotificationStatus.NEEDS_TAGS -> WizardStep.TAGS
-            else -> WizardStep.TYPE
-        }
+    private fun resolveStartStep(notification: NotificationItem): WizardStep {
+        if (notification.status == NotificationStatus.NEEDS_TAGS) return WizardStep.TAGS
+        return WizardStep.TYPE
+    }
 
     fun selectType(type: TransactionType) {
         _state.update { it.copy(draft = it.draft.withType(type)) }
@@ -161,12 +160,13 @@ class WizardViewModel @Inject constructor(
     fun toggleInstallments(enabled: Boolean) {
         _state.update { state ->
             val notification = state.notification
-            val draft = if (enabled && notification?.parsed?.installments != null) {
-                state.draft.copy(
-                    installments = notification.parsed.installments,
-                    installmentValue = notification.parsed.installmentValue,
-                )
-            } else {
+            val draft = run {
+                if (enabled && notification?.parsed?.installments != null) {
+                    return@run state.draft.copy(
+                        installments = notification.parsed.installments,
+                        installmentValue = notification.parsed.installmentValue,
+                    )
+                }
                 state.draft.copy(installments = null, installmentValue = null)
             }
             state.copy(draft = draft)
@@ -212,10 +212,10 @@ class WizardViewModel @Inject constructor(
     fun assignTokenRole(tokenIndex: Int, role: TokenRole) {
         _state.update { state ->
             val newTokens = state.tokens.mapIndexed { i, token ->
-                when {
-                    i == tokenIndex -> token.copy(role = role)
-                    token.role == role -> token.copy(role = null, value = null)
-                    else -> token
+                run {
+                    if (i == tokenIndex) return@run token.copy(role = role)
+                    if (token.role == role) return@run token.copy(role = null, value = null)
+                    token
                 }
             }
 
@@ -228,13 +228,19 @@ class WizardViewModel @Inject constructor(
         _state.update { state ->
             val removedRole = state.tokens.getOrNull(tokenIndex)?.role
             val newTokens = state.tokens.mapIndexed { i, token ->
-                if (i == tokenIndex) token.copy(role = null, value = null) else token
+                token.copy(role = null, value = null).takeIf { i == tokenIndex } ?: token
             }
-            val newDraft = when (removedRole) {
-                TokenRole.AMOUNT -> state.draft.copy(amount = null)
-                TokenRole.MERCHANT -> state.draft.copy(merchant = null)
-                TokenRole.DATE -> state.draft.copy(date = null)
-                else -> state.draft
+            val newDraft = run {
+                when (removedRole) {
+                    TokenRole.AMOUNT -> return@run state.draft.copy(amount = null)
+                    TokenRole.MERCHANT -> return@run state.draft.copy(merchant = null)
+                    TokenRole.DATE -> return@run state.draft.copy(date = null)
+                    TokenRole.TYPE -> Unit
+                    TokenRole.PAYMENT -> Unit
+                    TokenRole.INSTALLMENTS -> Unit
+                    null -> Unit
+                }
+                state.draft
             }
             state.copy(tokens = newTokens, draft = newDraft, selectedTokenIndex = null)
         }
@@ -263,10 +269,10 @@ class WizardViewModel @Inject constructor(
             val day = m.groupValues[1].toInt()
             val month = m.groupValues[2].toInt()
             val yearRaw = m.groupValues[3]
-            val year = when {
-                yearRaw.isEmpty() -> LocalDate.now().year
-                yearRaw.length == 2 -> 2000 + yearRaw.toInt()
-                else -> yearRaw.toInt()
+            val year = run {
+                if (yearRaw.isEmpty()) return@run LocalDate.now().year
+                if (yearRaw.length == 2) return@run 2000 + yearRaw.toInt()
+                yearRaw.toInt()
             }
             LocalDate.of(year, month, day)
         }.getOrNull()
@@ -274,19 +280,15 @@ class WizardViewModel @Inject constructor(
 
     fun nextStep() {
         _state.update { state ->
-            val nextStep = WizardStep.entries.getOrNull(state.step.index + 1)
-            if (nextStep != null) {
-                state.copy(step = nextStep)
-            } else {
-                state
-            }
+            val nextStep = WizardStep.entries.getOrNull(state.step.index + 1) ?: return@update state
+            state.copy(step = nextStep)
         }
     }
 
     fun previousStep() {
         _state.update { state ->
-            val prevStep = WizardStep.entries.getOrNull(state.step.index - 1)
-            if (prevStep != null) state.copy(step = prevStep) else state
+            val prevStep = WizardStep.entries.getOrNull(state.step.index - 1) ?: return@update state
+            state.copy(step = prevStep)
         }
     }
 

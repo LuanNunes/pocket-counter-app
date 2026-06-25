@@ -52,7 +52,7 @@ fun TransacaoDetailSheet(
         )
         Spacer(Modifier.height(16.dp))
 
-        DetailRow("Tipo", if (item.type == TransactionType.INCOME) "Receita" else "Despesa")
+        DetailRow("Tipo", "Receita".takeIf { item.type == TransactionType.INCOME } ?: "Despesa")
         DetailDivider()
 
         // Status is a two-way toggle (Efetuada ⇄ Pendente).
@@ -103,7 +103,8 @@ fun TransacaoDetailSheet(
         }
         if (tagNames.isEmpty()) {
             Text("sem tags", style = PocketTheme.typography.bodySm, color = PocketTheme.colors.text3)
-        } else {
+        }
+        if (tagNames.isNotEmpty()) {
             androidx.compose.foundation.layout.FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -165,8 +166,8 @@ private fun StatusToggle(
     dotColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
 ) {
-    val bg = if (selected) PocketTheme.colors.accentBg else PocketTheme.colors.surface
-    val border = if (selected) PocketTheme.colors.accent else PocketTheme.colors.line
+    val bg = PocketTheme.colors.accentBg.takeIf { selected } ?: PocketTheme.colors.surface
+    val border = PocketTheme.colors.accent.takeIf { selected } ?: PocketTheme.colors.line
     Row(
         modifier = Modifier
             .border(1.dp, border, PocketTheme.shapes.pill)
@@ -184,7 +185,7 @@ private fun StatusToggle(
         Text(
             label,
             style = PocketTheme.typography.bodySm,
-            color = if (selected) PocketTheme.colors.text else PocketTheme.colors.text2,
+            color = PocketTheme.colors.text.takeIf { selected } ?: PocketTheme.colors.text2,
         )
     }
 }

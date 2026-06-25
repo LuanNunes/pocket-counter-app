@@ -39,7 +39,7 @@ fun ContextFormSheet(
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
         Text(
-            text = if (mode is ContextFormMode.Edit) "Editar contexto" else "Novo contexto",
+            text = "Editar contexto".takeIf { mode is ContextFormMode.Edit } ?: "Novo contexto",
             style = PocketTheme.typography.stepQuestion,
             color = PocketTheme.colors.text,
         )

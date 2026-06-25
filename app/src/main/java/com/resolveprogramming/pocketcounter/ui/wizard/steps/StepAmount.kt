@@ -64,15 +64,16 @@ fun StepAmount(
     }
 
     Column(modifier = modifier) {
-        val question = if (amount != null) {
-            buildAnnotatedString {
-                append("Confirma o ")
-                withStyle(SpanStyle(color = PocketTheme.colors.accent, fontWeight = FontWeight.Bold)) {
-                    append("valor")
+        val question = run {
+            if (amount != null) {
+                return@run buildAnnotatedString {
+                    append("Confirma o ")
+                    withStyle(SpanStyle(color = PocketTheme.colors.accent, fontWeight = FontWeight.Bold)) {
+                        append("valor")
+                    }
+                    append("?")
                 }
-                append("?")
             }
-        } else {
             buildAnnotatedString {
                 append("Não achei o valor. ")
                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
@@ -96,7 +97,8 @@ fun StepAmount(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    if (isFocused) PocketTheme.colors.accentBg else androidx.compose.ui.graphics.Color.Transparent,
+                    PocketTheme.colors.accentBg.takeIf { isFocused }
+                        ?: androidx.compose.ui.graphics.Color.Transparent,
                     PocketTheme.shapes.card,
                 )
                 .padding(4.dp),
@@ -106,7 +108,7 @@ fun StepAmount(
                     .fillMaxWidth()
                     .border(
                         width = 1.dp,
-                        color = if (isFocused) PocketTheme.colors.accent else PocketTheme.colors.line,
+                        color = PocketTheme.colors.accent.takeIf { isFocused } ?: PocketTheme.colors.line,
                         shape = PocketTheme.shapes.card,
                     )
                     .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
@@ -232,12 +234,12 @@ fun StepAmount(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    if (isFixo) PocketTheme.colors.accentBg else PocketTheme.colors.surface,
+                    PocketTheme.colors.accentBg.takeIf { isFixo } ?: PocketTheme.colors.surface,
                     PocketTheme.shapes.card,
                 )
                 .border(
                     1.dp,
-                    if (isFixo) PocketTheme.colors.accent else PocketTheme.colors.line,
+                    PocketTheme.colors.accent.takeIf { isFixo } ?: PocketTheme.colors.line,
                     PocketTheme.shapes.card,
                 )
                 .padding(16.dp),
@@ -309,7 +311,7 @@ private fun RecurrenceDayField(
                 .background(PocketTheme.colors.surface, PocketTheme.shapes.pill)
                 .border(
                     1.dp,
-                    if (isInvalid) PocketTheme.colors.warn else PocketTheme.colors.line,
+                    PocketTheme.colors.warn.takeIf { isInvalid } ?: PocketTheme.colors.line,
                     PocketTheme.shapes.pill,
                 )
                 .padding(horizontal = 14.dp, vertical = 6.dp),
@@ -320,7 +322,7 @@ private fun RecurrenceDayField(
                     val cleaned = newValue.filter { it.isDigit() }.take(2)
                     text = cleaned
                     val day = cleaned.toIntOrNull()
-                    onRecurrenceDayChange(if (day != null && day in 1..31) day else null)
+                    onRecurrenceDayChange(day?.takeIf { it in 1..31 })
                 },
                 textStyle = PocketTheme.typography.monoSm.copy(color = PocketTheme.colors.text),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -348,9 +350,9 @@ private fun StatusPill(
     modifier: Modifier = Modifier,
 ) {
     // Selected pill = accent border + accent-bg (not a solid accent fill), per `.status-pill.on`.
-    val bg = if (isSelected) PocketTheme.colors.accentBg else PocketTheme.colors.surface
-    val textColor = if (isSelected) PocketTheme.colors.text else PocketTheme.colors.text2
-    val border = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+    val bg = PocketTheme.colors.accentBg.takeIf { isSelected } ?: PocketTheme.colors.surface
+    val textColor = PocketTheme.colors.text.takeIf { isSelected } ?: PocketTheme.colors.text2
+    val border = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
 
     Row(
         modifier = modifier

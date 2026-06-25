@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "PocketCounter"
 include(":app")
+include(":detekt-rules")

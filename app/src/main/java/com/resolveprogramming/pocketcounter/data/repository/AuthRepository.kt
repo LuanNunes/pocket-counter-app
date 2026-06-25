@@ -31,6 +31,10 @@ class AuthRepository @Inject constructor(
         authApi.register(RegisterRequest(email = email, name = name, password = password))
     }
 
+    suspend fun loginWithGoogle(idToken: String): Result<Unit> = runAuth {
+        authApi.googleLogin(LoginRequest(token = idToken))
+    }
+
     suspend fun logout() {
         val refreshToken = tokenStore.getRefreshToken()
         if (refreshToken != null) {
@@ -46,22 +50,21 @@ class AuthRepository @Inject constructor(
         call: suspend () -> retrofit2.Response<com.resolveprogramming.pocketcounter.data.remote.dto.TokenResponse>,
     ): Result<Unit> = try {
         val response = call()
-        if (response.isSuccessful) {
-            val body = response.body()!!
-            tokenStore.saveTokens(body.accessToken, body.refreshToken)
-            Result.success(Unit)
-        } else {
+        run {
+            if (response.isSuccessful) {
+                val body = response.body()!!
+                tokenStore.saveTokens(body.accessToken, body.refreshToken)
+                return@run Result.success(Unit)
+            }
             val errorBody = response.errorBody()?.string()
-            val authError = if (errorBody != null) {
+            val authError = errorBody?.let {
                 try {
-                    val err = json.decodeFromString<ErrorResponse>(errorBody)
+                    val err = json.decodeFromString<ErrorResponse>(it)
                     AuthError.Api(err.code, err.message, err.details)
                 } catch (_: Exception) {
                     AuthError.Api("UNKNOWN", response.message())
                 }
-            } else {
-                AuthError.Api("UNKNOWN", response.message())
-            }
+            } ?: AuthError.Api("UNKNOWN", response.message())
             Result.failure(AuthException(authError))
         }
     } catch (e: Exception) {

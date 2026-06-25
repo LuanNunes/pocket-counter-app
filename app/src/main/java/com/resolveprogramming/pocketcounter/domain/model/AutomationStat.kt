@@ -7,5 +7,7 @@ data class AutomationStat(
     val autoDone: Int,
 )
 
-fun automationPercent(autoDone: Int, monthTotal: Int): Int =
-    if (monthTotal == 0) 0 else (autoDone.toDouble() / monthTotal * 100).roundToInt().coerceIn(0, 100)
+fun automationPercent(autoDone: Int, monthTotal: Int): Int {
+    if (monthTotal == 0) return 0
+    return (autoDone.toDouble() / monthTotal * 100).roundToInt().coerceIn(0, 100)
+}

@@ -1,0 +1,7 @@
+build:
+  maxIssues: 0
+
+pocket:
+  active: true
+  ForbiddenElse:
+    active: true

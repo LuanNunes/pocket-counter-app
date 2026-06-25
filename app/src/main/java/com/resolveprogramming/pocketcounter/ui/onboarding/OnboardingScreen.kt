@@ -174,7 +174,8 @@ private fun PermissionRow(
                     style = PocketTheme.typography.bodySm,
                     color = PocketTheme.colors.income,
                 )
-            } else {
+            }
+            if (!granted) {
                 Text(
                     text = actionLabel,
                     style = PocketTheme.typography.bodySm,

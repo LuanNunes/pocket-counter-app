@@ -75,12 +75,15 @@ fun ContasFixasScreen(
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 ManageTopBar(title = "Contas Fixas", onBack = onBack)
-                when {
-                    state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                val showEmpty = !state.isLoading && state.series.isEmpty()
+                val showList = !state.isLoading && state.series.isNotEmpty()
+                if (state.isLoading) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
                         CircularProgressIndicator(color = PocketTheme.colors.accent)
                     }
-
-                    state.series.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                }
+                if (showEmpty) {
+                    Box(Modifier.fillMaxSize(), Alignment.Center) {
                         Text(
                             "Nenhuma conta fixa ainda. Marque “Repete todo mês” ao salvar uma transação.",
                             style = PocketTheme.typography.bodySm,
@@ -88,8 +91,9 @@ fun ContasFixasScreen(
                             modifier = Modifier.padding(horizontal = 32.dp),
                         )
                     }
-
-                    else -> LazyColumn(
+                }
+                if (showList) {
+                    LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -288,7 +292,8 @@ private fun SeriesTagSheet(
                 color = PocketTheme.colors.text3,
                 modifier = Modifier.padding(bottom = 12.dp),
             )
-        } else {
+        }
+        if (candidates.isNotEmpty()) {
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -298,9 +303,12 @@ private fun SeriesTagSheet(
                     val on = tag.id in selected
                     PocketChip(
                         label = tag.name,
-                        variant = if (on) PocketChipVariant.ON else PocketChipVariant.DEFAULT,
+                        variant = PocketChipVariant.ON.takeIf { on } ?: PocketChipVariant.DEFAULT,
                         onClick = {
-                            selected = if (on) selected - tag.id else selected + tag.id
+                            selected = run {
+                                if (on) return@run selected - tag.id
+                                selected + tag.id
+                            }
                         },
                     )
                 }

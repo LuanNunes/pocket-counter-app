@@ -138,7 +138,8 @@ fun ResumoScreen(
                             formatter = formatter,
                         )
 
-                        val absDiff = if (summary.baseTotal != null) summary.total - summary.baseTotal else null
+                        val baseTotal = summary.baseTotal
+                        val absDiff = baseTotal?.let { summary.total - it }
                         val curOpt = state.options.find { it.key == state.compareKey }
                         if (absDiff != null && curOpt != null) {
                             Spacer(Modifier.height(8.dp))
@@ -172,10 +173,10 @@ fun ResumoScreen(
         // Show previous toggle
         item {
             val curOpt = state.options.find { it.key == state.compareKey }
-            val prevLabel = when {
-                curOpt == null -> "comparação"
-                curOpt.key == "avg3" -> "referência"
-                else -> curOpt.label
+            val prevLabel = run {
+                if (curOpt == null) return@run "comparação"
+                if (curOpt.key == "avg3") return@run "referência"
+                curOpt.label
             }
             ShowPrevToggle(
                 label = "Mostrar valor de $prevLabel",
@@ -193,7 +194,9 @@ fun ResumoScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = if (state.kind == TransactionType.INCOME) "Por categoria de renda" else "Por contexto",
+                    text = "Por categoria de renda".takeIf {
+                        state.kind == TransactionType.INCOME
+                    } ?: "Por contexto",
                     style = PocketTheme.typography.sectionHeader,
                     color = PocketTheme.colors.text3,
                 )
@@ -258,7 +261,7 @@ private fun KindSegment(
                 .weight(1f)
                 .clip(PocketTheme.shapes.chip)
                 .background(
-                    if (expenseActive) PocketTheme.colors.expenseBg else Color.Transparent,
+                    PocketTheme.colors.expenseBg.takeIf { expenseActive } ?: Color.Transparent,
                 )
                 .clickable { onSetKind(TransactionType.EXPENSE) }
                 .padding(vertical = 10.dp),
@@ -267,7 +270,7 @@ private fun KindSegment(
             Text(
                 text = "Despesas",
                 style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                color = if (expenseActive) PocketTheme.colors.expense else PocketTheme.colors.text3,
+                color = PocketTheme.colors.expense.takeIf { expenseActive } ?: PocketTheme.colors.text3,
             )
         }
         Box(
@@ -275,7 +278,7 @@ private fun KindSegment(
                 .weight(1f)
                 .clip(PocketTheme.shapes.chip)
                 .background(
-                    if (incomeActive) PocketTheme.colors.incomeBg else Color.Transparent,
+                    PocketTheme.colors.incomeBg.takeIf { incomeActive } ?: Color.Transparent,
                 )
                 .clickable { onSetKind(TransactionType.INCOME) }
                 .padding(vertical = 10.dp),
@@ -284,7 +287,7 @@ private fun KindSegment(
             Text(
                 text = "Receitas",
                 style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                color = if (incomeActive) PocketTheme.colors.income else PocketTheme.colors.text3,
+                color = PocketTheme.colors.income.takeIf { incomeActive } ?: PocketTheme.colors.text3,
             )
         }
     }
@@ -298,7 +301,7 @@ private fun DonutChart(
     formatter: NumberFormat,
 ) {
     val trackColor = PocketTheme.colors.surface2
-    val totalColor = if (kind == TransactionType.INCOME) PocketTheme.colors.income else PocketTheme.colors.expense
+    val totalColor = PocketTheme.colors.income.takeIf { kind == TransactionType.INCOME } ?: PocketTheme.colors.expense
 
     Box(
         modifier = Modifier.size(168.dp),
@@ -349,7 +352,7 @@ private fun DonutChart(
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = if (kind == TransactionType.INCOME) "Receitas" else "Despesas",
+                text = "Receitas".takeIf { kind == TransactionType.INCOME } ?: "Despesas",
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text3,
             )
@@ -375,11 +378,11 @@ private fun ComparisonLine(
     val isPositive = absDiff >= BigDecimal.ZERO
     // For despesas: more spent = bad (red); less spent = good (green)
     // For receitas: more earned = good (green); less earned = bad (red)
-    val goodDirection = if (kind == TransactionType.INCOME) isPositive else !isPositive
-    val diffColor = if (goodDirection) PocketTheme.colors.income else PocketTheme.colors.expense
-    val sign = if (isPositive) "+" else "−"
-    val vsLabel = if (option.key == "avg3") "a média" else "em ${option.label}"
-    val direction = if (isPositive) "a mais que" else "a menos que"
+    val goodDirection = isPositive.takeIf { kind == TransactionType.INCOME } ?: !isPositive
+    val diffColor = PocketTheme.colors.income.takeIf { goodDirection } ?: PocketTheme.colors.expense
+    val sign = "+".takeIf { isPositive } ?: "−"
+    val vsLabel = "a média".takeIf { option.key == "avg3" } ?: "em ${option.label}"
+    val direction = "a mais que".takeIf { isPositive } ?: "a menos que"
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -447,11 +450,13 @@ private fun CompareBar(
                                 Text(
                                     text = opt.label,
                                     style = PocketTheme.typography.body.copy(
-                                        fontWeight = if (opt.key == selectedKey) FontWeight.SemiBold
-                                        else FontWeight.Normal,
+                                        fontWeight = FontWeight.SemiBold.takeIf {
+                                            opt.key == selectedKey
+                                        } ?: FontWeight.Normal,
                                     ),
-                                    color = if (opt.key == selectedKey) PocketTheme.colors.accent
-                                    else PocketTheme.colors.text,
+                                    color = PocketTheme.colors.accent.takeIf {
+                                        opt.key == selectedKey
+                                    } ?: PocketTheme.colors.text,
                                 )
                                 if (opt.key == selectedKey) {
                                     Spacer(Modifier.width(8.dp))
@@ -561,16 +566,19 @@ private fun RankRow(
             )
             Spacer(Modifier.width(4.dp))
             Text(
-                text = if (open) "∨" else "›",
+                text = "∨".takeIf { open } ?: "›",
                 style = PocketTheme.typography.bodySm,
                 color = PocketTheme.colors.text3,
             )
         }
 
         // Bar
-        val barFraction = if (max > BigDecimal.ZERO) {
-            group.total.divide(max, 6, java.math.RoundingMode.HALF_UP).toFloat()
-        } else 0f
+        val barFraction = run {
+            if (max > BigDecimal.ZERO) {
+                return@run group.total.divide(max, 6, java.math.RoundingMode.HALF_UP).toFloat()
+            }
+            0f
+        }
 
         Box(
             modifier = Modifier
@@ -599,13 +607,15 @@ private fun RankRow(
                     style = PocketTheme.typography.bodyXs,
                     color = PocketTheme.colors.text3,
                 )
-                if (group.prevTotal != null) {
+                val prevTotal = group.prevTotal
+                if (prevTotal != null) {
                     Text(
-                        text = formatter.format(group.prevTotal),
+                        text = formatter.format(prevTotal),
                         style = PocketTheme.typography.monoSm,
                         color = PocketTheme.colors.text2,
                     )
-                } else {
+                }
+                if (prevTotal == null) {
                     Text(
                         text = "sem registro",
                         style = PocketTheme.typography.bodyXs,
@@ -693,10 +703,10 @@ private fun DeltaBadge(
 
     val up = delta > 0
     // despesas: up = bad; receitas: up = good (invert flag)
-    val good = if (invert) up else !up
-    val badgeColor = if (good) PocketTheme.colors.income else PocketTheme.colors.expense
-    val badgeBg = if (good) PocketTheme.colors.incomeBg else PocketTheme.colors.expenseBg
-    val arrow = if (up) "▲" else "▼"
+    val good = up.takeIf { invert } ?: !up
+    val badgeColor = PocketTheme.colors.income.takeIf { good } ?: PocketTheme.colors.expense
+    val badgeBg = PocketTheme.colors.incomeBg.takeIf { good } ?: PocketTheme.colors.expenseBg
+    val arrow = "▲".takeIf { up } ?: "▼"
     val pctInt = (abs(delta) * 100).toInt()
 
     Box(

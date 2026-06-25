@@ -88,10 +88,10 @@ class CartoesViewModel @Inject constructor(
         viewModelScope.launch {
             cardRepository.classifyPurchase(item.invoiceId, itemId, selectedTags, learnRule, card)
                 .onSuccess { outcome ->
-                    val message = when {
-                        outcome.ruleRequested && outcome.ruleCreated -> "Classificada ✓ + regra criada"
-                        outcome.ruleRequested && !outcome.ruleCreated -> "Classificada ✓ (regra falhou)"
-                        else -> "Compra classificada ✓"
+                    val message = run {
+                        if (outcome.ruleRequested && outcome.ruleCreated) return@run "Classificada ✓ + regra criada"
+                        if (outcome.ruleRequested && !outcome.ruleCreated) return@run "Classificada ✓ (regra falhou)"
+                        "Compra classificada ✓"
                     }
                     _state.update { it.copy(toastMessage = message) }
                     loadData()

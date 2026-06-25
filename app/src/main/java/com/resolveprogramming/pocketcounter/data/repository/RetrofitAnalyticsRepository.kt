@@ -72,23 +72,11 @@ class RetrofitAnalyticsRepository @Inject constructor(
         }
 
         // baseline (per-group + grand) from the chosen comparison
-        val baseline: Map<String, BigDecimal>?
-        val baseTotal: BigDecimal?
-        when {
-            compareKey == null -> { baseline = null; baseTotal = null }
-            compareKey == "avg3" -> {
-                val months = (1..3).map { ym.minusMonths(it.toLong()) }
-                val perMonth = months.map { groupTotals(kind, it, tagToContext, contextById, incomeTagById) }
-                baseline = averageGroupTotals(perMonth)
-                baseTotal = perMonth.map { it.values.fold(BigDecimal.ZERO, BigDecimal::add) }
-                    .fold(BigDecimal.ZERO, BigDecimal::add)
-                    .divide(BigDecimal(3), 2, RoundingMode.HALF_UP)
-            }
-            else -> {
-                baseline = groupTotals(kind, compareKey.toYearMonth(), tagToContext, contextById, incomeTagById)
-                baseTotal = baseline.values.fold(BigDecimal.ZERO, BigDecimal::add)
-            }
-        }
+        val baselinePair: Pair<Map<String, BigDecimal>?, BigDecimal?> = baselineFor(
+            compareKey, ym, kind, tagToContext, contextById, incomeTagById,
+        )
+        val baseline = baselinePair.first
+        val baseTotal = baselinePair.second
 
         val groups = buckets.map { (gid, bucket) ->
             val total = bucket.txs.sumAmount()
@@ -205,7 +193,29 @@ class RetrofitAnalyticsRepository @Inject constructor(
 
     private suspend fun fetch(kind: TransactionType, ym: YearMonth): List<TransactionDto> {
         val ref = RemoteMappers.monthKeyToRef(ym.key())
-        return if (kind == TransactionType.INCOME) transactionApi.getIncomes(ref) else transactionApi.getExpenses(ref)
+        if (kind == TransactionType.INCOME) return transactionApi.getIncomes(ref)
+        return transactionApi.getExpenses(ref)
+    }
+
+    private suspend fun baselineFor(
+        compareKey: String?,
+        ym: YearMonth,
+        kind: TransactionType,
+        tagToContext: Map<String, String?>,
+        contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
+        incomeTagById: Map<String, Tag>,
+    ): Pair<Map<String, BigDecimal>?, BigDecimal?> {
+        if (compareKey == null) return null to null
+        if (compareKey == "avg3") {
+            val months = (1..3).map { ym.minusMonths(it.toLong()) }
+            val perMonth = months.map { groupTotals(kind, it, tagToContext, contextById, incomeTagById) }
+            val baseTotal = perMonth.map { it.values.fold(BigDecimal.ZERO, BigDecimal::add) }
+                .fold(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal(3), 2, RoundingMode.HALF_UP)
+            return averageGroupTotals(perMonth) to baseTotal
+        }
+        val baseline = groupTotals(kind, compareKey.toYearMonth(), tagToContext, contextById, incomeTagById)
+        return baseline to baseline.values.fold(BigDecimal.ZERO, BigDecimal::add)
     }
 
     private suspend fun groupTotals(
@@ -238,21 +248,20 @@ class RetrofitAnalyticsRepository @Inject constructor(
         contextById: Map<String, com.resolveprogramming.pocketcounter.domain.model.TagContext>,
         incomeTagById: Map<String, Tag>,
     ): Triple<String, String, Long> {
-        return if (kind == TransactionType.EXPENSE) {
+        if (kind == TransactionType.EXPENSE) {
             // Bucket by the first own-tag's context.
             val tagId = effectiveTagIds(tx.tags?.mapNotNull { it.id }, emptyList())
                 .firstOrNull()
             val ctxId = tagId?.let { tagToContext[it] }?.takeIf { it.isNotBlank() }
             val ctx = ctxId?.let { contextById[it] }
-            if (ctx != null) Triple(ctx.id, ctx.name, ctx.color)
-            else Triple(noContextId, "Sem categoria", noContextColor)
-        } else {
-            // Bucket by the effective kind=INCOME tag (categoria de renda).
-            val ids = effectiveTagIds(tx.tags?.mapNotNull { it.id }, emptyList())
-            val incomeTag = ids.firstNotNullOfOrNull { incomeTagById[it] }
-            if (incomeTag != null) Triple(incomeTag.id, incomeTag.name, incomeTag.color ?: incomeFallbackColor)
-            else Triple(noIncomeCategoryId, "Sem categoria", noContextColor)
+            if (ctx != null) return Triple(ctx.id, ctx.name, ctx.color)
+            return Triple(noContextId, "Sem categoria", noContextColor)
         }
+        // Bucket by the effective kind=INCOME tag (categoria de renda).
+        val ids = effectiveTagIds(tx.tags?.mapNotNull { it.id }, emptyList())
+        val incomeTag = ids.firstNotNullOfOrNull { incomeTagById[it] }
+        if (incomeTag != null) return Triple(incomeTag.id, incomeTag.name, incomeTag.color ?: incomeFallbackColor)
+        return Triple(noIncomeCategoryId, "Sem categoria", noContextColor)
     }
 
     private fun drillTags(
@@ -260,18 +269,19 @@ class RetrofitAnalyticsRepository @Inject constructor(
         kind: TransactionType,
         incomeTagById: Map<String, Tag>,
         tagNameById: Map<String, String>,
-    ): List<SummaryTag> = if (kind == TransactionType.EXPENSE) {
-        val byTag = LinkedHashMap<String, BigDecimal>()
-        for (tx in txs) {
-            // Same effective-tag resolution as the bucket grouping.
-            val tagId = effectiveTagIds(tx.tags?.mapNotNull { it.id }, emptyList())
-                .firstOrNull()
-            val name = tagId?.let { tagNameById[it] ?: tx.tags?.firstOrNull { t -> t.id == it }?.name }
-                ?: "sem etiqueta"
-            byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
+    ): List<SummaryTag> {
+        if (kind == TransactionType.EXPENSE) {
+            val byTag = LinkedHashMap<String, BigDecimal>()
+            for (tx in txs) {
+                // Same effective-tag resolution as the bucket grouping.
+                val tagId = effectiveTagIds(tx.tags?.mapNotNull { it.id }, emptyList())
+                    .firstOrNull()
+                val name = tagId?.let { tagNameById[it] ?: tx.tags?.firstOrNull { t -> t.id == it }?.name }
+                    ?: "sem etiqueta"
+                byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
+            }
+            return byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
         }
-        byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
-    } else {
         val byTag = LinkedHashMap<String, BigDecimal>()
         for (tx in txs) {
             // Drill by the effective income category tag, mirroring the bucket grouping.
@@ -279,21 +289,23 @@ class RetrofitAnalyticsRepository @Inject constructor(
             val name = ids.firstNotNullOfOrNull { incomeTagById[it]?.name } ?: "Sem categoria"
             byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
         }
-        byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
+        return byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
     }
 
     private fun List<TransactionDto>.sumAmount(): BigDecimal =
         fold(BigDecimal.ZERO) { acc, tx -> acc + (tx.amount ?: BigDecimal.ZERO).abs() }
 
-    private fun ratio(part: BigDecimal, whole: BigDecimal): Float =
-        if (whole > BigDecimal.ZERO) part.divide(whole, 4, RoundingMode.HALF_UP).toFloat() else 0f
+    private fun ratio(part: BigDecimal, whole: BigDecimal): Float {
+        if (whole > BigDecimal.ZERO) return part.divide(whole, 4, RoundingMode.HALF_UP).toFloat()
+        return 0f
+    }
 
-    private fun relativeDelta(current: BigDecimal, base: BigDecimal?): Float? =
+    private fun relativeDelta(current: BigDecimal, base: BigDecimal?): Float? {
         if (base != null && base > BigDecimal.ZERO) {
-            current.subtract(base).divide(base, 4, RoundingMode.HALF_UP).toFloat()
-        } else {
-            null
+            return current.subtract(base).divide(base, 4, RoundingMode.HALF_UP).toFloat()
         }
+        return null
+    }
 
     private fun String.toYearMonth(): YearMonth {
         val (y, m) = split("-")
