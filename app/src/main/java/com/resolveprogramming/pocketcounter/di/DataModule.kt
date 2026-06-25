@@ -18,6 +18,8 @@ import com.resolveprogramming.pocketcounter.data.repository.RetrofitTransactionR
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.platform.biometric.AndroidBiometricAuthenticator
+import com.resolveprogramming.pocketcounter.platform.biometric.BiometricAuthenticator
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -75,4 +77,9 @@ abstract class DataModule {
     abstract fun bindGoogleSignInClient(
         impl: CredentialManagerGoogleSignIn,
     ): GoogleSignInClient
+
+    @Binds
+    abstract fun bindBiometricAuthenticator(
+        impl: AndroidBiometricAuthenticator,
+    ): BiometricAuthenticator
 }

@@ -105,6 +105,10 @@ dependencies {
     implementation(libs.credentials.play.services.auth)
     implementation(libs.googleid)
 
+    // Biometric
+    implementation(libs.biometric)
+    implementation(libs.fragment.ktx)
+
     // Core
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
