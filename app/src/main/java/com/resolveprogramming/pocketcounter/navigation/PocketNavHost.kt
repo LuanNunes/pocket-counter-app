@@ -90,11 +90,11 @@ fun PocketNavHost(
 
     val navController = rememberNavController()
 
-    val loggedInTarget = if (onboardingSeen == false) Routes.ONBOARDING else Routes.HOME
-    val startDestination = if (isLoggedIn == true) loggedInTarget else Routes.AUTH
+    val loggedInTarget = Routes.ONBOARDING.takeIf { onboardingSeen == false } ?: Routes.HOME
+    val startDestination = loggedInTarget.takeIf { isLoggedIn == true } ?: Routes.AUTH
 
     LaunchedEffect(isLoggedIn) {
-        val target = if (isLoggedIn == true) loggedInTarget else Routes.AUTH
+        val target = loggedInTarget.takeIf { isLoggedIn == true } ?: Routes.AUTH
         val current = navController.currentDestination?.route
         if (current != null && current != target) {
             navController.navigate(target) {

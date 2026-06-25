@@ -46,7 +46,7 @@ class RelatorioViewModel @Inject constructor(
         // selection and the rendered chart agree without a tap.
         viewModelScope.launch {
             prefsStore.chartType.collect { c ->
-                val coerced = if (c == ReportChartType.AREA) ReportChartType.BARS else c
+                val coerced = ReportChartType.BARS.takeIf { c == ReportChartType.AREA } ?: c
                 _state.update { it.copy(chartType = coerced) }
             }
         }

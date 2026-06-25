@@ -91,9 +91,8 @@ class ResumoViewModel @Inject constructor(
 
     fun toggleGroup(groupId: String) {
         _state.update { s ->
-            val updated = if (groupId in s.openGroupIds) {
-                s.openGroupIds - groupId
-            } else {
+            val updated = run {
+                if (groupId in s.openGroupIds) return@run s.openGroupIds - groupId
                 s.openGroupIds + groupId
             }
             s.copy(openGroupIds = updated)

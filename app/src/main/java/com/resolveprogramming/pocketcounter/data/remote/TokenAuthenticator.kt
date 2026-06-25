@@ -37,11 +37,10 @@ class TokenAuthenticator @Inject constructor(
             val refreshToken = tokenStore.getRefreshToken() ?: return@runBlocking null
             val result = authApiProvider.get().refresh(LoginRequest(token = refreshToken))
             if (result.isSuccessful) {
-                result.body()?.also { tokenStore.saveTokens(it.accessToken, it.refreshToken) }
-            } else {
-                tokenStore.clear()
-                null
+                return@runBlocking result.body()?.also { tokenStore.saveTokens(it.accessToken, it.refreshToken) }
             }
+            tokenStore.clear()
+            null
         } ?: return null
 
         return response.request.newBuilder()

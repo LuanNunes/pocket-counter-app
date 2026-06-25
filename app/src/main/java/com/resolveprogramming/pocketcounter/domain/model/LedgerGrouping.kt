@@ -33,7 +33,8 @@ fun groupLedger(
     fun rowContextId(item: HistoryItem): String {
         val tagId = firstTagId(item) ?: return NO_CTX
         val ctx = tags[tagId]?.idContext
-        return if (ctx.isNullOrBlank()) NO_CTX else ctx
+        if (ctx.isNullOrBlank()) return NO_CTX
+        return ctx
     }
 
     fun subtotal(list: List<HistoryItem>): BigDecimal =

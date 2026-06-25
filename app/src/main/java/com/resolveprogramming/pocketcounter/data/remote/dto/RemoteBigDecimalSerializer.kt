@@ -25,9 +25,8 @@ object RemoteBigDecimalSerializer : KSerializer<BigDecimal> {
     }
 
     override fun deserialize(decoder: Decoder): BigDecimal {
-        val content = if (decoder is JsonDecoder) {
-            decoder.decodeJsonElement().jsonPrimitive.content
-        } else {
+        val content = run {
+            if (decoder is JsonDecoder) return@run decoder.decodeJsonElement().jsonPrimitive.content
             decoder.decodeString()
         }
         return BigDecimal(content)

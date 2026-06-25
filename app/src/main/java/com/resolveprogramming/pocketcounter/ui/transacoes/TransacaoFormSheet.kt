@@ -56,7 +56,7 @@ fun TransacaoFormSheet(
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
         Text(
-            text = if (mode is FormMode.Edit) "Editar transação" else "Nova transação",
+            text = "Editar transação".takeIf { mode is FormMode.Edit } ?: "Nova transação",
             style = PocketTheme.typography.stepQuestion,
             color = PocketTheme.colors.text,
         )
@@ -144,20 +144,20 @@ fun TransacaoFormSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PocketButton(
-                text = if (step == WizardStep.TYPE) "Cancelar" else "Voltar",
+                text = "Cancelar".takeIf { step == WizardStep.TYPE } ?: "Voltar",
                 onClick = {
                     if (step == WizardStep.TYPE) onDismiss()
-                    else step = WizardStep.entries[step.index - 1]
+                    if (step != WizardStep.TYPE) step = WizardStep.entries[step.index - 1]
                 },
                 variant = PocketButtonVariant.SOFT,
                 fillMaxWidth = true,
                 modifier = Modifier.weight(1f),
             )
             PocketButton(
-                text = if (step == WizardStep.TAGS) "Salvar transação" else "Continuar",
+                text = "Salvar transação".takeIf { step == WizardStep.TAGS } ?: "Continuar",
                 onClick = {
                     if (step == WizardStep.TAGS) onSave(draft)
-                    else step = WizardStep.entries[step.index + 1]
+                    if (step != WizardStep.TAGS) step = WizardStep.entries[step.index + 1]
                 },
                 enabled = canAdvance,
                 fillMaxWidth = true,
@@ -167,22 +167,20 @@ fun TransacaoFormSheet(
     }
 }
 
-private fun seedDraft(item: HistoryItem?): WizardDraft =
-    if (item == null) {
-        WizardDraft(date = LocalDate.now())
-    } else {
-        WizardDraft(
-            type = item.type,
-            amount = item.amount.abs(),
-            date = item.date,
-            statusPayment = item.statusPayment,
-            paymentMethod = item.paymentMethod,
-            cardId = item.cardId,
-            // Preserve series membership across an edit — toDto() sends idSeries, and the backend
-            // copies it verbatim, so dropping it here would silently unlink a fixo row.
-            seriesId = item.seriesId,
-            // Inheriting (null) rows seed empty here; the dedicated tag sheet handles inherit/override.
-            tagIds = item.tagIds.orEmpty(),
-            displayOrder = item.displayOrder,
-        )
-    }
+private fun seedDraft(item: HistoryItem?): WizardDraft {
+    if (item == null) return WizardDraft(date = LocalDate.now())
+    return WizardDraft(
+        type = item.type,
+        amount = item.amount.abs(),
+        date = item.date,
+        statusPayment = item.statusPayment,
+        paymentMethod = item.paymentMethod,
+        cardId = item.cardId,
+        // Preserve series membership across an edit — toDto() sends idSeries, and the backend
+        // copies it verbatim, so dropping it here would silently unlink a fixo row.
+        seriesId = item.seriesId,
+        // Inheriting (null) rows seed empty here; the dedicated tag sheet handles inherit/override.
+        tagIds = item.tagIds.orEmpty(),
+        displayOrder = item.displayOrder,
+    )
+}

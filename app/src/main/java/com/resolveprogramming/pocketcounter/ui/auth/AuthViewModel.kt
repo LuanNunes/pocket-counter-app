@@ -75,9 +75,10 @@ class AuthViewModel @Inject constructor(
         _state.update { it.copy(isLoading = true, errorMessage = null) }
 
         viewModelScope.launch {
-            val result = if (current.isRegisterMode) {
-                authRepository.register(current.name, current.email, current.password)
-            } else {
+            val result = run {
+                if (current.isRegisterMode) {
+                    return@run authRepository.register(current.name, current.email, current.password)
+                }
                 authRepository.login(current.email, current.password)
             }
 
@@ -98,7 +99,7 @@ class AuthViewModel @Inject constructor(
 
         viewModelScope.launch {
             val idToken = googleSignInClient.requestIdToken(activityContext).getOrElse { error ->
-                val message = if (error is SignInCancelled) null else "Não foi possível entrar com o Google"
+                val message = "Não foi possível entrar com o Google".takeUnless { error is SignInCancelled }
                 _state.update { it.copy(isGoogleLoading = false, errorMessage = message) }
                 return@launch
             }
@@ -111,19 +112,21 @@ class AuthViewModel @Inject constructor(
 
     private fun mapAuthError(error: Throwable): String =
         when (val authError = (error as? AuthException)?.error) {
-            is AuthError.Api -> when (authError.code) {
-                "UNAUTHORIZED" -> "E-mail ou senha incorretos"
-                "CONFLICT" -> "Este e-mail já está cadastrado"
-                "VALIDATION_ERROR" -> authError.details.firstOrNull() ?: authError.message
-                else -> authError.message
+            is AuthError.Api -> run {
+                when (authError.code) {
+                    "UNAUTHORIZED" -> return@run "E-mail ou senha incorretos"
+                    "CONFLICT" -> return@run "Este e-mail já está cadastrado"
+                    "VALIDATION_ERROR" -> return@run authError.details.firstOrNull() ?: authError.message
+                }
+                authError.message
             }
             is AuthError.Network -> "Sem conexão com o servidor"
-            else -> "Erro inesperado"
+            null -> "Erro inesperado"
         }
 
     private fun mapGoogleError(error: Throwable): String =
         when ((error as? AuthException)?.error) {
             is AuthError.Network -> "Sem conexão com o servidor"
-            else -> "Não foi possível entrar com o Google"
+            is AuthError.Api, null -> "Não foi possível entrar com o Google"
         }
 }

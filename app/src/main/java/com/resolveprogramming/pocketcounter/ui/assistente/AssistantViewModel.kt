@@ -90,7 +90,7 @@ class AssistantViewModel @Inject constructor(
         result: AssistantResult,
     ): AssistantUiState = when (result) {
         is AssistantResult.Success -> copy(
-            items = items.map { if (it.id == id) it.copy(status = AssistantMessageStatus.OK, answer = result.answer) else it },
+            items = items.map { it.copy(status = AssistantMessageStatus.OK, answer = result.answer).takeIf { _ -> it.id == id } ?: it },
             busy = false,
             remaining = result.answer.remaining,
         )
@@ -101,12 +101,12 @@ class AssistantViewModel @Inject constructor(
             busy = false,
         )
         AssistantResult.QuotaExhausted -> copy(
-            items = items.map { if (it.id == id) it.copy(status = AssistantMessageStatus.LIMIT) else it },
+            items = items.map { it.copy(status = AssistantMessageStatus.LIMIT).takeIf { _ -> it.id == id } ?: it },
             busy = false,
             remaining = 0,
         )
         AssistantResult.ServerError -> copy(
-            items = items.map { if (it.id == id) it.copy(status = AssistantMessageStatus.ERROR) else it },
+            items = items.map { it.copy(status = AssistantMessageStatus.ERROR).takeIf { _ -> it.id == id } ?: it },
             busy = false,
         )
         AssistantResult.Unavailable -> copy(

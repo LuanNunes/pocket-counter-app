@@ -49,7 +49,7 @@ fun TagEditSheet(
             paymentHint = null,
             merchant = null,
             onSearchChange = { search = it },
-            onToggleTag = { id -> selected = if (id in selected) selected - id else selected + id },
+            onToggleTag = { id -> selected = (selected - id).takeIf { id in selected } ?: (selected + id) },
             onToggleLearnRule = { },
             showLearnToggle = false,
         )

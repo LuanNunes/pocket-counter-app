@@ -95,7 +95,7 @@ class ContextosTagsViewModel @Inject constructor(
                     contexts = contexts,
                     isLoading = false,
                     // Distinguish a load failure from a genuinely empty list.
-                    toastMessage = if (contextsResult.isFailure) "Não foi possível carregar" else it.toastMessage,
+                    toastMessage = "Não foi possível carregar".takeIf { contextsResult.isFailure } ?: it.toastMessage,
                 )
             }
         }

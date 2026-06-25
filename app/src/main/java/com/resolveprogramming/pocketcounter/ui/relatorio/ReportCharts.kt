@@ -95,7 +95,8 @@ fun AreaChart(labels: List<String>, series: List<ReportSeries>, modifier: Modifi
                 val closed = Path()
                 labels.indices.forEach { mi ->
                     val top = below(si, mi) + (s.vals.getOrNull(mi)?.toFloat() ?: 0f)
-                    if (mi == 0) closed.moveTo(0f, y(top)) else closed.lineTo(dx * mi, y(top))
+                    if (mi == 0) closed.moveTo(0f, y(top))
+                    if (mi != 0) closed.lineTo(dx * mi, y(top))
                 }
                 for (mi in labels.indices.reversed()) closed.lineTo(dx * mi, y(below(si, mi)))
                 closed.close()
@@ -114,18 +115,19 @@ fun LinesChart(labels: List<String>, series: List<ReportSeries>, modifier: Modif
     Column(modifier = modifier) {
         Canvas(Modifier.fillMaxWidth().height(150.dp)) {
             val n = labels.size.coerceAtLeast(1)
-            val dx = if (n > 1) size.width / (n - 1) else 0f
+            val dx = (size.width / (n - 1)).takeIf { n > 1 } ?: 0f
             fun y(v: Float) = size.height - (v / maxV * size.height)
             series.take(6).forEach { s ->
                 val path = Path()
                 labels.indices.forEach { mi ->
-                    val x = if (n > 1) dx * mi else size.width / 2
+                    val x = (dx * mi).takeIf { n > 1 } ?: (size.width / 2)
                     val yy = y(s.vals.getOrNull(mi)?.toFloat() ?: 0f)
-                    if (mi == 0) path.moveTo(x, yy) else path.lineTo(x, yy)
+                    if (mi == 0) path.moveTo(x, yy)
+                    if (mi != 0) path.lineTo(x, yy)
                 }
                 drawPath(path, Color(s.color), style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                 labels.indices.forEach { mi ->
-                    val x = if (n > 1) dx * mi else size.width / 2
+                    val x = (dx * mi).takeIf { n > 1 } ?: (size.width / 2)
                     drawCircle(Color(s.color), radius = 3.2.dp.toPx(), center = Offset(x, y(s.vals.getOrNull(mi)?.toFloat() ?: 0f)))
                 }
             }
@@ -170,18 +172,19 @@ fun CashFlowChart(months: List<ReportMonth>, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Canvas(Modifier.fillMaxWidth().height(120.dp)) {
             val n = months.size.coerceAtLeast(1)
-            val dx = if (n > 1) size.width / (n - 1) else 0f
+            val dx = (size.width / (n - 1)).takeIf { n > 1 } ?: 0f
             fun y(v: Float) = size.height - (v / maxV * size.height)
             listOf(incColor to { m: ReportMonth -> m.inc.toFloat() }, expColor to { m: ReportMonth -> m.exp.toFloat() }).forEach { (color, pick) ->
                 val path = Path()
                 months.forEachIndexed { i, m ->
-                    val x = if (n > 1) dx * i else size.width / 2
+                    val x = (dx * i).takeIf { n > 1 } ?: (size.width / 2)
                     val yy = y(pick(m))
-                    if (i == 0) path.moveTo(x, yy) else path.lineTo(x, yy)
+                    if (i == 0) path.moveTo(x, yy)
+                    if (i != 0) path.lineTo(x, yy)
                 }
                 drawPath(path, color, style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                 months.forEachIndexed { i, m ->
-                    val x = if (n > 1) dx * i else size.width / 2
+                    val x = (dx * i).takeIf { n > 1 } ?: (size.width / 2)
                     drawCircle(color, radius = 3.dp.toPx(), center = Offset(x, y(pick(m))))
                 }
             }
@@ -202,7 +205,10 @@ fun Sparkline(values: List<BigDecimal>, color: Color, modifier: Modifier = Modif
         val dx = size.width / (floats.size - 1)
         fun y(v: Float) = size.height - ((v - min) / range * size.height)
         val path = Path()
-        floats.forEachIndexed { i, v -> if (i == 0) path.moveTo(0f, y(v)) else path.lineTo(dx * i, y(v)) }
+        floats.forEachIndexed { i, v ->
+            if (i == 0) path.moveTo(0f, y(v))
+            if (i != 0) path.lineTo(dx * i, y(v))
+        }
         drawPath(path, color, style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
         drawCircle(color, radius = 2.dp.toPx(), center = Offset(size.width, y(floats.last())))
     }

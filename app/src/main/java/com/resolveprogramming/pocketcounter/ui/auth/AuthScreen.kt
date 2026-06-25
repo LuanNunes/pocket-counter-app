@@ -94,7 +94,7 @@ fun AuthScreen(
             label = "subtitle",
         ) { isRegister ->
             Text(
-                text = if (isRegister) "Crie sua conta para começar" else "Faça login para continuar",
+                text = "Crie sua conta para começar".takeIf { isRegister } ?: "Faça login para continuar",
                 style = PocketTheme.typography.body,
                 color = PocketTheme.colors.text3,
             )
@@ -129,7 +129,8 @@ fun AuthScreen(
                         onNext = { focusManager.moveFocus(FocusDirection.Down) },
                     ),
                 )
-            } else {
+            }
+            if (!isRegister) {
                 Spacer(Modifier)
             }
         }
@@ -196,13 +197,15 @@ fun AuthScreen(
                 .fillMaxWidth()
                 .height(52.dp)
                 .background(
-                    if (state.isLoading) PocketTheme.colors.accent.copy(alpha = 0.6f)
-                    else PocketTheme.colors.accent,
+                    PocketTheme.colors.accent.copy(alpha = 0.6f).takeIf { state.isLoading }
+                        ?: PocketTheme.colors.accent,
                     PocketTheme.shapes.chip,
                 )
                 .then(
-                    if (state.isLoading) Modifier
-                    else Modifier.clickable { viewModel.submit() },
+                    run {
+                        if (state.isLoading) return@run Modifier
+                        Modifier.clickable { viewModel.submit() }
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -212,9 +215,10 @@ fun AuthScreen(
                     modifier = Modifier.size(24.dp),
                     strokeWidth = 2.dp,
                 )
-            } else {
+            }
+            if (!state.isLoading) {
                 Text(
-                    text = if (state.isRegisterMode) "Criar conta" else "Entrar",
+                    text = "Criar conta".takeIf { state.isRegisterMode } ?: "Entrar",
                     style = PocketTheme.typography.button,
                     color = PocketTheme.colors.accentInk,
                 )
@@ -257,8 +261,10 @@ fun AuthScreen(
                 .background(PocketTheme.colors.surface, PocketTheme.shapes.chip)
                 .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
                 .then(
-                    if (googleEnabled) Modifier.clickable { viewModel.signInWithGoogle(context) }
-                    else Modifier,
+                    run {
+                        if (googleEnabled) return@run Modifier.clickable { viewModel.signInWithGoogle(context) }
+                        Modifier
+                    },
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -268,7 +274,8 @@ fun AuthScreen(
                     modifier = Modifier.size(24.dp),
                     strokeWidth = 2.dp,
                 )
-            } else {
+            }
+            if (!state.isGoogleLoading) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(
                         painter = painterResource(R.drawable.ic_google),
@@ -287,11 +294,8 @@ fun AuthScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        val toggleText = if (state.isRegisterMode) {
-            "Já tem conta? Entrar"
-        } else {
-            "Não tem conta? Criar conta"
-        }
+        val toggleText = "Já tem conta? Entrar".takeIf { state.isRegisterMode }
+            ?: "Não tem conta? Criar conta"
 
         Text(
             text = toggleText,

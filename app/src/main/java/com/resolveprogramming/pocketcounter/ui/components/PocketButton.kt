@@ -56,16 +56,16 @@ fun PocketButton(
         PocketButtonVariant.PRIMARY -> colors.accentInk
         PocketButtonVariant.GHOST, PocketButtonVariant.SOFT -> colors.text
     }
-    val border: BorderStroke? = if (variant == PocketButtonVariant.SOFT) {
-        BorderStroke(1.dp, colors.line)
-    } else {
-        null
-    }
-    val minHeight = if (size == PocketButtonSize.SMALL) 36.dp else 48.dp
-    val hPad = if (size == PocketButtonSize.SMALL) 14.dp else 18.dp
-    val textStyle = if (size == PocketButtonSize.SMALL) {
-        PocketTheme.typography.bodySm.copy(fontWeight = PocketTheme.typography.button.fontWeight)
-    } else {
+    val border: BorderStroke? = BorderStroke(1.dp, colors.line)
+        .takeIf { variant == PocketButtonVariant.SOFT }
+    val minHeight = 48.dp.takeIf { size != PocketButtonSize.SMALL } ?: 36.dp
+    val hPad = 18.dp.takeIf { size != PocketButtonSize.SMALL } ?: 14.dp
+    val textStyle = run {
+        if (size == PocketButtonSize.SMALL) {
+            return@run PocketTheme.typography.bodySm.copy(
+                fontWeight = PocketTheme.typography.button.fontWeight,
+            )
+        }
         PocketTheme.typography.button
     }
 
@@ -73,11 +73,11 @@ fun PocketButton(
 
     Row(
         modifier = modifier
-            .then(if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier)
+            .then(run { if (fillMaxWidth) return@run Modifier.fillMaxWidth(); Modifier })
             .heightIn(min = minHeight)
             .pressScale(interaction)
             .clip(shape)
-            .then(if (border != null) Modifier.border(border, shape) else Modifier)
+            .then(run { if (border != null) return@run Modifier.border(border, shape); Modifier })
             .background(container, shape)
             .clickable(
                 interactionSource = interaction,
@@ -86,7 +86,7 @@ fun PocketButton(
                 role = Role.Button,
                 onClick = onClick,
             )
-            .alpha(if (enabled) 1f else 0.35f)
+            .alpha(1f.takeIf { enabled } ?: 0.35f)
             .padding(horizontal = hPad),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,

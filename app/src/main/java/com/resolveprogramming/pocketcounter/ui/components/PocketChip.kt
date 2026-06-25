@@ -65,15 +65,14 @@ fun PocketChip(
 
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val scale = if (pressed && !reducedMotion) 0.985f else 1f
+    val scale = 0.985f.takeIf { pressed && !reducedMotion } ?: 1f
 
     val chipModifier = Modifier
         .scale(scale)
         .height(32.dp)
         .then(
-            if (dashedBorder) {
-                Modifier.dashedBorder(borderColor)
-            } else {
+            run {
+                if (dashedBorder) return@run Modifier.dashedBorder(borderColor)
                 Modifier.border(1.dp, borderColor, PocketTheme.shapes.pill)
             }
         )
@@ -97,7 +96,7 @@ fun PocketChip(
         }
     }
 
-    val pressIndication = if (reducedMotion) LocalIndication.current else null
+    val pressIndication = LocalIndication.current.takeIf { reducedMotion }
 
     if (onClick != null) {
         Box(
@@ -114,7 +113,8 @@ fun PocketChip(
         ) {
             content()
         }
-    } else {
+    }
+    if (onClick == null) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             content()
         }

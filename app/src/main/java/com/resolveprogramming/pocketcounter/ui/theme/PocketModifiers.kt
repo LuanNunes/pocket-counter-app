@@ -55,7 +55,7 @@ fun Modifier.pressScale(
     if (reducedMotion) return this
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) pressedScale else 1f,
+        targetValue = pressedScale.takeIf { pressed } ?: 1f,
         label = "pressScale",
     )
     return this.scale(scale)

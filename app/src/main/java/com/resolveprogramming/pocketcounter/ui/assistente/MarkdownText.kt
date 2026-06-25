@@ -50,8 +50,8 @@ private fun RenderBlock(block: MdBlock) {
     when (block) {
         is MdBlock.Heading -> Text(
             inline(block.text),
-            style = if (block.level <= 1) PocketTheme.typography.body.copy(fontWeight = FontWeight.Bold)
-            else PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Bold).takeIf { block.level <= 1 }
+                ?: PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
             color = PocketTheme.colors.text,
         )
         is MdBlock.Para -> Text(inline(block.text), style = PocketTheme.typography.body, color = PocketTheme.colors.text2)
@@ -119,68 +119,73 @@ internal fun parseMarkdown(md: String): List<MdBlock> {
     while (i < lines.size) {
         val line = lines[i]
         val trimmed = line.trimStart()
-        when {
-            line.isBlank() -> i++
 
-            trimmed.startsWith("```") -> {
-                val code = StringBuilder()
-                i++
-                while (i < lines.size && !lines[i].trimStart().startsWith("```")) {
-                    code.appendLine(lines[i]); i++
-                }
-                i++ // skip closing fence
-                blocks += MdBlock.Code(code.toString().trimEnd())
-            }
-
-            trimmed.startsWith("#") -> {
-                val level = trimmed.takeWhile { it == '#' }.length
-                blocks += MdBlock.Heading(level, trimmed.dropWhile { it == '#' }.trim())
-                i++
-            }
-
-            isTableRow(line) && i + 1 < lines.size && isTableSeparator(lines[i + 1]) -> {
-                val headers = splitRow(line)
-                i += 2 // header + separator
-                val rows = mutableListOf<List<String>>()
-                while (i < lines.size && isTableRow(lines[i])) {
-                    rows += splitRow(lines[i]); i++
-                }
-                blocks += MdBlock.Table(headers, rows)
-            }
-
-            trimmed.startsWith(">") -> {
-                // Blockquotes aren't a distinct block here — strip the marker, render as a paragraph.
-                val quote = StringBuilder()
-                while (i < lines.size && lines[i].trimStart().startsWith(">")) {
-                    val stripped = lines[i].trimStart().removePrefix(">").trimStart()
-                    if (quote.isNotEmpty()) quote.append(' ')
-                    quote.append(stripped)
-                    i++
-                }
-                if (quote.isNotEmpty()) blocks += MdBlock.Para(quote.toString())
-            }
-
-            trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
-                val items = mutableListOf<String>()
-                while (i < lines.size && (lines[i].trimStart().startsWith("- ") || lines[i].trimStart().startsWith("* "))) {
-                    items += lines[i].trimStart().drop(2).trim(); i++
-                }
-                blocks += MdBlock.Bullets(items)
-            }
-
-            else -> {
-                val para = StringBuilder()
-                while (i < lines.size && lines[i].isNotBlank() && !lines[i].trimStart().startsWith("#") &&
-                    !lines[i].trimStart().startsWith("```") && !isTableRow(lines[i]) &&
-                    !lines[i].trimStart().startsWith(">") &&
-                    !lines[i].trimStart().startsWith("- ") && !lines[i].trimStart().startsWith("* ")
-                ) {
-                    if (para.isNotEmpty()) para.append(' ')
-                    para.append(lines[i].trim()); i++
-                }
-                if (para.isNotEmpty()) blocks += MdBlock.Para(para.toString())
-            }
+        if (line.isBlank()) {
+            i++
+            continue
         }
+
+        if (trimmed.startsWith("```")) {
+            val code = StringBuilder()
+            i++
+            while (i < lines.size && !lines[i].trimStart().startsWith("```")) {
+                code.appendLine(lines[i]); i++
+            }
+            i++ // skip closing fence
+            blocks += MdBlock.Code(code.toString().trimEnd())
+            continue
+        }
+
+        if (trimmed.startsWith("#")) {
+            val level = trimmed.takeWhile { it == '#' }.length
+            blocks += MdBlock.Heading(level, trimmed.dropWhile { it == '#' }.trim())
+            i++
+            continue
+        }
+
+        if (isTableRow(line) && i + 1 < lines.size && isTableSeparator(lines[i + 1])) {
+            val headers = splitRow(line)
+            i += 2 // header + separator
+            val rows = mutableListOf<List<String>>()
+            while (i < lines.size && isTableRow(lines[i])) {
+                rows += splitRow(lines[i]); i++
+            }
+            blocks += MdBlock.Table(headers, rows)
+            continue
+        }
+
+        if (trimmed.startsWith(">")) {
+            // Blockquotes aren't a distinct block here — strip the marker, render as a paragraph.
+            val quote = StringBuilder()
+            while (i < lines.size && lines[i].trimStart().startsWith(">")) {
+                val stripped = lines[i].trimStart().removePrefix(">").trimStart()
+                if (quote.isNotEmpty()) quote.append(' ')
+                quote.append(stripped)
+                i++
+            }
+            if (quote.isNotEmpty()) blocks += MdBlock.Para(quote.toString())
+            continue
+        }
+
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+            val items = mutableListOf<String>()
+            while (i < lines.size && (lines[i].trimStart().startsWith("- ") || lines[i].trimStart().startsWith("* "))) {
+                items += lines[i].trimStart().drop(2).trim(); i++
+            }
+            blocks += MdBlock.Bullets(items)
+            continue
+        }
+
+        val para = StringBuilder()
+        while (i < lines.size && lines[i].isNotBlank() && !lines[i].trimStart().startsWith("#") &&
+            !lines[i].trimStart().startsWith("```") && !isTableRow(lines[i]) &&
+            !lines[i].trimStart().startsWith(">") &&
+            !lines[i].trimStart().startsWith("- ") && !lines[i].trimStart().startsWith("* ")
+        ) {
+            if (para.isNotEmpty()) para.append(' ')
+            para.append(lines[i].trim()); i++
+        }
+        if (para.isNotEmpty()) blocks += MdBlock.Para(para.toString())
     }
     return blocks
 }
@@ -197,32 +202,36 @@ private fun splitRow(line: String): List<String> =
 internal fun inline(text: String): AnnotatedString = buildAnnotatedString {
     var i = 0
     while (i < text.length) {
-        when {
-            text.startsWith("**", i) -> {
-                val end = text.indexOf("**", i + 2)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text.substring(i + 2, end)) }
-                    i = end + 2
-                } else { append("**"); i += 2 }
+        if (text.startsWith("**", i)) {
+            val end = text.indexOf("**", i + 2)
+            if (end > 0) {
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text.substring(i + 2, end)) }
+                i = end + 2
             }
-            text[i] == '`' -> {
-                val end = text.indexOf('`', i + 1)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontFamily = com.resolveprogramming.pocketcounter.ui.theme.GeistMono)) {
-                        append(text.substring(i + 1, end))
-                    }
-                    i = end + 1
-                } else { append('`'); i++ }
-            }
-            (text[i] == '*' || text[i] == '_') -> {
-                val marker = text[i]
-                val end = text.indexOf(marker, i + 1)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(text.substring(i + 1, end)) }
-                    i = end + 1
-                } else { append(marker); i++ }
-            }
-            else -> { append(text[i]); i++ }
+            if (end <= 0) { append("**"); i += 2 }
+            continue
         }
+        if (text[i] == '`') {
+            val end = text.indexOf('`', i + 1)
+            if (end > 0) {
+                withStyle(SpanStyle(fontFamily = com.resolveprogramming.pocketcounter.ui.theme.GeistMono)) {
+                    append(text.substring(i + 1, end))
+                }
+                i = end + 1
+            }
+            if (end <= 0) { append('`'); i++ }
+            continue
+        }
+        if (text[i] == '*' || text[i] == '_') {
+            val marker = text[i]
+            val end = text.indexOf(marker, i + 1)
+            if (end > 0) {
+                withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(text.substring(i + 1, end)) }
+                i = end + 1
+            }
+            if (end <= 0) { append(marker); i++ }
+            continue
+        }
+        append(text[i]); i++
     }
 }

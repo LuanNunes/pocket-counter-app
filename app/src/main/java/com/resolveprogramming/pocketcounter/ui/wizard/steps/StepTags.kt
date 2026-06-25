@@ -54,15 +54,15 @@ fun StepTags(
 ) {
     val contextMap = contexts.associateBy { it.id }
     val kindTags = tags.filter { it.kind == type }
-    val filteredTags = if (searchQuery.isBlank()) kindTags
-    else kindTags.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    val filteredTags = kindTags.takeIf { searchQuery.isBlank() }
+        ?: kindTags.filter { it.name.contains(searchQuery, ignoreCase = true) }
     val tagsByContext = filteredTags.groupBy { it.idContext }
     // Expense tags whose context is null/blank or points at an unknown/deleted context
     // must still be selectable — surface them in a trailing "Sem contexto" group,
     // mirroring the Gestão screen's buildContextSections orphan bucket.
     val knownContextIds = contexts.map { it.id }.toSet()
-    val orphanExpenseTags = if (type == TransactionType.INCOME) emptyList()
-        else filteredTags.filter { it.idContext.isNullOrBlank() || it.idContext !in knownContextIds }
+    val orphanExpenseTags = emptyList<Tag>().takeIf { type == TransactionType.INCOME }
+        ?: filteredTags.filter { it.idContext.isNullOrBlank() || it.idContext !in knownContextIds }
 
     Column(modifier = modifier) {
         Text(
@@ -172,9 +172,9 @@ fun StepTags(
             ) {
                 filteredTags.forEach { tag ->
                     val isSelected = tag.id in selectedTagIds
-                    val bg = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.surface
-                    val textColor = if (isSelected) PocketTheme.colors.accentInk else PocketTheme.colors.text2
-                    val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+                    val bg = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.surface
+                    val textColor = PocketTheme.colors.accentInk.takeIf { isSelected } ?: PocketTheme.colors.text2
+                    val borderColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
                     val dotColor = tag.color?.let { Color(it) } ?: PocketTheme.colors.text3
 
                     Row(
@@ -195,7 +195,8 @@ fun StepTags(
                     }
                 }
             }
-        } else {
+        }
+        if (type != TransactionType.INCOME) {
             contexts.forEach { context ->
                 val contextTags = tagsByContext[context.id] ?: return@forEach
 
@@ -223,9 +224,9 @@ fun StepTags(
                 ) {
                     contextTags.forEach { tag ->
                         val isSelected = tag.id in selectedTagIds
-                        val bg = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.surface
-                        val textColor = if (isSelected) PocketTheme.colors.accentInk else PocketTheme.colors.text2
-                        val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+                        val bg = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.surface
+                        val textColor = PocketTheme.colors.accentInk.takeIf { isSelected } ?: PocketTheme.colors.text2
+                        val borderColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
 
                         Text(
                             text = tag.name,
@@ -266,9 +267,9 @@ fun StepTags(
                 ) {
                     orphanExpenseTags.forEach { tag ->
                         val isSelected = tag.id in selectedTagIds
-                        val bg = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.surface
-                        val textColor = if (isSelected) PocketTheme.colors.accentInk else PocketTheme.colors.text2
-                        val borderColor = if (isSelected) PocketTheme.colors.accent else PocketTheme.colors.line
+                        val bg = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.surface
+                        val textColor = PocketTheme.colors.accentInk.takeIf { isSelected } ?: PocketTheme.colors.text2
+                        val borderColor = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line
 
                         Text(
                             text = tag.name,

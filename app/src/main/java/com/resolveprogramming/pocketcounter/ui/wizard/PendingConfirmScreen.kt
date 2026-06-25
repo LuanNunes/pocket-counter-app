@@ -72,7 +72,7 @@ fun PendingConfirmScreen(
                 modifier = Modifier.weight(1f),
             )
             WizardButton(
-                text = if (isSaving) "Confirmando..." else "Confirmar pagamento",
+                text = "Confirmando...".takeIf { isSaving } ?: "Confirmar pagamento",
                 isPrimary = true,
                 enabled = !isSaving,
                 onClick = onConfirm,

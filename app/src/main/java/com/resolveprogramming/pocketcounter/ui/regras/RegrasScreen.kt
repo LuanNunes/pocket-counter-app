@@ -68,9 +68,11 @@ fun RegrasScreen(
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 ManageTopBar(title = "Regras aprendidas", onBack = onBack)
-                if (!state.isLoading && state.rules.isEmpty()) {
+                val isEmpty = !state.isLoading && state.rules.isEmpty()
+                if (isEmpty) {
                     EmptyState()
-                } else {
+                }
+                if (!isEmpty) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -152,13 +154,11 @@ private fun RegraCard(
                     modifier = Modifier.weight(1f),
                 )
                 rule.transactionType?.let { type ->
+                    val isIncome = type == TransactionType.INCOME
                     PocketBadge(
-                        text = if (type == TransactionType.INCOME) "Receita" else "Despesa",
-                        variant = if (type == TransactionType.INCOME) {
-                            PocketBadgeVariant.INCOME
-                        } else {
-                            PocketBadgeVariant.EXPENSE
-                        },
+                        text = "Receita".takeIf { isIncome } ?: "Despesa",
+                        variant = PocketBadgeVariant.INCOME.takeIf { isIncome }
+                            ?: PocketBadgeVariant.EXPENSE,
                     )
                     Spacer(Modifier.size(8.dp))
                 }
@@ -173,7 +173,7 @@ private fun RegraCard(
                 rule.appliedCount.takeIf { it > 0 }?.let { "aplicada ${it}×" },
             ).joinToString(" · ")
             Text(
-                text = if (outcome.isBlank()) "sem destino" else "→ $outcome",
+                text = "sem destino".takeIf { outcome.isBlank() } ?: "→ $outcome",
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text3,
             )

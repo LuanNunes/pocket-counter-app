@@ -5,8 +5,8 @@ import java.math.BigDecimal
 private const val SEP = ";"
 
 fun reportToCsv(report: ReportData, kind: TransactionType): String {
-    val series = if (kind == TransactionType.EXPENSE) report.expSeries else report.incSeries
-    val dimension = if (kind == TransactionType.EXPENSE) "Contexto" else "Categoria"
+    val series = report.expSeries.takeIf { kind == TransactionType.EXPENSE } ?: report.incSeries
+    val dimension = "Contexto".takeIf { kind == TransactionType.EXPENSE } ?: "Categoria"
     val monthLabels = report.months.map { it.label }
 
     val header = (listOf(dimension) + monthLabels + "Total").joinToString(SEP) { csvField(it) }
@@ -28,9 +28,9 @@ fun reportToCsv(report: ReportData, kind: TransactionType): String {
     return (listOf(header) + rows + totalsRow).joinToString("\n")
 }
 
-private fun csvField(value: String): String =
+private fun csvField(value: String): String {
     if (value.contains(SEP) || value.contains("\"") || value.contains("\n")) {
-        "\"" + value.replace("\"", "\"\"") + "\""
-    } else {
-        value
+        return "\"" + value.replace("\"", "\"\"") + "\""
     }
+    return value
+}

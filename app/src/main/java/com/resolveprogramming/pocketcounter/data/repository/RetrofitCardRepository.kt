@@ -49,24 +49,23 @@ class RetrofitCardRepository @Inject constructor(
             val cardExpenses = expenses.filter { it.cardId == card.id }
             val invoiceTx = cardExpenses.firstOrNull { it.isInvoice && it.id != null }
 
-            val (items, total) = if (invoiceTx != null) {
-                val invoiceId = invoiceTx.id!!
-                val itemDtos = invoiceItemApi.getItems(invoiceId)
-                if (itemDtos.isNotEmpty()) {
-                    val builtItems = itemDtos.map { it.toInvoiceItem(invoiceId) }
-                    builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
-                } else {
-                    val fallback = fallbackItems(cardExpenses)
-                    fallback to fallback.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount }
+            val (items, total) = run {
+                if (invoiceTx != null) {
+                    val invoiceId = invoiceTx.id!!
+                    val itemDtos = invoiceItemApi.getItems(invoiceId)
+                    if (itemDtos.isNotEmpty()) {
+                        val builtItems = itemDtos.map { it.toInvoiceItem(invoiceId) }
+                        return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
+                    }
                 }
-            } else {
                 val fallback = fallbackItems(cardExpenses)
                 fallback to fallback.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount }
             }
 
-            val usage = if (card.limit > BigDecimal.ZERO) {
-                total.divide(card.limit, 4, RoundingMode.HALF_UP).toFloat().coerceAtMost(1f)
-            } else {
+            val usage = run {
+                if (card.limit > BigDecimal.ZERO) {
+                    return@run total.divide(card.limit, 4, RoundingMode.HALF_UP).toFloat().coerceAtMost(1f)
+                }
                 0f
             }
             OpenInvoice(
