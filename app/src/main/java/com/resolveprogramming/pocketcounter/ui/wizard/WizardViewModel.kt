@@ -25,6 +25,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
@@ -79,7 +80,18 @@ class WizardViewModel @Inject constructor(
 
     private fun loadNotification() {
         viewModelScope.launch {
-            val base = notificationRepository.getById(notificationId).getOrNull()
+            // Fetch the independent lookups concurrently — running them sequentially made every
+            // notification transition wait on ~6 round-trips back to back, which felt slow.
+            val baseDeferred = async { notificationRepository.getById(notificationId).getOrNull() }
+            val cardsDeferred = async { cardRepository.getCards().getOrDefault(emptyList()) }
+            val tagsDeferred = async { tagRepository.getAllTags().getOrDefault(emptyList()) }
+            val contextsDeferred = async { tagRepository.getAllContexts().getOrDefault(emptyList()) }
+            val seriesDeferred = async { seriesRepository.getAll().getOrDefault(emptyList()) }
+            val queueDeferred = async {
+                notificationRepository.getPendingReview().getOrDefault(emptyList()).map { it.id }
+            }
+
+            val base = baseDeferred.await()
             if (base == null) {
                 // Stale/deleted/already-classified id: surface an error instead of an endless
                 // spinner (the screen shows a recoverable failure state with a way out).
@@ -92,11 +104,11 @@ class WizardViewModel @Inject constructor(
                 }
                 return@launch
             }
-            val cards = cardRepository.getCards().getOrDefault(emptyList())
-            val tags = tagRepository.getAllTags().getOrDefault(emptyList())
-            val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
-            val series = seriesRepository.getAll().getOrDefault(emptyList())
-            val queue = notificationRepository.getPendingReview().getOrDefault(emptyList()).map { it.id }
+            val cards = cardsDeferred.await()
+            val tags = tagsDeferred.await()
+            val contexts = contextsDeferred.await()
+            val series = seriesDeferred.await()
+            val queue = queueDeferred.await()
 
             val classifyResult = notificationRepository.classify(notificationId, base)
             val classified = classifyResult.getOrNull()
