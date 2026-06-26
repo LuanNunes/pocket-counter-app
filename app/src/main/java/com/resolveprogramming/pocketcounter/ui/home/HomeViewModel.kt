@@ -46,6 +46,7 @@ data class HomeUiState(
     /** null off the current month — automation is the current-month inbox statistic. */
     val automationPct: Int? = null,
     val pendingReviewCount: Int = 0,
+    val pendingReviewFirstId: String? = null,
     val openBillsTotal: BigDecimal = BigDecimal.ZERO,
     val openBillsCount: Int = 0,
     val shownItems: List<HistoryItem> = emptyList(),
@@ -59,6 +60,7 @@ data class HomeUiState(
     val flashNonce: Int = 0,
     val toastMessage: String? = null,
     val isEmptyMonth: Boolean = false,
+    val monthCount: Int = 0,
     val isLoading: Boolean = true,
 )
 
@@ -118,8 +120,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true) }
             val items = transactionRepository.getMonth(key).getOrDefault(emptyList())
-            val pendingCount = notificationRepository.getPendingReview()
-                .getOrDefault(emptyList()).size
+            val pending = notificationRepository.getPendingReview().getOrDefault(emptyList())
             val automation = notificationRepository.getAutomationStat().getOrNull()
             _state.update { s ->
                 // A newer month navigation supersedes this in-flight result.
@@ -132,10 +133,16 @@ class HomeViewModel @Inject constructor(
                     isLoading = false,
                     isCurrentMonth = current,
                     automationPct = automationPct,
-                    pendingReviewCount = pendingCount.takeIf { current } ?: 0,
+                    pendingReviewCount = pending.size.takeIf { current } ?: 0,
+                    pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
                 ).recomputed()
             }
         }
+    }
+
+    fun refresh() {
+        loadLookups()
+        loadMonth()
     }
 
     fun selectMonth(delta: Int) = setMonth(_state.value.month.plusMonths(delta.toLong()))
@@ -176,7 +183,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add) }
+    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add()) }
 
     fun openEdit(item: HistoryItem) = _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
 
@@ -228,6 +235,7 @@ class HomeViewModel @Inject constructor(
             groupedSections = grouped,
             periodTotal = periodTotal,
             isEmptyMonth = monthItems.isEmpty(),
+            monthCount = monthItems.size,
         )
     }
 

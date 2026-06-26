@@ -1,13 +1,12 @@
 package com.resolveprogramming.pocketcounter.ui.home.components
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,57 +15,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.resolveprogramming.pocketcounter.domain.model.GroupMode
-import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
-import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
-import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.domain.model.TransactionType
-import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
-import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
-import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
-import com.resolveprogramming.pocketcounter.ui.components.SegmentTone
-import com.resolveprogramming.pocketcounter.ui.home.HomeUiState
-import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
-import com.resolveprogramming.pocketcounter.ui.wizard.label
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Locale
@@ -179,42 +156,68 @@ fun BalanceHero(
                 )
             },
         ) {
-            Text(
-                text = "SALDO DO MÊS · ${monthLabel.uppercase(ptBr)}",
-                style = PocketTheme.typography.sectionHeader,
-                color = ink.copy(alpha = 0.65f),
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = formatter.format(balance),
-                style = PocketTheme.typography.monoBalance,
-                color = ink,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "SALDO DO MÊS · ${monthLabel.uppercase(ptBr)}",
+                        style = PocketTheme.typography.sectionHeader,
+                        color = ink.copy(alpha = 0.65f),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = formatter.format(balance),
+                        style = PocketTheme.typography.monoBalance,
+                        // Net saldo carries sign meaning: green when up, red when down, neutral at zero.
+                        color = when (balance.signum()) {
+                            1 -> dark.income
+                            -1 -> dark.expense
+                            else -> ink
+                        },
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(ink.copy(alpha = 0.12f), PocketTheme.shapes.icon),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CreditCard,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = ink.copy(alpha = 0.85f),
+                    )
+                }
+            }
             Spacer(Modifier.height(16.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                KpiColumn(
-                    label = "Despesas",
-                    dotColor = dark.expense,
-                    value = formatter.format(kpis.totals.expense),
-                    count = "${kpis.expenseCount} lançs.",
-                    ink = ink,
-                    modifier = Modifier.weight(1f),
-                )
-                KpiColumn(
-                    label = "Receitas",
-                    dotColor = dark.income,
-                    value = formatter.format(kpis.totals.income),
-                    count = "${kpis.incomeCount} lançs.",
-                    ink = ink,
-                    modifier = Modifier.weight(1f),
-                )
-                KpiColumn(
+            KpiStackRow(
+                label = "Despesas",
+                dotColor = dark.expense,
+                value = formatter.format(kpis.totals.expense),
+                count = "${kpis.expenseCount} lançs.",
+                ink = ink,
+                showDivider = false,
+            )
+            KpiStackRow(
+                label = "Receitas",
+                dotColor = dark.income,
+                value = formatter.format(kpis.totals.income),
+                count = "${kpis.incomeCount} lançs.",
+                ink = ink,
+                showDivider = true,
+            )
+            if (kpis.pendingCount >= 1) {
+                KpiStackRow(
                     label = "Pendente",
                     dotColor = dark.warn,
                     value = formatter.format(kpis.pendingTotal),
                     count = "${kpis.pendingCount} em aberto",
                     ink = ink,
-                    modifier = Modifier.weight(1f),
+                    showDivider = true,
                 )
             }
             if (automationPct != null) {
@@ -226,37 +229,57 @@ fun BalanceHero(
 }
 
 @Composable
-private fun KpiColumn(
+private fun KpiStackRow(
     label: String,
     dotColor: Color,
     value: String,
     count: String,
     ink: Color,
-    modifier: Modifier = Modifier,
+    showDivider: Boolean,
 ) {
-    Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(6.dp).background(dotColor, CircleShape))
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = label,
-                style = PocketTheme.typography.bodyXs,
-                color = ink.copy(alpha = 0.65f),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (showDivider) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(ink.copy(alpha = 0.09f)),
             )
         }
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = value,
-            style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.SemiBold),
-            color = ink,
-            maxLines = 1,
-            softWrap = false,
-        )
-        Text(
-            text = count,
-            style = PocketTheme.typography.bodyXs,
-            color = ink.copy(alpha = 0.55f),
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 11.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).background(dotColor, CircleShape))
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    text = label,
+                    style = PocketTheme.typography.body.copy(fontSize = 13.5.sp),
+                    color = ink.copy(alpha = 0.82f),
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = value,
+                    style = PocketTheme.typography.monoSm.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                    ),
+                    color = ink,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    text = count,
+                    style = PocketTheme.typography.bodyXs,
+                    color = ink.copy(alpha = 0.55f),
+                )
+            }
+        }
     }
 }
 
@@ -301,37 +324,55 @@ fun RevisarBanner(count: Int, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(PocketTheme.colors.warnBg, PocketTheme.shapes.card)
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.card)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Outlined.ErrorOutline,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = PocketTheme.colors.warn,
-            )
-            Spacer(Modifier.width(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .background(PocketTheme.colors.warn.copy(alpha = 0.18f), PocketTheme.shapes.icon),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.ErrorOutline,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.warn,
+                )
+            }
+            Spacer(Modifier.width(11.dp))
             Text(
-                text = "$count lançamentos para revisar",
-                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.SemiBold),
-                color = PocketTheme.colors.warn,
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$count") }
+                    append(" lançamentos para revisar")
+                },
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text,
             )
         }
-        Text(
-            text = "ensinar ›",
-            style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Bold),
-            color = PocketTheme.colors.warn,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "ensinar",
+                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Bold),
+                color = PocketTheme.colors.warn,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = PocketTheme.colors.warn,
+            )
+        }
     }
 }
 
 @Composable
 fun HomeQuickTiles(
-    monthLabel: String,
     openBillsTotal: BigDecimal,
     openBillsCount: Int,
     onResumo: () -> Unit,
@@ -343,15 +384,21 @@ fun HomeQuickTiles(
     ) {
         QuickTile(
             icon = Icons.Filled.PieChart,
-            title = "Resumo",
-            subtitle = monthLabel.lowercase(ptBr),
+            badgeBg = PocketTheme.colors.accentBg,
+            badgeTint = PocketTheme.colors.accent,
+            caption = "Resumo do mês",
+            value = "Para onde foi",
+            valueMono = false,
             onClick = onResumo,
             modifier = Modifier.weight(1f),
         )
         QuickTile(
             icon = Icons.Filled.CreditCard,
-            title = "Faturas · $openBillsCount",
-            subtitle = currency().format(openBillsTotal),
+            badgeBg = PocketTheme.colors.surface2,
+            badgeTint = PocketTheme.colors.text2,
+            caption = "Faturas · $openBillsCount cartões",
+            value = currency().format(openBillsTotal),
+            valueMono = true,
             onClick = onFaturas,
             modifier = Modifier.weight(1f),
         )
@@ -361,361 +408,102 @@ fun HomeQuickTiles(
 @Composable
 private fun QuickTile(
     icon: ImageVector,
-    title: String,
-    subtitle: String,
+    badgeBg: Color,
+    badgeTint: Color,
+    caption: String,
+    value: String,
+    valueMono: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    PocketCard(modifier = modifier.clickable(onClick = onClick)) {
-        Column {
+    val valueStyle = when {
+        valueMono -> PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        else -> PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    }
+    PocketCard(
+        modifier = modifier.clickable(onClick = onClick),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .background(PocketTheme.colors.accentBg, PocketTheme.shapes.chip),
+                    .background(badgeBg, PocketTheme.shapes.chip),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
-                    tint = PocketTheme.colors.accent,
+                    tint = badgeTint,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = title,
-                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Bold),
-                color = PocketTheme.colors.text,
-                maxLines = 1,
-                softWrap = false,
-            )
-            Text(
-                text = subtitle,
-                style = PocketTheme.typography.bodyXs,
-                color = PocketTheme.colors.text3,
-                maxLines = 1,
-                softWrap = false,
-            )
-        }
-    }
-}
-
-@Composable
-fun GroupToggle(
-    groupBy: GroupMode,
-    onSelect: (GroupMode) -> Unit,
-) {
-    // Lista | Categoria, Categoria default-active. CONTEXTO drives "Categoria".
-    val categoria = groupBy != GroupMode.LISTA
-    Row(
-        modifier = Modifier
-            .background(PocketTheme.colors.surface2, RoundedCornerShape(10.dp))
-            .border(1.dp, PocketTheme.colors.line, RoundedCornerShape(10.dp))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        GroupToggleSeg(label = "Lista", active = !categoria, onClick = { onSelect(GroupMode.LISTA) })
-        GroupToggleSeg(label = "Categoria", active = categoria, onClick = { onSelect(GroupMode.CONTEXTO) })
-    }
-}
-
-@Composable
-private fun GroupToggleSeg(label: String, active: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(PocketTheme.colors.surface.takeIf { active } ?: Color.Transparent, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text.takeIf { active } ?: PocketTheme.colors.text3,
-        )
-    }
-}
-
-@Composable
-fun HomeListSection(
-    state: HomeUiState,
-    onSelectType: (TransactionType) -> Unit,
-    onSelectGroup: (GroupMode) -> Unit,
-    onToggleStatus: (HistoryItem) -> Unit,
-    onEdit: (HistoryItem) -> Unit,
-) {
-    val expenseSelected = state.listType == TransactionType.EXPENSE
-    Column {
-        PocketSegmented(
-            options = listOf(
-                SegmentOption("Despesas · ${state.kpis.expenseCount}", SegmentTone.EXPENSE),
-                SegmentOption("Receitas · ${state.kpis.incomeCount}", SegmentTone.INCOME),
-            ),
-            selectedIndex = 0.takeIf { expenseSelected } ?: 1,
-            onSelect = {
-                onSelectType(TransactionType.EXPENSE.takeIf { _ -> it == 0 } ?: TransactionType.INCOME)
-            },
-        )
-        Spacer(Modifier.height(12.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            GroupToggle(groupBy = state.groupBy, onSelect = onSelectGroup)
-            Text(
-                text = currency().format(state.periodTotal),
-                style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.Bold),
-                color = PocketTheme.colors.text,
-                maxLines = 1,
-                softWrap = false,
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-
-        if (state.isEmptyMonth || state.shownItems.isEmpty()) {
-            Text(
-                text = "Nenhuma despesa neste mês".takeIf { expenseSelected } ?: "Nenhuma receita neste mês",
-                style = PocketTheme.typography.bodySm,
-                color = PocketTheme.colors.text3,
-                modifier = Modifier.padding(vertical = 16.dp),
-            )
-            return@Column
-        }
-
-        if (state.groupBy == GroupMode.LISTA) {
-            state.shownItems.forEach { item ->
-                TxRow(
-                    item = item,
-                    state = state,
-                    onToggleStatus = onToggleStatus,
-                    onEdit = onEdit,
+            Spacer(Modifier.width(11.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = caption,
+                    style = PocketTheme.typography.bodyXs,
+                    color = PocketTheme.colors.text3,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+                Text(
+                    text = value,
+                    style = valueStyle,
+                    color = PocketTheme.colors.text,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
-            return@Column
-        }
-
-        state.groupedSections.forEach { group ->
-            GroupHeader(
-                title = group.title,
-                color = group.color,
-                count = group.items.size,
-                subtotal = group.subtotal,
-            )
-            group.items.forEach { item ->
-                TxRow(
-                    item = item,
-                    state = state,
-                    onToggleStatus = onToggleStatus,
-                    onEdit = onEdit,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
         }
     }
 }
 
 @Composable
-private fun GroupHeader(title: String, color: Long?, count: Int, subtotal: BigDecimal) {
+fun SwipeCue(count: Int, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 4.dp),
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.card)
+            .clickable(onClickLabel = "Abrir lançamentos", role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                Modifier
-                    .size(6.dp)
-                    .background(color?.let { Color(it) } ?: PocketTheme.colors.text3, CircleShape),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "${title.uppercase(ptBr)} · $count",
-                style = PocketTheme.typography.sectionHeader,
-                color = PocketTheme.colors.text3,
-            )
-        }
-        Text(
-            text = currency().format(subtotal),
-            style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text2,
-            maxLines = 1,
-            softWrap = false,
-        )
-    }
-}
-
-@Composable
-fun TxRow(
-    item: HistoryItem,
-    state: HomeUiState,
-    onToggleStatus: (HistoryItem) -> Unit,
-    onEdit: (HistoryItem) -> Unit,
-) {
-    val reducedMotion = LocalReducedMotion.current
-    val flashing = state.flashId == item.id
-    val targetBg = PocketTheme.colors.accentBg.takeIf { flashing } ?: Color.Transparent
-    val bg by animateColorAsState(
-        targetValue = targetBg,
-        label = "txFlash",
-    )
-    val rowBg = targetBg.takeIf { reducedMotion } ?: bg
-    val paid = item.statusPayment == PaymentStatus.PAID
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(rowBg, PocketTheme.shapes.chip)
-            .clickable { onEdit(item) }
-            .padding(vertical = 10.dp, horizontal = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StatusToggle(paid = paid, onToggle = { onToggleStatus(item) })
-        Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = item.displayTitle(),
-                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
+                text = "Lançamentos",
+                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
                 color = PocketTheme.colors.text,
-                maxLines = 1,
-                softWrap = false,
             )
             Text(
-                text = txMeta(item, state),
-                style = PocketTheme.typography.bodyXs,
+                text = "$count no mês".takeIf { count > 0 } ?: "deslize para ver",
+                style = PocketTheme.typography.bodyXs.copy(fontSize = 12.sp),
                 color = PocketTheme.colors.text3,
-                maxLines = 1,
-                softWrap = false,
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Column(horizontalAlignment = Alignment.End) {
-            AmountText(
-                amount = item.amount,
-                type = item.type,
-                showSign = true,
-                style = PocketTheme.typography.monoSm,
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Paga".takeIf { paid } ?: "Pendente",
-                style = PocketTheme.typography.bodyXs,
-                color = PocketTheme.colors.income.takeIf { paid } ?: PocketTheme.colors.warn,
+                text = "deslize",
+                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp),
+                color = PocketTheme.colors.accent,
             )
-        }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            modifier = Modifier
-                .minimumInteractiveComponentSize()
-                .size(32.dp)
-                .clickable(onClickLabel = "Editar transação") { onEdit(item) },
-            contentAlignment = Alignment.Center,
-        ) {
+            Spacer(Modifier.width(4.dp))
             Icon(
-                imageVector = Icons.Filled.Edit,
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = PocketTheme.colors.text3,
+                modifier = Modifier.size(14.dp),
+                tint = PocketTheme.colors.accent,
             )
         }
-    }
-}
-
-@Composable
-private fun StatusToggle(paid: Boolean, onToggle: () -> Unit) {
-    // Nested clickable with its own interaction source so the tap is consumed here and never
-    // propagates to the row's edit click (Compose equivalent of stopPropagation).
-    val interaction = remember { MutableInteractionSource() }
-    val a11yLabel = "Paga — marcar como pendente".takeIf { paid } ?: "Pendente — marcar como paga"
-    Box(
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .size(28.dp)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onToggle,
-            )
-            .semantics { contentDescription = a11yLabel },
-        contentAlignment = Alignment.Center,
-    ) {
-        if (paid) {
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .background(PocketTheme.colors.incomeBg, PocketTheme.shapes.icon),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = PocketTheme.colors.income,
-                )
-            }
-        }
-        if (!paid) {
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .dashedRing(PocketTheme.colors.warn),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Schedule,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = PocketTheme.colors.warn,
-                )
-            }
-        }
-    }
-}
-
-private fun Modifier.dashedRing(color: Color): Modifier = drawBehind {
-    val stroke = Stroke(
-        width = 1.5.dp.toPx(),
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 4f), 0f),
-    )
-    val r = 6.dp.toPx()
-    drawRoundRect(color = color, cornerRadius = CornerRadius(r, r), style = stroke)
-}
-
-private fun txMeta(item: HistoryItem, state: HomeUiState): String {
-    val payment = run {
-        if (item.paymentMethod == PaymentMethod.CREDIT) {
-            val cardName = item.cardId?.let { state.cards[it]?.name }
-            return@run cardName?.let { "Cartão $it" } ?: "Crédito"
-        }
-        item.paymentMethod?.label().orEmpty()
-    }
-    val tagNames = item.tagIds.orEmpty().mapNotNull { state.tags[it]?.name }
-    val tagPreview = run {
-        if (tagNames.isEmpty()) return@run ""
-        if (tagNames.size == 1) return@run tagNames.first()
-        "${tagNames.first()} +${tagNames.size - 1}"
-    }
-    return listOf(payment, tagPreview).filter { it.isNotBlank() }.joinToString(" · ")
-}
-
-@Composable
-fun HomeFab(onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(56.dp)
-            .background(PocketTheme.colors.accent, PocketTheme.shapes.fab)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("+", style = PocketTheme.typography.stepQuestion, color = PocketTheme.colors.accentInk)
     }
 }
 
 /**
- * Clears [HomeUiState.flashId] ~1.4s after a flash starts, unless reduced motion is on.
- * Keyed on [flashNonce] (bumped on every flash) so re-flashing the SAME row id still fires.
+ * Clears [com.resolveprogramming.pocketcounter.ui.home.HomeUiState.flashId] ~1.4s after a flash
+ * starts, unless reduced motion is on. Keyed on [flashNonce] (bumped on every flash) so re-flashing
+ * the SAME row id still fires.
  */
 @Composable
 fun FlashEffect(flashId: String?, flashNonce: Int, reducedMotion: Boolean, onConsume: () -> Unit) {

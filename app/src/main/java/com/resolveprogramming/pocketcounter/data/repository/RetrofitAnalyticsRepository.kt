@@ -1,8 +1,10 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
+import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
 import com.resolveprogramming.pocketcounter.domain.model.CompareOption
 import com.resolveprogramming.pocketcounter.domain.model.MonthlySummary
 import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
@@ -10,6 +12,9 @@ import com.resolveprogramming.pocketcounter.domain.model.SummaryTag
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.YearMonth
@@ -28,6 +33,7 @@ import javax.inject.Singleton
 @Singleton
 class RetrofitAnalyticsRepository @Inject constructor(
     private val transactionApi: TransactionApi,
+    private val invoiceItemApi: InvoiceItemApi,
     private val tagRepository: TagRepository,
 ) : AnalyticsRepository {
 
@@ -194,8 +200,35 @@ class RetrofitAnalyticsRepository @Inject constructor(
     private suspend fun fetch(kind: TransactionType, ym: YearMonth): List<TransactionDto> {
         val ref = RemoteMappers.monthKeyToRef(ym.key())
         if (kind == TransactionType.INCOME) return transactionApi.getIncomes(ref)
-        return transactionApi.getExpenses(ref)
+        return expandInvoices(transactionApi.getExpenses(ref))
     }
+
+    /**
+     * A credit-card fatura arrives as a single invoice container (isInvoice=true, amount=total)
+     * whose individual purchases live in the items sub-resource — each carrying its OWN amount and
+     * tags. Replace each invoice with its line items so totals and per-context breakdown attribute
+     * every purchase correctly. An invoice with no items keeps its container so nothing is lost.
+     */
+    private suspend fun expandInvoices(txs: List<TransactionDto>): List<TransactionDto> =
+        coroutineScope {
+            txs.map { tx ->
+                async {
+                    val invoiceId = tx.id
+                    if (!tx.isInvoice || invoiceId == null) return@async listOf(tx)
+                    val items = invoiceItemApi.getItems(invoiceId)
+                    if (items.isEmpty()) return@async listOf(tx)
+                    items.map { it.toExpenseTransaction(tx) }
+                }
+            }.awaitAll().flatten()
+        }
+
+    private fun TransactionItemDto.toExpenseTransaction(invoice: TransactionDto): TransactionDto =
+        invoice.copy(
+            id = id ?: invoice.id,
+            amount = amount,
+            tags = tags,
+            isInvoice = false,
+        )
 
     private suspend fun baselineFor(
         compareKey: String?,

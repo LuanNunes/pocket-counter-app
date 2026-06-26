@@ -18,7 +18,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -47,14 +46,18 @@ fun PocketButton(
 ) {
     val colors = PocketTheme.colors
     val shape = PocketTheme.shapes.chip
-    val container = when (variant) {
-        PocketButtonVariant.PRIMARY -> colors.accent
-        PocketButtonVariant.GHOST -> Color.Transparent
-        PocketButtonVariant.SOFT -> colors.surface2
+    // Disabled uses a muted-but-legible surface/text pair instead of a low alpha, which on the
+    // dark theme would fade the accent fill + near-black ink into the background (illegible CTA).
+    val container = when {
+        variant == PocketButtonVariant.GHOST -> Color.Transparent
+        !enabled -> colors.surface2
+        variant == PocketButtonVariant.PRIMARY -> colors.accent
+        else -> colors.surface2
     }
-    val contentColor = when (variant) {
-        PocketButtonVariant.PRIMARY -> colors.accentInk
-        PocketButtonVariant.GHOST, PocketButtonVariant.SOFT -> colors.text
+    val contentColor = when {
+        !enabled -> colors.text3
+        variant == PocketButtonVariant.PRIMARY -> colors.accentInk
+        else -> colors.text
     }
     val border: BorderStroke? = BorderStroke(1.dp, colors.line)
         .takeIf { variant == PocketButtonVariant.SOFT }
@@ -86,7 +89,6 @@ fun PocketButton(
                 role = Role.Button,
                 onClick = onClick,
             )
-            .alpha(1f.takeIf { enabled } ?: 0.35f)
             .padding(horizontal = hPad),
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,12 +21,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,27 +37,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
+import com.resolveprogramming.pocketcounter.navigation.Routes
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
-import com.resolveprogramming.pocketcounter.ui.components.TabId
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
-import com.resolveprogramming.pocketcounter.ui.home.components.HomeFab
-import com.resolveprogramming.pocketcounter.ui.home.components.HomeListSection
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
 import com.resolveprogramming.pocketcounter.ui.home.components.MonthNavBar
 import com.resolveprogramming.pocketcounter.ui.home.components.RevisarBanner
+import com.resolveprogramming.pocketcounter.ui.home.components.SwipeCue
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
-import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
-import com.resolveprogramming.pocketcounter.ui.transacoes.TransacaoFormSheet
-import java.time.LocalDate
 
 @Composable
-fun HomeScreen(
-    onNotificationTap: (String) -> Unit,
+fun HomeContent(
+    padding: PaddingValues,
+    onOpenTransacoes: () -> Unit,
     onNavigate: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -72,111 +71,88 @@ fun HomeScreen(
 
     FlashEffect(state.flashId, state.flashNonce, reducedMotion, viewModel::consumeFlash)
 
+    // init already loads; only refresh on subsequent resumes (e.g. returning from the wizard).
+    val isFirstResume = remember { mutableStateOf(true) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (isFirstResume.value) {
+            isFirstResume.value = false
+            return@LifecycleEventEffect
+        }
+        viewModel.refresh()
+    }
+
     if (state.isLoading && state.shownItems.isEmpty() && state.isEmptyMonth.not()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentAlignment = Alignment.Center,
+        ) {
             CircularProgressIndicator(color = PocketTheme.colors.accent)
         }
         return
     }
 
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = PocketTheme.colors.bg,
-            bottomBar = {
-                PocketTabBar(
-                    active = TabId.INICIO,
-                    onNav = { tab ->
-                        when (tab) {
-                            TabId.TRANSACOES -> onNavigate("transacoes")
-                            TabId.CARTOES -> onNavigate("cartoes")
-                            TabId.MAIS -> onNavigate("mais")
-                            TabId.INICIO -> Unit
-                        }
-                    },
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { Spacer(Modifier.height(8.dp)) }
+
+            item { HeaderSection(state.userName, onAssistant = { onNavigate("assistente") }) }
+
+            item {
+                MonthNavBar(
+                    monthLabel = state.monthLabel,
+                    isCurrentMonth = state.isCurrentMonth,
+                    onStep = viewModel::selectMonth,
                 )
-            },
-            floatingActionButton = { HomeFab(onClick = viewModel::openAdd) },
-        ) { padding ->
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item { Spacer(Modifier.height(8.dp)) }
-
-                item { HeaderSection(state.userName, onAssistant = { onNavigate("assistente") }) }
-
-                item {
-                    MonthNavBar(
-                        monthLabel = state.monthLabel,
-                        isCurrentMonth = state.isCurrentMonth,
-                        onStep = viewModel::selectMonth,
-                    )
-                }
-
-                item {
-                    BalanceHero(
-                        monthLabel = state.monthLabel,
-                        kpis = state.kpis,
-                        balance = state.balance,
-                        automationPct = state.automationPct,
-                    )
-                }
-
-                if (state.isCurrentMonth && state.pendingReviewCount > 0) {
-                    item {
-                        RevisarBanner(
-                            count = state.pendingReviewCount,
-                            onClick = { onNavigate("transacoes") },
-                        )
-                    }
-                }
-
-                item {
-                    HomeQuickTiles(
-                        monthLabel = state.monthLabel,
-                        openBillsTotal = state.openBillsTotal,
-                        openBillsCount = state.openBillsCount,
-                        onResumo = { onNavigate("resumo") },
-                        onFaturas = { onNavigate("cartoes") },
-                    )
-                }
-
-                item {
-                    HomeListSection(
-                        state = state,
-                        onSelectType = viewModel::setListType,
-                        onSelectGroup = viewModel::setGroupBy,
-                        onToggleStatus = viewModel::toggleStatus,
-                        onEdit = viewModel::openEdit,
-                    )
-                }
-
-                item { Spacer(Modifier.height(80.dp)) }
             }
+
+            item {
+                BalanceHero(
+                    monthLabel = state.monthLabel,
+                    kpis = state.kpis,
+                    balance = state.balance,
+                    automationPct = state.automationPct,
+                )
+            }
+
+            if (state.isCurrentMonth && state.pendingReviewCount > 0) {
+                item {
+                    RevisarBanner(
+                        count = state.pendingReviewCount,
+                        onClick = {
+                            state.pendingReviewFirstId?.let { onNavigate(Routes.wizard(it)) }
+                        },
+                    )
+                }
+            }
+
+            item {
+                HomeQuickTiles(
+                    openBillsTotal = state.openBillsTotal,
+                    openBillsCount = state.openBillsCount,
+                    onResumo = { onNavigate("resumo") },
+                    onFaturas = { onNavigate("cartoes") },
+                )
+            }
+
+            item {
+                SwipeCue(
+                    count = state.monthCount,
+                    onClick = onOpenTransacoes,
+                )
+            }
+
+            item { Spacer(Modifier.height(20.dp)) }
         }
 
         PocketToastHost(state = toastState)
-    }
-
-    val formMode = state.formMode
-    if (formMode != null) {
-        val today = LocalDate.now()
-        val defaultDate = today.takeIf { state.isCurrentMonth } ?: state.month.atDay(1)
-        TransacaoFormSheet(
-            mode = formMode,
-            initialItem = (formMode as? FormMode.Edit)?.let { edit ->
-                state.shownItems.firstOrNull { it.id == edit.itemId }
-            },
-            cards = state.cards.values.toList(),
-            tags = state.tags.values.toList(),
-            contexts = state.contexts,
-            onSave = viewModel::saveForm,
-            onDismiss = viewModel::closeForm,
-            defaultDate = defaultDate,
-        )
     }
 }
 

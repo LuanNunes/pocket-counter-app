@@ -25,7 +25,7 @@ import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.ui.assistente.AssistantScreen
 import com.resolveprogramming.pocketcounter.ui.auth.AuthScreen
 import com.resolveprogramming.pocketcounter.ui.cards.CartoesScreen
-import com.resolveprogramming.pocketcounter.ui.home.HomeScreen
+import com.resolveprogramming.pocketcounter.ui.home.HomePager
 import com.resolveprogramming.pocketcounter.ui.lock.LockScreen
 import androidx.navigation.NavHostController
 import com.resolveprogramming.pocketcounter.ui.components.TabId
@@ -37,7 +37,6 @@ import com.resolveprogramming.pocketcounter.ui.mais.MaisScreen
 import com.resolveprogramming.pocketcounter.ui.regras.RegrasScreen
 import com.resolveprogramming.pocketcounter.ui.relatorio.RelatorioScreen
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
-import com.resolveprogramming.pocketcounter.ui.transacoes.TransacoesScreen
 import com.resolveprogramming.pocketcounter.ui.wizard.WizardScreen
 
 object Routes {
@@ -148,13 +147,10 @@ fun PocketNavHost(
         }
 
         composable(Routes.HOME) {
-            HomeScreen(
-                onNotificationTap = { notificationId ->
-                    navController.navigate(Routes.wizard(notificationId))
-                },
-                onNavigate = { route ->
-                    navController.navigate(route)
-                },
+            HomePager(
+                initialPage = 0,
+                onNavTab = { tab -> navTab(navController, tab) },
+                onNavigate = { route -> navController.navigate(route) },
             )
         }
 
@@ -178,8 +174,10 @@ fun PocketNavHost(
         }
 
         composable(Routes.TRANSACOES) {
-            TransacoesScreen(
-                onNav = { tab -> navTab(navController, tab) },
+            HomePager(
+                initialPage = 1,
+                onNavTab = { tab -> navTab(navController, tab) },
+                onNavigate = { route -> navController.navigate(route) },
             )
         }
 
