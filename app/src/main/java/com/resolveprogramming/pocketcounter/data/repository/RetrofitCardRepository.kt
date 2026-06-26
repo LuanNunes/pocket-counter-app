@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
+import com.resolveprogramming.pocketcounter.data.cache.SuspendCache
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
@@ -36,8 +37,10 @@ class RetrofitCardRepository @Inject constructor(
     private val invoiceItemApi: InvoiceItemApi,
 ) : CardRepository {
 
+    private val cardsCache = SuspendCache<List<CreditCard>>()
+
     override suspend fun getCards(): Result<List<CreditCard>> = runCatching {
-        creditCards()
+        cardsCache.get { creditCards() }
     }
 
     override suspend fun getOpenInvoices(): Result<List<OpenInvoice>> = runCatching {
@@ -138,7 +141,7 @@ class RetrofitCardRepository @Inject constructor(
         val created = creditCardApi.getCards().firstOrNull { it.id == id }
             ?: CreditCardDto(id = id, name = name, brand = brand, closingDay = closingDay, color = color)
         created.toCreditCard()
-    }
+    }.onSuccess { cardsCache.invalidate() }
 
     private fun TransactionItemDto.toInvoiceItem(invoiceId: String): InvoiceItem = InvoiceItem(
         transactionId = invoiceId,

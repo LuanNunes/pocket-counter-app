@@ -576,6 +576,45 @@ class RetrofitCardRepositoryTest {
     }
 
     // -------------------------------------------------------------------------
+    // getCards caching
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `getCards caches the card list so a second read hits the api once`() = runTest {
+        coEvery { creditCardApi.getCards() } returns listOf(cardDto)
+
+        repo.getCards()
+        repo.getCards()
+
+        coVerify(exactly = 1) { creditCardApi.getCards() }
+    }
+
+    @Test
+    fun `addCard invalidates the cards cache so the next read refetches`() = runTest {
+        coEvery { creditCardApi.getCards() } returns listOf(cardDto)
+        coEvery { creditCardApi.create(any()) } returns "new-card-id"
+
+        repo.getCards()
+        repo.addCard(name = "Inter", brand = null, closingDay = null, color = null)
+        repo.getCards()
+
+        // First read (1) + addCard's lookup of the created card (1) + post-invalidation read (1).
+        coVerify(exactly = 3) { creditCardApi.getCards() }
+    }
+
+    @Test
+    fun `getCards does not cache a failed read so the next call retries the api`() = runTest {
+        coEvery { creditCardApi.getCards() } throws RuntimeException("boom") andThen listOf(cardDto)
+
+        val first = repo.getCards()
+        val second = repo.getCards()
+
+        assertTrue(first.isFailure)
+        assertTrue(second.isSuccess)
+        coVerify(exactly = 2) { creditCardApi.getCards() }
+    }
+
+    // -------------------------------------------------------------------------
     // ClassificationRule mapping — new DTO shape → domain
     // -------------------------------------------------------------------------
 
