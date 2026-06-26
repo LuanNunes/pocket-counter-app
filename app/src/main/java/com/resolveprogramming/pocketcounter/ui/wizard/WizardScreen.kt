@@ -115,7 +115,7 @@ fun WizardScreen(
                 if (state.step == WizardStep.TYPE) onDismiss()
                 if (state.step != WizardStep.TYPE) viewModel.previousStep()
             },
-            onIgnore = onDismiss,
+            onIgnore = { viewModel.ignore(onComplete = onDismiss) },
         )
 
         WizardProgressBar(step = state.step)

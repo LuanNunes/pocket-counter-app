@@ -311,6 +311,20 @@ class WizardViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Discards the captured notification: marks it ignored on the backend so it leaves "Para
+     * revisar", then navigates back via [onComplete]. Navigation runs only after the call returns
+     * so leaving the screen doesn't cancel it; the result is best-effort (we leave regardless).
+     */
+    fun ignore(onComplete: () -> Unit) {
+        if (_state.value.isSaving) return
+        viewModelScope.launch {
+            _state.update { it.copy(isSaving = true) }
+            notificationRepository.markIgnored(notificationId)
+            onComplete()
+        }
+    }
+
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
         if (!draft.isFixo) return
         val existingSeriesId = draft.seriesId
