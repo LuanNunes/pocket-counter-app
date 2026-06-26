@@ -22,12 +22,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.CurrencyBitcoin
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -146,10 +155,11 @@ private fun MethodChip(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = method.icon(),
-            style = PocketTheme.typography.body,
-            color = inkColor,
+        Icon(
+            imageVector = method.icon(),
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = inkColor,
         )
         Text(
             text = method.label(),
@@ -210,20 +220,21 @@ private fun CardRow(
                     .background(PocketTheme.colors.accent, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "✓",
-                    style = PocketTheme.typography.bodyXs,
-                    color = PocketTheme.colors.accentInk,
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.accentInk,
                 )
             }
         }
     }
 }
 
-private fun PaymentMethod.icon(): String = when (this) {
-    PaymentMethod.CREDIT -> "▢"
-    PaymentMethod.DEBIT -> "◇"
-    PaymentMethod.PIX -> "⚡"
-    PaymentMethod.CASH -> "$"
-    PaymentMethod.CRYPTO -> "₿"
+private fun PaymentMethod.icon(): ImageVector = when (this) {
+    PaymentMethod.CREDIT -> Icons.Filled.CreditCard
+    PaymentMethod.DEBIT -> Icons.Filled.AccountBalanceWallet
+    PaymentMethod.PIX -> Icons.Filled.Bolt
+    PaymentMethod.CASH -> Icons.Filled.Payments
+    PaymentMethod.CRYPTO -> Icons.Filled.CurrencyBitcoin
 }

@@ -4,6 +4,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.local.BiometricSettingsStore
+import com.resolveprogramming.pocketcounter.data.repository.AuthRepository
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAuthResult
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAvailability
 import com.resolveprogramming.pocketcounter.platform.biometric.BiometricAuthenticator
@@ -38,6 +39,7 @@ data class MaisUiState(
 class MaisViewModel @Inject constructor(
     private val authenticator: BiometricAuthenticator,
     private val settingsStore: BiometricSettingsStore,
+    private val authRepository: AuthRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -52,6 +54,12 @@ class MaisViewModel @Inject constructor(
         settingsStore.lockEnabled
             .onEach { enabled -> _state.update { it.copy(lockEnabled = enabled) } }
             .launchIn(viewModelScope)
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            authRepository.logout()
+        }
     }
 
     /** Re-query biometric availability — call when returning to the screen (e.g. ON_RESUME),

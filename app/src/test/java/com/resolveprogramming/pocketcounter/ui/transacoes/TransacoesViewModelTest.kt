@@ -411,4 +411,101 @@ class TransacoesViewModelTest {
         assertEquals(1, displayed.size)
         assertEquals("fixo-1", displayed.first().id)
     }
+
+    // -------------------------------------------------------------------------
+    // Stable ordering: status toggle must not reorder tied items
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `markPaid preserves canonical id order when getMonth returns different sequence on reload`() = runTest {
+        val tiedA = HistoryItem(
+            id = "tied-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
+            type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PENDING,
+            displayOrder = 0,
+        )
+        val tiedB = HistoryItem(
+            id = "tied-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
+            type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PENDING,
+            displayOrder = 0,
+        )
+        // First load: raw order [B, A] (reverse of canonical); second load: raw [A_paid, B]
+        coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
+            Result.success(listOf(tiedB, tiedA)),
+            Result.success(listOf(tiedA.copy(statusPayment = PaymentStatus.PAID), tiedB)),
+        )
+        coEvery { transactionRepository.markPaid("tied-a") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val beforeIds = flatDisplayedItems(vm.state.value).map { it.id }
+
+        vm.markPaid("tied-a")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val afterItems = flatDisplayedItems(vm.state.value)
+        val afterIds = afterItems.map { it.id }
+
+        assertEquals(beforeIds, afterIds)
+        assertEquals(PaymentStatus.PAID, afterItems.first { it.id == "tied-a" }.statusPayment)
+    }
+
+    @Test
+    fun `markPending preserves canonical id order when getMonth returns different sequence on reload`() = runTest {
+        val tiedA = HistoryItem(
+            id = "tied-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
+            type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PAID,
+            displayOrder = 0,
+        )
+        val tiedB = HistoryItem(
+            id = "tied-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
+            type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PAID,
+            displayOrder = 0,
+        )
+        // First load: raw order [B, A]; second load: raw [A, B_pending] (different raw order)
+        coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
+            Result.success(listOf(tiedB, tiedA)),
+            Result.success(listOf(tiedA, tiedB.copy(statusPayment = PaymentStatus.PENDING))),
+        )
+        coEvery { transactionRepository.markPending("tied-b") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val beforeIds = flatDisplayedItems(vm.state.value).map { it.id }
+
+        vm.markPending("tied-b")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val afterItems = flatDisplayedItems(vm.state.value)
+        val afterIds = afterItems.map { it.id }
+
+        assertEquals(beforeIds, afterIds)
+        assertEquals(PaymentStatus.PENDING, afterItems.first { it.id == "tied-b" }.statusPayment)
+    }
+
+    @Test
+    fun `dayGroups within-day order follows LEDGER_ORDER even when repository returns unsorted items`() = runTest {
+        val itemA = HistoryItem(
+            id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+        )
+        val itemB = HistoryItem(
+            id = "ord-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+        )
+        val itemC = HistoryItem(
+            id = "ord-c", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("30.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+        )
+        // Repository returns items in non-canonical order [C, A, B]
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(listOf(itemC, itemA, itemB))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val displayedIds = flatDisplayedItems(vm.state.value).map { it.id }
+
+        assertEquals(listOf("ord-a", "ord-b", "ord-c"), displayedIds)
+    }
 }

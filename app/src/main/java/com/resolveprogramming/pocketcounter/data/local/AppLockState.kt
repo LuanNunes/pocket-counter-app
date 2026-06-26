@@ -20,4 +20,8 @@ class AppLockState @Inject constructor() {
     fun unlock() {
         _isUnlocked.value = true
     }
+
+    fun lock() {
+        _isUnlocked.value = false
+    }
 }

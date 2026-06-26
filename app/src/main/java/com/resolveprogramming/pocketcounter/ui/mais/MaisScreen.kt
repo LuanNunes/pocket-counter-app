@@ -16,17 +16,33 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -69,17 +85,19 @@ fun MaisScreen(
         viewModel.refresh()
     }
 
-    data class Entry(val label: String, val sub: String, val glyph: String, val onClick: () -> Unit)
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
+    data class Entry(val label: String, val sub: String, val icon: ImageVector, val onClick: () -> Unit)
 
     val topEntries = listOf(
-        Entry("Contas Fixas", "Lançamentos que se repetem", "↻") { onOpenRoute("contas-fixas") },
-        Entry("Relatório", "Tendências por mês, trimestre, ano", "▦") { onOpenRoute("relatorio") },
-        Entry("Regras aprendidas", "Classificação automática", "✦") { onOpenRoute("regras") },
-        Entry("Contextos & Tags", "Organize suas análises", "#") { onOpenRoute("contextos") },
-        Entry("Assistente", "Tire dúvidas sobre suas finanças", "✦") { onOpenRoute("assistente") },
+        Entry("Contas Fixas", "Lançamentos que se repetem", Icons.Filled.Autorenew) { onOpenRoute("contas-fixas") },
+        Entry("Relatório", "Tendências por mês, trimestre, ano", Icons.Filled.BarChart) { onOpenRoute("relatorio") },
+        Entry("Regras aprendidas", "Classificação automática", Icons.Filled.AutoFixHigh) { onOpenRoute("regras") },
+        Entry("Contextos & Tags", "Organize suas análises", Icons.Filled.Sell) { onOpenRoute("contextos") },
+        Entry("Assistente", "Tire dúvidas sobre suas finanças", Icons.Filled.AutoAwesome) { onOpenRoute("assistente") },
     )
     val settingsEntry =
-        Entry("Configurações", "Tema, densidade, conta", "⚙") { soon() }
+        Entry("Configurações", "Tema, densidade, conta", Icons.Filled.Settings) { soon() }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(
@@ -102,7 +120,7 @@ fun MaisScreen(
                     )
                 }
                 items(topEntries) { entry ->
-                    MaisRow(label = entry.label, sub = entry.sub, glyph = entry.glyph, onClick = entry.onClick)
+                    MaisRow(label = entry.label, sub = entry.sub, icon = entry.icon, onClick = entry.onClick)
                 }
                 item {
                     MaisLockRow(
@@ -122,13 +140,45 @@ fun MaisScreen(
                     MaisRow(
                         label = settingsEntry.label,
                         sub = settingsEntry.sub,
-                        glyph = settingsEntry.glyph,
+                        icon = settingsEntry.icon,
                         onClick = settingsEntry.onClick,
                     )
+                }
+                item {
+                    MaisLogoutRow(onClick = { showLogoutDialog = true })
                 }
             }
         }
         PocketToastHost(state = toastState)
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Sair da conta?", color = PocketTheme.colors.text) },
+            text = {
+                Text(
+                    "Você precisará entrar novamente com e-mail e senha.",
+                    color = PocketTheme.colors.text2,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutDialog = false
+                        viewModel.logout()
+                    },
+                ) {
+                    Text("Sair", color = PocketTheme.colors.expense)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancelar", color = PocketTheme.colors.text2)
+                }
+            },
+            containerColor = PocketTheme.colors.surface,
+        )
     }
 }
 
@@ -168,7 +218,12 @@ private fun MaisLockRow(
                 .background(PocketTheme.colors.surface2, PocketTheme.shapes.icon),
             contentAlignment = Alignment.Center,
         ) {
-            Text("🔒", color = PocketTheme.colors.text2)
+            Icon(
+                imageVector = Icons.Filled.Fingerprint,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = PocketTheme.colors.text2,
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -189,7 +244,7 @@ private fun MaisLockRow(
 }
 
 @Composable
-private fun MaisRow(label: String, sub: String, glyph: String, onClick: () -> Unit) {
+private fun MaisRow(label: String, sub: String, icon: ImageVector, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -206,7 +261,12 @@ private fun MaisRow(label: String, sub: String, glyph: String, onClick: () -> Un
                 .background(PocketTheme.colors.surface2, PocketTheme.shapes.icon),
             contentAlignment = Alignment.Center,
         ) {
-            Text(glyph, color = PocketTheme.colors.text2)
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = PocketTheme.colors.text2,
+            )
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -216,6 +276,45 @@ private fun MaisRow(label: String, sub: String, glyph: String, onClick: () -> Un
             )
             Text(sub, style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.text3)
         }
-        Text("›", color = PocketTheme.colors.text3)
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text3,
+        )
+    }
+}
+
+@Composable
+private fun MaisLogoutRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(PocketTheme.colors.surface2, PocketTheme.shapes.icon),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Logout,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = PocketTheme.colors.expense,
+            )
+        }
+        Text(
+            "Sair",
+            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            color = PocketTheme.colors.expense,
+            modifier = Modifier.weight(1f),
+        )
     }
 }

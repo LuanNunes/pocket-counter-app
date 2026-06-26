@@ -17,8 +17,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,13 +89,22 @@ fun MonthNavBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Chevron(glyph = "‹", onClick = { onStep(-1) })
+        Chevron(
+            icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+            contentDescription = "Mês anterior",
+            onClick = { onStep(-1) },
+        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.weight(1f),
         ) {
-            Text("📅", fontSize = 15.sp)
+            Icon(
+                imageVector = Icons.Filled.CalendarMonth,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = PocketTheme.colors.text2,
+            )
             Text(
                 text = monthLabel,
                 style = PocketTheme.typography.body.copy(fontSize = 19.sp, fontWeight = FontWeight.Bold),
@@ -103,12 +124,16 @@ fun MonthNavBar(
                 }
             }
         }
-        Chevron(glyph = "›", onClick = { onStep(1) })
+        Chevron(
+            icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = "Próximo mês",
+            onClick = { onStep(1) },
+        )
     }
 }
 
 @Composable
-private fun Chevron(glyph: String, onClick: () -> Unit) {
+private fun Chevron(icon: ImageVector, contentDescription: String?, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .minimumInteractiveComponentSize()
@@ -119,7 +144,12 @@ private fun Chevron(glyph: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(glyph, style = PocketTheme.typography.stepQuestion, color = PocketTheme.colors.text2)
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text2,
+        )
     }
 }
 
@@ -278,7 +308,12 @@ fun RevisarBanner(count: Int, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("⚠", color = PocketTheme.colors.warn)
+            Icon(
+                imageVector = Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = PocketTheme.colors.warn,
+            )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = "$count lançamentos para revisar",
@@ -307,14 +342,14 @@ fun HomeQuickTiles(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         QuickTile(
-            icon = "◔",
+            icon = Icons.Filled.PieChart,
             title = "Resumo",
             subtitle = monthLabel.lowercase(ptBr),
             onClick = onResumo,
             modifier = Modifier.weight(1f),
         )
         QuickTile(
-            icon = "▭",
+            icon = Icons.Filled.CreditCard,
             title = "Faturas · $openBillsCount",
             subtitle = currency().format(openBillsTotal),
             onClick = onFaturas,
@@ -325,7 +360,7 @@ fun HomeQuickTiles(
 
 @Composable
 private fun QuickTile(
-    icon: String,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit,
@@ -339,7 +374,12 @@ private fun QuickTile(
                     .background(PocketTheme.colors.accentBg, PocketTheme.shapes.chip),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(icon, fontSize = 16.sp, color = PocketTheme.colors.accent)
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = PocketTheme.colors.accent,
+                )
             }
             Spacer(Modifier.height(8.dp))
             Text(
@@ -573,7 +613,12 @@ fun TxRow(
                 .clickable(onClickLabel = "Editar transação") { onEdit(item) },
             contentAlignment = Alignment.Center,
         ) {
-            Text("✎", fontSize = 15.sp, color = PocketTheme.colors.text3)
+            Icon(
+                imageVector = Icons.Filled.Edit,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = PocketTheme.colors.text3,
+            )
         }
     }
 }
@@ -603,7 +648,12 @@ private fun StatusToggle(paid: Boolean, onToggle: () -> Unit) {
                     .background(PocketTheme.colors.incomeBg, PocketTheme.shapes.icon),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("✓", fontSize = 13.sp, color = PocketTheme.colors.income)
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.income,
+                )
             }
         }
         if (!paid) {
@@ -613,7 +663,12 @@ private fun StatusToggle(paid: Boolean, onToggle: () -> Unit) {
                     .dashedRing(PocketTheme.colors.warn),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("◷", fontSize = 13.sp, color = PocketTheme.colors.warn)
+                Icon(
+                    imageVector = Icons.Outlined.Schedule,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.warn,
+                )
             }
         }
     }

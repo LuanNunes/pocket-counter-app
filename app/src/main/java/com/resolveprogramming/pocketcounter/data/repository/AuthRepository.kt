@@ -46,6 +46,7 @@ class AuthRepository @Inject constructor(
             }
         }
         tokenStore.clear()
+        appLockState.lock()
     }
 
     private suspend fun runAuth(

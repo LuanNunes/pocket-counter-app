@@ -9,13 +9,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
@@ -35,7 +37,11 @@ fun ManageTopBar(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            SquareIconButton(glyph = "←", onClick = onBack)
+            SquareIconButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Voltar",
+                onClick = onBack,
+            )
             Box(Modifier.padding(start = 12.dp)) {
                 Text(title, style = PocketTheme.typography.screenH1, color = PocketTheme.colors.text)
             }
@@ -45,14 +51,20 @@ fun ManageTopBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             actions?.invoke()
-            if (onAdd != null) SquareIconButton(glyph = "+", onClick = onAdd)
+            if (onAdd != null) {
+                SquareIconButton(
+                    icon = Icons.Filled.Add,
+                    contentDescription = "Adicionar",
+                    onClick = onAdd,
+                )
+            }
         }
     }
 }
 
 @Composable
 fun SquareIconButton(
-    glyph: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     enabled: Boolean = true,
     contentDescription: String? = null,
@@ -62,21 +74,14 @@ fun SquareIconButton(
             .size(36.dp)
             .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.icon)
             .background(PocketTheme.colors.surface, PocketTheme.shapes.icon)
-            .clickable(enabled = enabled, onClick = onClick)
-            .then(
-                run {
-                    if (contentDescription != null) {
-                        return@run Modifier.semantics { this.contentDescription = contentDescription }
-                    }
-                    Modifier
-                },
-            ),
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            glyph,
-            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text.takeIf { enabled } ?: PocketTheme.colors.text3,
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text.takeIf { enabled } ?: PocketTheme.colors.text3,
         )
     }
 }

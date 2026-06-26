@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -213,7 +216,12 @@ private fun HeaderSection(userName: String, onAssistant: () -> Unit = {}) {
                     .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.labelPicker),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("✦", color = PocketTheme.colors.accent)
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = "Assistente",
+                    modifier = Modifier.size(20.dp),
+                    tint = PocketTheme.colors.accent,
+                )
             }
         }
         Spacer(Modifier.width(10.dp))

@@ -25,4 +25,12 @@ data class HistoryItem(
         name?.takeIf { it.isNotBlank() }
             ?: description?.takeIf { it.isNotBlank() }
             ?: "—"
+
+    companion object {
+        /** Canonical ledger order: displayOrder asc → date desc → id asc (stable tiebreaker). */
+        val LEDGER_ORDER: Comparator<HistoryItem> =
+            compareBy<HistoryItem> { it.displayOrder }
+                .thenByDescending { it.date }
+                .thenBy { it.id }
+    }
 }

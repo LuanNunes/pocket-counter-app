@@ -18,6 +18,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -432,10 +435,11 @@ private fun CompareBar(
                     color = PocketTheme.colors.text,
                 )
                 Spacer(Modifier.width(4.dp))
-                Text(
-                    text = "▾",
-                    style = PocketTheme.typography.bodyXs,
-                    color = PocketTheme.colors.text3,
+                Icon(
+                    imageVector = Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.text3,
                 )
             }
             // DropdownMenu is immediately opaque — no entrance animation ending hidden
@@ -460,10 +464,11 @@ private fun CompareBar(
                                 )
                                 if (opt.key == selectedKey) {
                                     Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        text = "✓",
-                                        color = PocketTheme.colors.accent,
-                                        style = PocketTheme.typography.bodySm,
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = PocketTheme.colors.accent,
                                     )
                                 }
                             }
@@ -565,10 +570,12 @@ private fun RankRow(
                 softWrap = false,
             )
             Spacer(Modifier.width(4.dp))
-            Text(
-                text = "∨".takeIf { open } ?: "›",
-                style = PocketTheme.typography.bodySm,
-                color = PocketTheme.colors.text3,
+            Icon(
+                imageVector = Icons.Filled.ExpandMore.takeIf { open }
+                    ?: Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = PocketTheme.colors.text3,
             )
         }
 

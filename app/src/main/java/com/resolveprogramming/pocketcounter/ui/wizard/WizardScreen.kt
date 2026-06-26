@@ -23,7 +23,11 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -246,7 +250,12 @@ private fun WizardLoadError(message: String?, onDismiss: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("⚠", style = PocketTheme.typography.screenH1, color = PocketTheme.colors.text3)
+            Icon(
+                imageVector = Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                modifier = Modifier.size(28.dp),
+                tint = PocketTheme.colors.text3,
+            )
             Text(
                 message ?: "Não foi possível abrir esta notificação.",
                 style = PocketTheme.typography.body,
@@ -286,10 +295,11 @@ private fun WizardTopBar(
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "←",
-                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                    color = PocketTheme.colors.text,
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Voltar",
+                    modifier = Modifier.size(20.dp),
+                    tint = PocketTheme.colors.text,
                 )
             }
             Spacer(Modifier.width(12.dp))

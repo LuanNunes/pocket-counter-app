@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -162,7 +164,13 @@ private fun RegraCard(
                     )
                     Spacer(Modifier.size(8.dp))
                 }
-                rule.id?.let { id -> SquareIconButton(glyph = "×", onClick = { onDelete(id) }) }
+                rule.id?.let { id ->
+                    SquareIconButton(
+                        icon = Icons.Filled.Close,
+                        contentDescription = "Excluir",
+                        onClick = { onDelete(id) },
+                    )
+                }
             }
 
             Spacer(Modifier.height(6.dp))

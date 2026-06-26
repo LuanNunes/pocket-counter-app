@@ -15,7 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -207,8 +211,16 @@ private fun ContextSectionCard(
             PocketBadge(text = "${section.tags.size}", variant = PocketBadgeVariant.SOFT)
             if (ctx != null) {
                 Spacer(Modifier.size(4.dp))
-                SquareIconButton(glyph = "✎", onClick = { onEditContext(ctx.id) })
-                SquareIconButton(glyph = "×", onClick = { onDeleteContext(ctx.id) })
+                SquareIconButton(
+                    icon = Icons.Filled.Edit,
+                    contentDescription = "Editar",
+                    onClick = { onEditContext(ctx.id) },
+                )
+                SquareIconButton(
+                    icon = Icons.Filled.Close,
+                    contentDescription = "Excluir",
+                    onClick = { onDeleteContext(ctx.id) },
+                )
             }
         }
 
@@ -291,7 +303,12 @@ private fun TagChip(tag: Tag, dotColor: Color, onClick: () -> Unit, onRemove: ()
                 .clickable(onClick = onRemove),
             contentAlignment = Alignment.Center,
         ) {
-            Text("×", style = PocketTheme.typography.bodySm, color = PocketTheme.colors.text3)
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Remover",
+                modifier = Modifier.size(14.dp),
+                tint = PocketTheme.colors.text3,
+            )
         }
     }
 }
