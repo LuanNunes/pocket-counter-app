@@ -59,6 +59,7 @@ data class HomeUiState(
     val flashNonce: Int = 0,
     val toastMessage: String? = null,
     val isEmptyMonth: Boolean = false,
+    val monthCount: Int = 0,
     val isLoading: Boolean = true,
 )
 
@@ -176,7 +177,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add) }
+    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add()) }
 
     fun openEdit(item: HistoryItem) = _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
 
@@ -228,6 +229,7 @@ class HomeViewModel @Inject constructor(
             groupedSections = grouped,
             periodTotal = periodTotal,
             isEmptyMonth = monthItems.isEmpty(),
+            monthCount = monthItems.size,
         )
     }
 

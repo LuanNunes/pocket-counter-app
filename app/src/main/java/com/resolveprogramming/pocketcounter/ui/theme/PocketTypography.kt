@@ -40,6 +40,7 @@ data class PocketTypography(
     val monoAmountInput: TextStyle,
     val monoBody: TextStyle,
     val monoSm: TextStyle,
+    val monoSummary: TextStyle,
 )
 
 val DefaultPocketTypography = PocketTypography(
@@ -134,6 +135,13 @@ val DefaultPocketTypography = PocketTypography(
         fontFamily = GeistMono,
         fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
+    ),
+    // Active-type summary total (.mg-summary .ms-total) — 17/700; mono has no 700, use SemiBold.
+    monoSummary = TextStyle(
+        fontFamily = GeistMono,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp,
+        letterSpacing = (-0.02f).em,
     ),
 )
 

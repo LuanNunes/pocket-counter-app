@@ -206,7 +206,7 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         vm.openAdd()
-        assertEquals(FormMode.Add, vm.state.value.formMode)
+        assertEquals(FormMode.Add(), vm.state.value.formMode)
 
         vm.saveForm(WizardDraft(type = TransactionType.EXPENSE, amount = BigDecimal("10.00")))
         testDispatcher.scheduler.advanceUntilIdle()
@@ -258,5 +258,28 @@ class HomeViewModelTest {
 
         vm.consumeFlash()
         assertNull(vm.state.value.flashId)
+    }
+
+    // =========================================================================
+    // monthCount (C from architect plan)
+    // =========================================================================
+
+    @Test
+    fun `monthCount equals number of items in the month`() = runTest {
+        // monthItems has 3 items: expensePaid, expensePending, income
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(3, vm.state.value.monthCount)
+    }
+
+    @Test
+    fun `monthCount is zero for empty month`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.monthCount)
     }
 }

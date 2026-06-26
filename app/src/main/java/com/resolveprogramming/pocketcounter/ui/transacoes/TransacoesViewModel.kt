@@ -17,8 +17,10 @@ import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionTotals
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
+import java.math.BigDecimal
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,7 +62,7 @@ enum class LedgerFilter { TODOS, FIXOS }
 
 /** Whether the transaction form sheet is adding a new row or editing an existing one. */
 sealed interface FormMode {
-    data object Add : FormMode
+    data class Add(val initialType: TransactionType? = null) : FormMode
     data class Edit(val itemId: String) : FormMode
 }
 
@@ -73,6 +75,11 @@ data class TransacoesUiState(
     val ledgerGroups: List<LedgerGroup> = emptyList(),
     val collapsedGroupIds: Set<String> = emptySet(),
     val totals: TransactionTotals = TransactionTotals.ZERO,
+    val typeFilter: TransactionType = TransactionType.EXPENSE,
+    val typeTotal: BigDecimal = BigDecimal.ZERO,
+    val typeCount: Int = 0,
+    val expenseCount: Int = 0,
+    val incomeCount: Int = 0,
     val query: String = "",
     val ledgerFilter: LedgerFilter = LedgerFilter.TODOS,
     val fixoCount: Int = 0,
@@ -167,6 +174,10 @@ class TransacoesViewModel @Inject constructor(
             val open = !s.searchOpen
             s.copy(searchOpen = open, query = s.query.takeIf { open } ?: "").recomputed()
         }
+    }
+
+    fun setTypeFilter(type: TransactionType) {
+        _state.update { it.copy(typeFilter = type).recomputed() }
     }
 
     fun setLedgerFilter(filter: LedgerFilter) {
@@ -295,7 +306,7 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun openAdd() = _state.update { it.copy(formMode = FormMode.Add) }
+    fun openAdd(type: TransactionType? = null) = _state.update { it.copy(formMode = FormMode.Add(type)) }
 
     fun openEdit(item: HistoryItem) = _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
 
@@ -341,9 +352,19 @@ class TransacoesViewModel @Inject constructor(
 
     fun consumeToast() = _state.update { it.copy(toastMessage = null) }
 
-    /** Recomputes dayGroups (LISTA) and ledgerGroups (CONTEXTO/TAG) from the filtered items. */
+    /**
+     * Recomputes all derived display state from [items].
+     *
+     * Pipeline order: type → search → fixo. This ensures:
+     *  - [expenseCount]/[incomeCount] are full-month counts (stable label values).
+     *  - [fixoCount] counts fixos within the active type (used for fixo-toggle label).
+     *  - [typeTotal]/[typeCount] reflect the visible rows after all filters.
+     *  - [dayGroups] and [ledgerGroups] show only the visible rows.
+     *  - [totals] is never touched here — it is full-month and set by loadMonth().
+     */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
-        val searched = filterItems(items, query, tags)
+        val byType = items.filter { it.type == typeFilter }
+        val searched = filterItems(byType, query, tags)
         val filtered = searched.filter { it.isFixo }.takeIf { ledgerFilter == LedgerFilter.FIXOS } ?: searched
         val canonical = filtered.sortedWith(HistoryItem.LEDGER_ORDER)
         val days = canonical
@@ -354,7 +375,16 @@ class TransacoesViewModel @Inject constructor(
             if (groupMode == GroupMode.LISTA) return@run emptyList()
             groupLedger(canonical, groupMode, tags, contexts, CuratedPalette.argb)
         }
-        return copy(dayGroups = days, ledgerGroups = ledger, fixoCount = items.count { it.isFixo })
+        val total = canonical.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount.abs() }
+        return copy(
+            dayGroups = days,
+            ledgerGroups = ledger,
+            fixoCount = byType.count { it.isFixo },
+            expenseCount = items.count { it.type == TransactionType.EXPENSE },
+            incomeCount = items.count { it.type == TransactionType.INCOME },
+            typeTotal = total,
+            typeCount = canonical.size,
+        )
     }
 
     /** Filters by title/effective-tag name + amount. */

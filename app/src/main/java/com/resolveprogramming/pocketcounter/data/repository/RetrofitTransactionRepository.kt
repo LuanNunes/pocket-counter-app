@@ -88,6 +88,7 @@ class RetrofitTransactionRepository @Inject constructor(
         return TransactionDto(
             transactionType = "INCOME".takeIf { type == TransactionType.INCOME } ?: "EXPENSE",
             amount = amount,
+            name = name,
             statusPayment = "PAID".takeIf { isPaid } ?: "PENDING",
             refYearMonth = RemoteMappers.refYearMonth(date),
             dateDue = date.toString(),

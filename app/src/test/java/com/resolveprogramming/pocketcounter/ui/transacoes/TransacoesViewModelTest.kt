@@ -5,10 +5,12 @@ import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.coVerifyOrder
@@ -22,6 +24,8 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
@@ -141,19 +145,21 @@ class TransacoesViewModelTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `setLedgerFilter FIXOS shows only series-linked rows`() = runTest {
+    fun `setLedgerFilter FIXOS shows only series-linked rows within active type`() = runTest {
+        // Default typeFilter=EXPENSE. EXPENSE fixos: fixoItem1 only (fixoItem2 is INCOME).
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         vm.setLedgerFilter(LedgerFilter.FIXOS)
 
         val displayed = flatDisplayedItems(vm.state.value)
-        assertEquals(2, displayed.size)
+        assertEquals(1, displayed.size)
         assert(displayed.all { it.isFixo }) { "Expected only fixo rows but got $displayed" }
     }
 
     @Test
-    fun `setLedgerFilter TODOS shows all rows after being in FIXOS`() = runTest {
+    fun `setLedgerFilter TODOS shows all active-type rows after being in FIXOS`() = runTest {
+        // Default typeFilter=EXPENSE: 3 EXPENSE rows (avulso1, avulso2, fixo1).
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -161,25 +167,25 @@ class TransacoesViewModelTest {
         vm.setLedgerFilter(LedgerFilter.TODOS)
 
         val displayed = flatDisplayedItems(vm.state.value)
-        assertEquals(4, displayed.size)
+        assertEquals(3, displayed.size)
     }
 
     // -------------------------------------------------------------------------
-    // fixoCount: counts fixo rows from the full month list, ignores active filter
+    // fixoCount: counts fixo rows within the active type, ignores ledger filter
     // -------------------------------------------------------------------------
 
     @Test
-    fun `fixoCount counts fixo rows from the full month regardless of filter`() = runTest {
+    fun `fixoCount counts fixo rows within active type regardless of ledger filter`() = runTest {
+        // Default typeFilter=EXPENSE. EXPENSE fixos: fixoItem1 only → fixoCount=1.
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // fixoCount must be 2 before any filter change
-        assertEquals(2, vm.state.value.fixoCount)
+        assertEquals(1, vm.state.value.fixoCount)
 
         vm.setLedgerFilter(LedgerFilter.FIXOS)
 
-        // fixoCount must remain 2 even while FIXOS filter is active
-        assertEquals(2, vm.state.value.fixoCount)
+        // fixoCount must remain 1 (within EXPENSE) even while FIXOS filter is active
+        assertEquals(1, vm.state.value.fixoCount)
     }
 
     // -------------------------------------------------------------------------
@@ -507,5 +513,237 @@ class TransacoesViewModelTest {
         val displayedIds = flatDisplayedItems(vm.state.value).map { it.id }
 
         assertEquals(listOf("ord-a", "ord-b", "ord-c"), displayedIds)
+    }
+
+    // =========================================================================
+    // typeFilter — active-type filter (A from architect plan)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Initial state
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `initial typeFilter is EXPENSE`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(TransactionType.EXPENSE, vm.state.value.typeFilter)
+    }
+
+    // -------------------------------------------------------------------------
+    // setTypeFilter happy path
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `setTypeFilter INCOME shows only INCOME rows in dayGroups`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.setTypeFilter(TransactionType.INCOME)
+
+        val displayed = flatDisplayedItems(vm.state.value)
+        assertTrue("Expected only INCOME rows", displayed.all { it.type == TransactionType.INCOME })
+        assertEquals(1, displayed.size) // fixoItem2 is the only INCOME row
+        assertEquals("fixo-2", displayed.first().id)
+    }
+
+    @Test
+    fun `setTypeFilter EXPENSE returns to EXPENSE rows`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.setTypeFilter(TransactionType.INCOME)
+        vm.setTypeFilter(TransactionType.EXPENSE)
+
+        val displayed = flatDisplayedItems(vm.state.value)
+        assertTrue("Expected only EXPENSE rows", displayed.all { it.type == TransactionType.EXPENSE })
+        assertEquals(3, displayed.size) // avulso1, avulso2, fixo1
+    }
+
+    // -------------------------------------------------------------------------
+    // typeTotal and typeCount
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `initial typeTotal is sum of EXPENSE magnitudes and typeCount equals EXPENSE row count`() = runTest {
+        // EXPENSE: avulso1(50) + avulso2(30) + fixo1(200) = 280; count = 3
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(BigDecimal("280.00"), vm.state.value.typeTotal)
+        assertEquals(3, vm.state.value.typeCount)
+    }
+
+    @Test
+    fun `setTypeFilter INCOME changes typeTotal and typeCount to INCOME rows`() = runTest {
+        // INCOME: fixoItem2(100); count = 1
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.setTypeFilter(TransactionType.INCOME)
+
+        assertEquals(BigDecimal("100.00"), vm.state.value.typeTotal)
+        assertEquals(1, vm.state.value.typeCount)
+    }
+
+    // -------------------------------------------------------------------------
+    // expenseCount / incomeCount — stable, full-month, filter-independent
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `expenseCount and incomeCount reflect full month and are unaffected by ledger filter`() = runTest {
+        // Full month: EXPENSE=3, INCOME=1
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(3, vm.state.value.expenseCount)
+        assertEquals(1, vm.state.value.incomeCount)
+
+        vm.setLedgerFilter(LedgerFilter.FIXOS)
+
+        assertEquals(3, vm.state.value.expenseCount)
+        assertEquals(1, vm.state.value.incomeCount)
+    }
+
+    @Test
+    fun `expenseCount and incomeCount are unaffected by search query`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleSearch()
+        vm.setQuery("50") // matches only avulsoItem1
+
+        assertEquals(3, vm.state.value.expenseCount)
+        assertEquals(1, vm.state.value.incomeCount)
+    }
+
+    // -------------------------------------------------------------------------
+    // Type + FIXOS combination
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `FIXOS filter within INCOME type shows only INCOME fixo rows`() = runTest {
+        // fixoItem2 is INCOME+fixo; fixoItem1 is EXPENSE+fixo — must NOT appear
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.setTypeFilter(TransactionType.INCOME)
+        vm.setLedgerFilter(LedgerFilter.FIXOS)
+
+        val displayed = flatDisplayedItems(vm.state.value)
+        assertEquals(1, displayed.size)
+        assertEquals("fixo-2", displayed.first().id)
+    }
+
+    @Test
+    fun `fixoCount reflects fixos within active type only`() = runTest {
+        // EXPENSE: fixo1 → fixoCount=1; INCOME: fixo2 → fixoCount=1
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.fixoCount)
+
+        vm.setTypeFilter(TransactionType.INCOME)
+
+        assertEquals(1, vm.state.value.fixoCount)
+    }
+
+    // -------------------------------------------------------------------------
+    // Type + search combination
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `search within EXPENSE type excludes INCOME rows from results`() = runTest {
+        // fixoItem2 is INCOME with amount=100. Query "100" with EXPENSE filter should show nothing.
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleSearch()
+        vm.setQuery("100") // amount matches fixoItem2 (INCOME), but typeFilter=EXPENSE
+
+        val displayed = flatDisplayedItems(vm.state.value)
+        assertTrue("Expected no INCOME rows in EXPENSE view", displayed.none { it.type == TransactionType.INCOME })
+        assertTrue("Expected no rows matching INCOME-only search term", displayed.isEmpty())
+    }
+
+    // -------------------------------------------------------------------------
+    // Type + GroupMode combination
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `CONTEXTO group mode only groups active-type items`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.setGroupMode(GroupMode.CONTEXTO)
+
+        // With typeFilter=EXPENSE, all ledger group rows must be EXPENSE
+        val allGroupedItems = vm.state.value.ledgerGroups.flatMap { it.items }
+        assertTrue("Expected EXPENSE-only grouped rows", allGroupedItems.all { it.type == TransactionType.EXPENSE })
+    }
+
+    // -------------------------------------------------------------------------
+    // Regression: totals are full-month and unaffected by typeFilter
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `totals are unaffected by typeFilter change`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val totalsBeforeFilter = vm.state.value.totals
+
+        vm.setTypeFilter(TransactionType.INCOME)
+
+        assertEquals(totalsBeforeFilter, vm.state.value.totals)
+    }
+
+    // =========================================================================
+    // openAdd with type pre-seed (B from architect plan)
+    // =========================================================================
+
+    @Test
+    fun `openAdd with type seeds FormMode Add with that type`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openAdd(TransactionType.INCOME)
+
+        val mode = vm.state.value.formMode
+        assertEquals(FormMode.Add(TransactionType.INCOME), mode)
+    }
+
+    @Test
+    fun `openAdd with no type seeds FormMode Add with null initialType`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openAdd()
+
+        val mode = vm.state.value.formMode as? FormMode.Add
+        assertNotNull(mode)
+        assertNull(mode!!.initialType)
+    }
+
+    // =========================================================================
+    // saveForm in Add mode (mirrors HomeViewModelTest pattern)
+    // =========================================================================
+
+    @Test
+    fun `saveForm in Add mode calls save and clears formMode then reloads`() = runTest {
+        coEvery { transactionRepository.save(any()) } returns Result.success("new-id")
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openAdd()
+        vm.saveForm(WizardDraft(type = TransactionType.EXPENSE, amount = BigDecimal("10.00")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        assertNull(vm.state.value.formMode)
+        // getMonth called at least twice: init + after save
+        coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }
     }
 }

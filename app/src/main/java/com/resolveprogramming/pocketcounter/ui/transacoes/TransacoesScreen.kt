@@ -6,84 +6,87 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.DragIndicator
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.foundation.ExperimentalFoundationApi
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.DayGroup
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
-import androidx.compose.ui.text.style.TextOverflow
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
-import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.ui.wizard.label
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
-import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
+import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
+import com.resolveprogramming.pocketcounter.ui.components.PocketButton
+import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
+import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
-import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
-import com.resolveprogramming.pocketcounter.ui.components.TabId
-import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
-import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
+import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
+import com.resolveprogramming.pocketcounter.ui.components.SquareIconButton
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
-import kotlin.math.roundToInt
+import com.resolveprogramming.pocketcounter.ui.theme.pocketCardShadow
+import com.resolveprogramming.pocketcounter.ui.wizard.label
 
 @Composable
-fun TransacoesScreen(
-    onNav: (TabId) -> Unit,
+fun TransacoesContent(
+    padding: PaddingValues,
+    onBack: () -> Unit,
     viewModel: TransacoesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -95,80 +98,99 @@ fun TransacoesScreen(
         viewModel.consumeToast()
     }
 
+    val isIncome = state.typeFilter == TransactionType.INCOME
+
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = PocketTheme.colors.bg,
-            bottomBar = { PocketTabBar(active = TabId.TRANSACOES, onNav = onNav) },
-            floatingActionButton = { AddFab(onClick = viewModel::openAdd) },
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                MonthStepperBar(
-                    label = state.monthLabel,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                TransacoesTopBar(
                     searchOpen = state.searchOpen,
-                    onPrev = { viewModel.stepMonth(-1) },
-                    onNext = { viewModel.stepMonth(1) },
+                    onBack = onBack,
                     onToggleSearch = viewModel::toggleSearch,
-                    onGenerateBalance = viewModel::generateBalance,
                 )
 
-                TotalsStrip(
-                    income = state.totals.income,
-                    expense = state.totals.expense,
-                    balance = state.totals.balance,
+                MonthStepperRow(
+                    label = state.monthLabel,
+                    onPrev = { viewModel.stepMonth(-1) },
+                    onNext = { viewModel.stepMonth(1) },
+                )
+
+                TypeAndViewBar(
+                    typeFilter = state.typeFilter,
+                    groupMode = state.groupMode,
+                    onSelectType = viewModel::setTypeFilter,
+                    onSelectMode = viewModel::setGroupMode,
+                )
+
+                SummaryLine(
+                    total = state.typeTotal,
+                    count = state.typeCount,
+                    isIncome = isIncome,
+                    onlyFixo = state.ledgerFilter == LedgerFilter.FIXOS,
+                    onToggleFixo = {
+                        val next = LedgerFilter.TODOS
+                            .takeIf { state.ledgerFilter == LedgerFilter.FIXOS }
+                            ?: LedgerFilter.FIXOS
+                        viewModel.setLedgerFilter(next)
+                    },
+                    onGenerateBalance = viewModel::generateBalance,
                 )
 
                 if (state.searchOpen) {
                     SearchField(query = state.query, onQueryChange = viewModel::setQuery)
                 }
 
-                LedgerFilterBar(
-                    filter = state.ledgerFilter,
-                    fixoCount = state.fixoCount,
-                    onSelect = viewModel::setLedgerFilter,
-                )
-
-                GroupModeBar(mode = state.groupMode, onSelect = viewModel::setGroupMode)
-
                 val isLista = state.groupMode == GroupMode.LISTA
                 val emptyForMode = state.dayGroups.isEmpty().takeIf { isLista }
                     ?: state.ledgerGroups.isEmpty()
+                val onToggleStatus: (HistoryItem) -> Unit = { item ->
+                    if (item.statusPayment == PaymentStatus.PAID) viewModel.markPending(item.id)
+                    else viewModel.markPaid(item.id)
+                }
                 when {
                     state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                         CircularProgressIndicator(color = PocketTheme.colors.accent)
                     }
 
                     emptyForMode -> EmptyState(
-                        searching = state.query.isNotBlank(),
-                        // A non-empty month showing nothing under the FIXOS filter is a fixo-empty,
-                        // distinct from a month with no rows at all.
-                        fixoEmpty = state.ledgerFilter == LedgerFilter.FIXOS &&
-                            state.query.isBlank() &&
-                            state.items.isNotEmpty(),
-                        month = state.monthLabel,
+                        message = emptyMessage(
+                            isIncome = isIncome,
+                            searching = state.query.isNotBlank(),
+                            onlyFixo = state.ledgerFilter == LedgerFilter.FIXOS,
+                        ),
                     )
 
-                    isLista -> LedgerList(
+                    isLista -> LedgerCardList(
                         groups = state.dayGroups,
                         meta = { txMeta(it, state.cards, state.tags) },
                         onRowClick = viewModel::openDetail,
+                        onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
                     )
 
-                    !isLista -> GroupedLedgerList(
+                    else -> CategoryCardList(
                         groups = state.ledgerGroups,
-                        collapsedIds = state.collapsedGroupIds,
-                        canReorder = state.query.isBlank(),
                         meta = { txMeta(it, state.cards, state.tags) },
-                        onToggleCollapse = viewModel::toggleGroupCollapsed,
                         onRowClick = viewModel::openDetail,
-                        onMoveTo = viewModel::moveItemTo,
+                        onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
                     )
                 }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(20.dp),
+            ) {
+                ExtendedAddFab(
+                    type = state.typeFilter,
+                    onClick = { viewModel.openAdd(state.typeFilter) },
+                )
             }
         }
 
@@ -230,6 +252,7 @@ fun TransacoesScreen(
             initialItem = (state.formMode as? FormMode.Edit)?.let { edit ->
                 state.items.firstOrNull { it.id == edit.itemId }
             },
+            initialType = (state.formMode as? FormMode.Add)?.initialType,
             cards = state.cards,
             tags = state.tags.values.toList(),
             contexts = state.contexts,
@@ -240,13 +263,10 @@ fun TransacoesScreen(
 }
 
 @Composable
-private fun MonthStepperBar(
-    label: String,
+private fun TransacoesTopBar(
     searchOpen: Boolean,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
+    onBack: () -> Unit,
     onToggleSearch: () -> Unit,
-    onGenerateBalance: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -256,63 +276,72 @@ private fun MonthStepperBar(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StepperButton(
-                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Mês anterior",
-                onClick = onPrev,
+            SquareIconButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Voltar",
+                onClick = onBack,
             )
-            Spacer(Modifier.size(4.dp))
-            Text(
-                text = label.replaceFirstChar { it.uppercase() },
-                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                color = PocketTheme.colors.text,
-            )
-            Spacer(Modifier.size(4.dp))
-            StepperButton(
-                icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Próximo mês",
-                onClick = onNext,
-            )
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.icon)
-                    .background(PocketTheme.colors.surface, PocketTheme.shapes.icon)
-                    .clickable(onClick = onGenerateBalance),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Autorenew,
-                    contentDescription = "Gerar saldo",
-                    modifier = Modifier.size(20.dp),
-                    tint = PocketTheme.colors.text2,
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .border(
-                        1.dp,
-                        PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.line,
-                        PocketTheme.shapes.icon,
-                    )
-                    .background(
-                        PocketTheme.colors.accentBg.takeIf { searchOpen } ?: PocketTheme.colors.surface,
-                        PocketTheme.shapes.icon,
-                    )
-                    .clickable(onClick = onToggleSearch),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = "Buscar",
-                    modifier = Modifier.size(20.dp),
-                    tint = PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.text2,
+            Box(Modifier.padding(start = 12.dp)) {
+                Text(
+                    text = "Transações",
+                    style = PocketTheme.typography.screenH1,
+                    color = PocketTheme.colors.text,
                 )
             }
         }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .border(
+                    1.dp,
+                    PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.line,
+                    PocketTheme.shapes.icon,
+                )
+                .background(
+                    PocketTheme.colors.accentBg.takeIf { searchOpen } ?: PocketTheme.colors.surface,
+                    PocketTheme.shapes.icon,
+                )
+                .clickable(onClick = onToggleSearch),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Search,
+                contentDescription = "Buscar",
+                modifier = Modifier.size(20.dp),
+                tint = PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.text2,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthStepperRow(
+    label: String,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StepperButton(
+            icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+            contentDescription = "Mês anterior",
+            onClick = onPrev,
+        )
+        Text(
+            text = label.replaceFirstChar { it.uppercase() },
+            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            color = PocketTheme.colors.text,
+        )
+        StepperButton(
+            icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = "Próximo mês",
+            onClick = onNext,
+        )
     }
 }
 
@@ -330,56 +359,157 @@ private fun StepperButton(icon: ImageVector, contentDescription: String?, onClic
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.size(20.dp),
-            tint = PocketTheme.colors.text,
+            tint = PocketTheme.colors.text2,
         )
     }
 }
 
 @Composable
-private fun TotalsStrip(
-    income: java.math.BigDecimal,
-    expense: java.math.BigDecimal,
-    balance: java.math.BigDecimal,
+private fun TypeAndViewBar(
+    typeFilter: TransactionType,
+    groupMode: GroupMode,
+    onSelectType: (TransactionType) -> Unit,
+    onSelectMode: (GroupMode) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        TotalCell("Receitas", income, PocketTheme.colors.income, Modifier.weight(1f))
-        TotalCell("Despesas", expense, PocketTheme.colors.expense, Modifier.weight(1f))
-        TotalCell(
-            label = "Saldo",
-            amount = balance,
-            // Saldo is signed: red when negative, green when positive (matches Relatório).
-            color = PocketTheme.colors.expense.takeIf { balance.signum() < 0 } ?: PocketTheme.colors.income,
+        PocketSegmented(
+            options = listOf(SegmentOption("Despesas"), SegmentOption("Receitas")),
+            selectedIndex = 0.takeIf { typeFilter == TransactionType.EXPENSE } ?: 1,
+            onSelect = { index ->
+                onSelectType(TransactionType.EXPENSE.takeIf { index == 0 } ?: TransactionType.INCOME)
+            },
             modifier = Modifier.weight(1f),
-            showSign = true,
+        )
+        ViewToggle(groupMode = groupMode, onSelect = onSelectMode)
+    }
+}
+
+@Composable
+private fun ViewToggle(groupMode: GroupMode, onSelect: (GroupMode) -> Unit) {
+    val trackShape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .background(PocketTheme.colors.surface2, trackShape)
+            .border(1.dp, PocketTheme.colors.line, trackShape)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        ViewToggleButton(
+            icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+            contentDescription = "Ver em lista",
+            selected = groupMode == GroupMode.LISTA,
+            onClick = { onSelect(GroupMode.LISTA) },
+        )
+        ViewToggleButton(
+            icon = Icons.Filled.GridView,
+            contentDescription = "Ver por categoria",
+            selected = groupMode == GroupMode.CONTEXTO,
+            onClick = { onSelect(GroupMode.CONTEXTO) },
         )
     }
 }
 
 @Composable
-private fun TotalCell(
-    label: String,
-    amount: java.math.BigDecimal,
-    color: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier,
-    showSign: Boolean = false,
+private fun ViewToggleButton(
+    icon: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    onClick: () -> Unit,
 ) {
-    Column(modifier = modifier) {
-        Text(
-            text = label.uppercase(),
-            style = PocketTheme.typography.label,
-            color = PocketTheme.colors.text3,
+    val segShape = RoundedCornerShape(9.dp)
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .then(run { if (selected) return@run Modifier.pocketCardShadow(segShape); Modifier })
+            .background(PocketTheme.colors.surface.takeIf { selected } ?: Color.Transparent, segShape)
+            .clickable(role = Role.Tab, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(18.dp),
+            tint = PocketTheme.colors.text.takeIf { selected } ?: PocketTheme.colors.text3,
         )
-        Spacer(Modifier.size(2.dp))
-        AmountText(
-            amount = amount,
-            color = color,
-            showSign = showSign,
-            style = PocketTheme.typography.monoSm,
+    }
+}
+
+@Composable
+private fun SummaryLine(
+    total: java.math.BigDecimal,
+    count: Int,
+    isIncome: Boolean,
+    onlyFixo: Boolean,
+    onToggleFixo: () -> Unit,
+    onGenerateBalance: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            AmountText(
+                amount = total,
+                color = PocketTheme.colors.income.takeIf { isIncome } ?: PocketTheme.colors.expense,
+                style = PocketTheme.typography.monoSummary,
+            )
+            val noun = "receita".takeIf { isIncome } ?: "despesa"
+            val plural = noun.takeIf { count == 1 } ?: "${noun}s"
+            Text(
+                text = "$count $plural" + (" · fixos".takeIf { onlyFixo } ?: ""),
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .border(
+                    1.dp,
+                    PocketTheme.colors.accent.takeIf { onlyFixo } ?: PocketTheme.colors.line,
+                    PocketTheme.shapes.icon,
+                )
+                .background(
+                    PocketTheme.colors.accentBg.takeIf { onlyFixo } ?: PocketTheme.colors.surface,
+                    PocketTheme.shapes.icon,
+                )
+                .clickable(
+                    role = Role.Switch,
+                    onClickLabel = "Mostrar todos".takeIf { onlyFixo } ?: "Mostrar só fixos",
+                    onClick = onToggleFixo,
+                )
+                .semantics { stateDescription = "Só fixos".takeIf { onlyFixo } ?: "Todos" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PushPin,
+                contentDescription = "Mostrar só fixos",
+                modifier = Modifier.size(18.dp),
+                tint = PocketTheme.colors.accent.takeIf { onlyFixo } ?: PocketTheme.colors.text2,
+            )
+        }
+        PocketButton(
+            text = "Gerar saldo",
+            onClick = onGenerateBalance,
+            variant = PocketButtonVariant.SOFT,
+            size = PocketButtonSize.SMALL,
+            leading = {
+                Icon(
+                    imageVector = Icons.Filled.Autorenew,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.text2,
+                )
+            },
         )
     }
 }
@@ -391,7 +521,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         onValueChange = onQueryChange,
         singleLine = true,
         textStyle = PocketTheme.typography.body.copy(color = PocketTheme.colors.text),
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         decorationBox = { inner ->
             Box(
                 modifier = Modifier
@@ -421,10 +551,11 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 }
 
 @Composable
-private fun LedgerList(
+private fun LedgerCardList(
     groups: List<DayGroup>,
-    meta: (HistoryItem) -> String,
+    meta: (HistoryItem) -> TxMeta,
     onRowClick: (HistoryItem) -> Unit,
+    onToggleStatus: (HistoryItem) -> Unit,
     onTogglePin: (HistoryItem) -> Unit,
 ) {
     LazyColumn(
@@ -435,18 +566,18 @@ private fun LedgerList(
         groups.forEach { group ->
             item(key = "h_${group.date}") {
                 Text(
-                    text = group.label,
+                    text = group.label.uppercase(),
                     style = PocketTheme.typography.sectionHeader,
                     color = PocketTheme.colors.text3,
-                    modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+                    modifier = Modifier.padding(top = 14.dp, bottom = 8.dp),
                 )
             }
             items(group.items, key = { it.id }) { item ->
-                TxRow(
+                TxCard(
                     item = item,
                     meta = meta(item),
                     onClick = { onRowClick(item) },
-                    pinned = item.isFixo,
+                    onToggleStatus = { onToggleStatus(item) },
                     onTogglePin = { onTogglePin(item) },
                 )
             }
@@ -455,226 +586,32 @@ private fun LedgerList(
     }
 }
 
-/** Secondary row line: payment method (card name for credit) + a tag preview — consistent with Home. */
-private fun txMeta(item: HistoryItem, cards: List<CreditCard>, tags: Map<String, Tag>): String {
-    val payment = run {
-        if (item.paymentMethod != PaymentMethod.CREDIT) return@run item.paymentMethod?.label().orEmpty()
-        val cardName = item.cardId?.let { id -> cards.firstOrNull { it.id == id }?.name }
-        "Cartão $cardName".takeIf { cardName != null } ?: "Crédito"
-    }
-    val tagNames = item.tagIds.orEmpty().mapNotNull { tags[it]?.name }
-    val tagPreview = run {
-        if (tagNames.isEmpty()) return@run ""
-        if (tagNames.size == 1) return@run tagNames.first()
-        "${tagNames.first()} +${tagNames.size - 1}"
-    }
-    return listOf(payment, tagPreview).filter { it.isNotBlank() }.joinToString(" · ")
-}
-
 @Composable
-private fun TxRow(
-    item: HistoryItem,
-    meta: String,
-    onClick: () -> Unit,
-    pinned: Boolean,
-    onTogglePin: () -> Unit,
-) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onClick)
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = item.displayTitle(),
-                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
-                        color = PocketTheme.colors.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (meta.isNotBlank()) {
-                        Text(
-                            text = meta,
-                            style = PocketTheme.typography.bodyXs,
-                            color = PocketTheme.colors.text3,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (item.statusPayment == PaymentStatus.PENDING) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(PocketTheme.colors.warn, PocketTheme.shapes.pill),
-                        )
-                        Spacer(Modifier.size(8.dp))
-                    }
-                    AmountText(
-                        amount = item.amount,
-                        type = item.type,
-                        showSign = true,
-                        style = PocketTheme.typography.monoSm,
-                    )
-                }
-            }
-            PinToggle(pinned = pinned, onToggle = onTogglePin)
-        }
-        HorizontalDivider(color = PocketTheme.colors.line)
-    }
-}
-
-@Composable
-private fun PinToggle(pinned: Boolean, onToggle: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clickable(
-                role = Role.Switch,
-                onClickLabel = "Remover dos fixos".takeIf { pinned } ?: "Marcar como fixo",
-                onClick = onToggle,
-            )
-            .semantics {
-                stateDescription = "Fixo".takeIf { pinned } ?: "Avulso"
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Autorenew,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = PocketTheme.colors.accent.takeIf { pinned } ?: PocketTheme.colors.text3,
-        )
-    }
-}
-
-@Composable
-private fun LedgerFilterBar(
-    filter: LedgerFilter,
-    fixoCount: Int,
-    onSelect: (LedgerFilter) -> Unit,
-) {
-    val fixosLabel = "Fixos · $fixoCount".takeIf { fixoCount > 0 } ?: "Fixos"
-    val options = listOf(SegmentOption("Todos"), SegmentOption(fixosLabel))
-    Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-        PocketSegmented(
-            options = options,
-            selectedIndex = filter.ordinal,
-            onSelect = { onSelect(LedgerFilter.entries[it]) },
-        )
-    }
-}
-
-@Composable
-private fun GroupModeBar(mode: GroupMode, onSelect: (GroupMode) -> Unit) {
-    val options = listOf(SegmentOption("Lista"), SegmentOption("Por contexto"), SegmentOption("Por tag"))
-    Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-        PocketSegmented(
-            options = options,
-            selectedIndex = mode.ordinal,
-            onSelect = { onSelect(GroupMode.entries[it]) },
-        )
-    }
-}
-
-private val GROUPED_ROW_HEIGHT = 60.dp
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun GroupedLedgerList(
+private fun CategoryCardList(
     groups: List<LedgerGroup>,
-    collapsedIds: Set<String>,
-    canReorder: Boolean,
-    meta: (HistoryItem) -> String,
-    onToggleCollapse: (String) -> Unit,
+    meta: (HistoryItem) -> TxMeta,
     onRowClick: (HistoryItem) -> Unit,
-    onMoveTo: (LedgerGroup, HistoryItem, Int) -> Unit,
+    onToggleStatus: (HistoryItem) -> Unit,
     onTogglePin: (HistoryItem) -> Unit,
 ) {
-    val reducedMotion = LocalReducedMotion.current
-    var dragId by remember { mutableStateOf<String?>(null) }
-    var dragGroupId by remember { mutableStateOf<String?>(null) }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    var dragOrigin by remember { mutableIntStateOf(0) }
-    // Measured from the real rows so the drag-to-target mapping holds at any font scale.
-    val fallbackPx = with(LocalDensity.current) { GROUPED_ROW_HEIGHT.toPx() }
-    var rowHeightPx by remember { mutableFloatStateOf(fallbackPx) }
-
-    fun targetIndex(size: Int): Int =
-        (dragOrigin + (dragOffset / rowHeightPx).roundToInt()).coerceIn(0, size - 1)
-
+    val sorted = groups.sortedByDescending { it.subtotal }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
     ) {
-        groups.forEach { group ->
-            val collapsed = group.id in collapsedIds
-            stickyHeader(key = group.id) {
-                GroupHeader(group = group, collapsed = collapsed, onClick = { onToggleCollapse(group.id) })
+        sorted.forEach { group ->
+            item(key = "h_${group.id}") {
+                CategoryHeader(group = group)
             }
-            if (!collapsed) {
-                itemsIndexed(group.items, key = { _, it -> "${group.id}_${it.id}" }) { index, item ->
-                    val dragging = item.id == dragId && group.id == dragGroupId
-                    val groupActive = dragGroupId == group.id
-                    val target = run {
-                        if (groupActive) return@run targetIndex(group.items.size)
-                        -1
-                    }
-                    Column {
-                        if (groupActive && !dragging && index == target) DropLine()
-                        Row(
-                            modifier = Modifier
-                                .onSizeChanged { if (dragId == null && it.height > 0) rowHeightPx = it.height.toFloat() }
-                                .then(
-                                    run {
-                                        if (dragging) {
-                                            return@run Modifier.zIndex(1f).graphicsLayer {
-                                                translationY = dragOffset
-                                                if (!reducedMotion) {
-                                                    shadowElevation = 10f
-                                                    scaleX = 1.02f
-                                                    scaleY = 1.02f
-                                                }
-                                            }
-                                        }
-                                        Modifier
-                                    },
-                                ),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(Modifier.weight(1f)) {
-                                TxRow(
-                                    item = item,
-                                    meta = meta(item),
-                                    onClick = { onRowClick(item) },
-                                    pinned = item.isFixo,
-                                    onTogglePin = { onTogglePin(item) },
-                                )
-                            }
-                            if (canReorder && group.items.size > 1) {
-                                DragHandle(
-                                    dragKey = "${group.id}_${item.id}_$index",
-                                    onStart = { dragId = item.id; dragGroupId = group.id; dragOrigin = index; dragOffset = 0f },
-                                    onDrag = { dy -> dragOffset += dy },
-                                    onEnd = {
-                                        val t = targetIndex(group.items.size)
-                                        if (t != dragOrigin) onMoveTo(group, item, t)
-                                        dragId = null; dragGroupId = null; dragOffset = 0f
-                                    },
-                                    onCancel = { dragId = null; dragGroupId = null; dragOffset = 0f },
-                                )
-                            }
-                        }
-                    }
-                }
+            items(group.items, key = { "${group.id}_${it.id}" }) { item ->
+                TxCard(
+                    item = item,
+                    meta = meta(item),
+                    onClick = { onRowClick(item) },
+                    onToggleStatus = { onToggleStatus(item) },
+                    onTogglePin = { onTogglePin(item) },
+                )
             }
         }
         item { Spacer(Modifier.size(80.dp)) }
@@ -682,99 +619,256 @@ private fun GroupedLedgerList(
 }
 
 @Composable
-private fun DropLine() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(2.dp)
-            .background(PocketTheme.colors.accent, PocketTheme.shapes.pill),
-    )
-}
-
-@Composable
-private fun GroupHeader(group: LedgerGroup, collapsed: Boolean, onClick: () -> Unit) {
+private fun CategoryHeader(group: LedgerGroup) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(PocketTheme.colors.bg)
-            .clickable(onClick = onClick)
-            .padding(top = 12.dp, bottom = 6.dp),
+            .padding(top = 14.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(10.dp)
+                .size(9.dp)
                 .background(
-                    group.color?.let { androidx.compose.ui.graphics.Color(it) } ?: PocketTheme.colors.text3,
+                    group.color?.let { Color(it) } ?: PocketTheme.colors.text3,
                     PocketTheme.shapes.pill,
                 ),
         )
         Text(
-            text = group.title,
-            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text,
+            text = group.title.uppercase(),
+            style = PocketTheme.typography.sectionHeader,
+            color = PocketTheme.colors.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         AmountText(
             amount = group.subtotal,
-            type = group.type,
-            style = PocketTheme.typography.monoSm,
-        )
-        Spacer(Modifier.size(6.dp))
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight.takeIf { collapsed }
-                ?: Icons.Filled.ExpandMore,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = PocketTheme.colors.text3,
+            color = PocketTheme.colors.text2,
+            style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.SemiBold),
         )
     }
 }
 
+/** Resolved secondary-line data for a row: leading tag chip, +N badge, and a payment label. */
+private data class TxMeta(
+    val tagName: String?,
+    val tagColor: Long?,
+    val extraTags: Int,
+    val payment: String,
+)
+
+private fun txMeta(item: HistoryItem, cards: List<CreditCard>, tags: Map<String, Tag>): TxMeta {
+    val payment = run {
+        if (item.paymentMethod != PaymentMethod.CREDIT) return@run item.paymentMethod?.label().orEmpty()
+        val cardName = item.cardId?.let { id -> cards.firstOrNull { it.id == id }?.name }
+        "Cartão $cardName".takeIf { cardName != null } ?: "Crédito"
+    }
+    val tagIds = item.tagIds.orEmpty()
+    val first = tagIds.firstOrNull()?.let { tags[it] }
+    return TxMeta(
+        tagName = first?.name,
+        tagColor = first?.color,
+        extraTags = (tagIds.size - 1).coerceAtLeast(0),
+        payment = payment,
+    )
+}
+
+private val TX_CARD_SHAPE = RoundedCornerShape(16.dp)
+
 @Composable
-private fun DragHandle(
-    dragKey: Any,
-    onStart: () -> Unit,
-    onDrag: (Float) -> Unit,
-    onEnd: () -> Unit,
-    onCancel: () -> Unit,
+private fun TxCard(
+    item: HistoryItem,
+    meta: TxMeta,
+    onClick: () -> Unit,
+    onToggleStatus: () -> Unit,
+    onTogglePin: () -> Unit,
 ) {
-    val haptic = LocalHapticFeedback.current
+    val paid = item.statusPayment == PaymentStatus.PAID
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .height(IntrinsicSize.Min)
+            .clip(TX_CARD_SHAPE)
+            .background(PocketTheme.colors.surface, TX_CARD_SHAPE)
+            .border(1.dp, PocketTheme.colors.line, TX_CARD_SHAPE),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusCell(paid = paid, onClick = onToggleStatus)
+        VerticalDivider(color = PocketTheme.colors.line)
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
+                .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.displayTitle(),
+                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = PocketTheme.colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.size(3.dp))
+                TxMetaRow(meta = meta)
+            }
+            Spacer(Modifier.size(8.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                AmountText(
+                    amount = item.amount,
+                    type = item.type,
+                    showSign = true,
+                    style = PocketTheme.typography.monoSm.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                    ),
+                )
+                Spacer(Modifier.size(2.dp))
+                Text(
+                    text = "Paga".takeIf { paid }?.uppercase() ?: "Pendente".uppercase(),
+                    style = PocketTheme.typography.label.copy(fontSize = 9.5.sp),
+                    color = PocketTheme.colors.income.takeIf { paid } ?: PocketTheme.colors.warn,
+                )
+            }
+        }
+        VerticalDivider(color = PocketTheme.colors.line)
+        PinCell(pinned = item.isFixo, onClick = onTogglePin)
+    }
+}
+
+@Composable
+private fun StatusCell(paid: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(40.dp)
-            .pointerInput(dragKey) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onStart()
-                    },
-                    onDrag = { change, amount -> change.consume(); onDrag(amount.y) },
-                    onDragEnd = { onEnd() },
-                    onDragCancel = { onCancel() },
-                )
-            },
+            .fillMaxHeight()
+            .width(46.dp)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Paga — marcar como pendente".takeIf { paid }
+                    ?: "Pendente — marcar como paga",
+                onClick = onClick,
+            )
+            .semantics { stateDescription = "Paga".takeIf { paid } ?: "Pendente" },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            imageVector = Icons.Filled.DragIndicator,
+            imageVector = Icons.Filled.CheckCircle.takeIf { paid } ?: Icons.Outlined.Schedule,
             contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = PocketTheme.colors.text3,
+            modifier = Modifier.size(18.dp),
+            tint = PocketTheme.colors.income.takeIf { paid } ?: PocketTheme.colors.warn,
         )
     }
 }
 
 @Composable
-private fun EmptyState(searching: Boolean, fixoEmpty: Boolean, month: String) {
+private fun PinCell(pinned: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(42.dp)
+            .clickable(
+                role = Role.Switch,
+                onClickLabel = "Remover dos fixos".takeIf { pinned } ?: "Marcar como fixo",
+                onClick = onClick,
+            )
+            .semantics { stateDescription = "Fixo".takeIf { pinned } ?: "Avulso" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PushPin,
+            contentDescription = null,
+            modifier = Modifier
+                .size(18.dp)
+                .alpha(1f.takeIf { pinned } ?: 0.42f),
+            tint = PocketTheme.colors.accent.takeIf { pinned } ?: PocketTheme.colors.text3,
+        )
+    }
+}
+
+@Composable
+private fun TxMetaRow(meta: TxMeta) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        if (meta.tagName == null) {
+            if (meta.payment.isNotBlank()) {
+                Text(
+                    text = meta.payment,
+                    style = PocketTheme.typography.bodyXs,
+                    color = PocketTheme.colors.text3,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            return@Row
+        }
+        TagChip(name = meta.tagName, color = meta.tagColor)
+        if (meta.extraTags > 0) {
+            Text(
+                text = "+${meta.extraTags}",
+                style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                color = PocketTheme.colors.text3,
+            )
+        }
+        if (meta.payment.isNotBlank()) {
+            Text(
+                text = meta.payment,
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TagChip(name: String, color: Long?) {
+    Row(
+        modifier = Modifier
+            .clip(PocketTheme.shapes.pill)
+            .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
+            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.pill)
+            .padding(start = 7.dp, end = 9.dp, top = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .background(
+                    color?.let { Color(it) } ?: PocketTheme.colors.text3,
+                    PocketTheme.shapes.pill,
+                ),
+        )
+        Text(
+            text = name,
+            style = PocketTheme.typography.bodyXs,
+            color = PocketTheme.colors.text2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun emptyMessage(isIncome: Boolean, searching: Boolean, onlyFixo: Boolean): String {
+    if (searching) return "Nenhuma transação encontrada."
+    val noun = "receita".takeIf { isIncome } ?: "despesa"
+    if (onlyFixo) return "Nenhuma $noun fixa neste mês."
+    return "Nenhuma $noun neste mês."
+}
+
+@Composable
+private fun EmptyState(message: String) {
     Box(Modifier.fillMaxSize(), Alignment.Center) {
         Text(
-            text = run {
-                if (searching) return@run "Nada encontrado"
-                if (fixoEmpty) return@run "Nenhum lançamento fixo neste mês."
-                "Nenhuma transação em $month"
-            },
+            text = message,
             style = PocketTheme.typography.body,
             color = PocketTheme.colors.text3,
         )
@@ -782,17 +876,28 @@ private fun EmptyState(searching: Boolean, fixoEmpty: Boolean, month: String) {
 }
 
 @Composable
-private fun AddFab(onClick: () -> Unit) {
-    Box(
+private fun ExtendedAddFab(type: TransactionType, onClick: () -> Unit) {
+    val isIncome = type == TransactionType.INCOME
+    val label = "Receita".takeIf { isIncome } ?: "Despesa"
+    Row(
         modifier = Modifier
-            .size(56.dp)
-            .background(PocketTheme.colors.accent, PocketTheme.shapes.fab)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .height(52.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(PocketTheme.colors.accent, RoundedCornerShape(18.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(start = 16.dp, end = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
+        Icon(
+            imageVector = Icons.Filled.Add,
+            contentDescription = "Adicionar $label",
+            modifier = Modifier.size(22.dp),
+            tint = PocketTheme.colors.accentInk,
+        )
         Text(
-            "+",
-            style = PocketTheme.typography.stepQuestion,
+            text = label,
+            style = PocketTheme.typography.button,
             color = PocketTheme.colors.accentInk,
         )
     }
