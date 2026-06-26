@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -513,6 +514,85 @@ class TransacoesViewModelTest {
         val displayedIds = flatDisplayedItems(vm.state.value).map { it.id }
 
         assertEquals(listOf("ord-a", "ord-b", "ord-c"), displayedIds)
+    }
+
+    // -------------------------------------------------------------------------
+    // Optimistic status toggle: flips instantly, no full-screen loading
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `markPending optimistically flips status without entering loading state`() = runTest {
+        // avulsoItem1 starts PAID; markPending should flip it to PENDING synchronously.
+        coEvery { transactionRepository.markPending("avulso-1") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.markPending("avulso-1")
+
+        // Before any coroutine runs: the row flipped and the blocking spinner did not appear.
+        val optimistic = vm.state.value.items.first { it.id == "avulso-1" }
+        assertEquals(PaymentStatus.PENDING, optimistic.statusPayment)
+        assertFalse("Status toggle must not show full-screen loading", vm.state.value.isLoading)
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertFalse(vm.state.value.isLoading)
+    }
+
+    @Test
+    fun `markPaid failure reverts the optimistic status and surfaces an error`() = runTest {
+        val pending = avulsoItem1.copy(statusPayment = PaymentStatus.PENDING)
+        coEvery { transactionRepository.getMonth(any()) } returns
+            Result.success(listOf(pending, avulsoItem2, fixoItem1, fixoItem2))
+        coEvery { transactionRepository.markPaid("avulso-1") } returns
+            Result.failure(RuntimeException("status update failed"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.markPaid("avulso-1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val reverted = vm.state.value.items.first { it.id == "avulso-1" }
+        assertEquals(PaymentStatus.PENDING, reverted.statusPayment)
+        assertNotNull(vm.state.value.toastMessage)
+        assertFalse(vm.state.value.isLoading)
+    }
+
+    @Test
+    fun `optimistic status toggle preserves canonical order and day grouping`() = runTest {
+        val ordA = HistoryItem(
+            id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
+            type = TransactionType.EXPENSE, tagIds = null,
+            statusPayment = PaymentStatus.PENDING, displayOrder = 0,
+        )
+        val ordB = HistoryItem(
+            id = "ord-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
+            type = TransactionType.EXPENSE, tagIds = null,
+            statusPayment = PaymentStatus.PENDING, displayOrder = 0,
+        )
+        val ordC = HistoryItem(
+            id = "ord-c", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("30.00"),
+            type = TransactionType.EXPENSE, tagIds = null,
+            statusPayment = PaymentStatus.PENDING, displayOrder = 0,
+        )
+        // Repository returns non-canonical [C, A, B]; canonical order is [A, B, C].
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(listOf(ordC, ordA, ordB))
+        coEvery { transactionRepository.markPaid("ord-b") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val beforeIds = flatDisplayedItems(vm.state.value).map { it.id }
+
+        vm.markPaid("ord-b")
+
+        // Inspect the optimistic state before the backend confirm/reload runs.
+        val afterItems = flatDisplayedItems(vm.state.value)
+        assertEquals(beforeIds, afterItems.map { it.id })
+        assertEquals(1, vm.state.value.dayGroups.size)
+        assertEquals(3, vm.state.value.dayGroups.first().items.size)
+        assertEquals(PaymentStatus.PAID, afterItems.first { it.id == "ord-b" }.statusPayment)
     }
 
     // =========================================================================

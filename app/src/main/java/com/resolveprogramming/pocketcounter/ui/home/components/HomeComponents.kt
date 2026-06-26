@@ -42,6 +42,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
+import com.resolveprogramming.pocketcounter.ui.components.AutoSizeText
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.math.BigDecimal
@@ -447,12 +448,10 @@ private fun QuickTile(
                     maxLines = 1,
                     softWrap = false,
                 )
-                Text(
+                AutoSizeText(
                     text = value,
                     style = valueStyle,
                     color = PocketTheme.colors.text,
-                    maxLines = 1,
-                    softWrap = false,
                 )
             }
         }

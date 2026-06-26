@@ -11,6 +11,7 @@ import com.resolveprogramming.pocketcounter.domain.model.DayGroup
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
+import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -134,10 +135,10 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    private fun loadMonth() {
+    private fun loadMonth(showLoading: Boolean = true) {
         val key = _state.value.monthKey
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            if (showLoading) _state.update { it.copy(isLoading = true) }
             transactionRepository.getMonth(key)
                 .onSuccess { items ->
                     _state.update { s ->
@@ -213,7 +214,7 @@ class TransacoesViewModel @Inject constructor(
                     }
                     .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
             }
-            loadMonth()
+            loadMonth(showLoading = false)
         }
     }
 
@@ -273,17 +274,38 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun markPaid(id: String) = mutateStatus { transactionRepository.markPaid(id) }
-    fun markPending(id: String) = mutateStatus { transactionRepository.markPending(id) }
+    fun markPaid(id: String) =
+        mutateStatus(id, PaymentStatus.PAID, "Marcada como paga ✓") { transactionRepository.markPaid(id) }
 
-    private fun mutateStatus(action: suspend () -> Result<Unit>) {
+    fun markPending(id: String) =
+        mutateStatus(id, PaymentStatus.PENDING, "Marcada como pendente") { transactionRepository.markPending(id) }
+
+    /**
+     * Optimistically flips [id]'s payment status to [target] so the row updates instantly, then
+     * confirms with the backend via a silent reload (no full-screen spinner). On failure the local
+     * items are restored and an error toast is shown.
+     */
+    private fun mutateStatus(
+        id: String,
+        target: PaymentStatus,
+        successMessage: String,
+        action: suspend () -> Result<Unit>,
+    ) {
+        val previousItems = _state.value.items
+        val optimistic = previousItems.map { item ->
+            item.copy(statusPayment = target).takeIf { item.id == id } ?: item
+        }
+        _state.update {
+            it.copy(items = optimistic, detailTarget = null, toastMessage = successMessage).recomputed()
+        }
         viewModelScope.launch {
             action()
-                .onSuccess {
-                    _state.update { it.copy(detailTarget = null, toastMessage = "Status atualizado") }
-                    loadMonth()
+                .onSuccess { loadMonth(showLoading = false) }
+                .onFailure {
+                    _state.update {
+                        it.copy(items = previousItems, toastMessage = "Não foi possível atualizar").recomputed()
+                    }
                 }
-                .onFailure { _state.update { it.copy(toastMessage = "Não foi possível atualizar") } }
         }
     }
 
