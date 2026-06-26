@@ -57,6 +57,7 @@ data class WizardUiState(
     val isSuccess: Boolean = false,
     val pendingConfirmed: Boolean = false,
     val isLoading: Boolean = true,
+    val isSwitching: Boolean = false,
     val error: String? = null,
 )
 
@@ -70,19 +71,29 @@ class WizardViewModel @Inject constructor(
     private val seriesRepository: SeriesRepository,
 ) : ViewModel() {
 
-    private val notificationId: String = savedStateHandle["notificationId"] ?: ""
+    private var notificationId: String = savedStateHandle["notificationId"] ?: ""
     private val _state = MutableStateFlow(WizardUiState())
     val state: StateFlow<WizardUiState> = _state.asStateFlow()
 
     init {
-        loadNotification()
+        loadNotification(initial = true)
     }
 
-    private fun loadNotification() {
+    /**
+     * Loads [notificationId] into the wizard. On the first load ([initial] = true) the state starts
+     * blank, so the screen shows the full-screen spinner. When switching between queued items
+     * ([initial] = false) the current item stays on screen (dimmed, behind a slim top progress bar)
+     * while the next one resolves — the cached lookups are instant, so the swap is quick.
+     */
+    private fun loadNotification(initial: Boolean) {
+        if (!initial) {
+            _state.update { it.copy(isSwitching = true, error = null) }
+        }
         viewModelScope.launch {
+            val id = notificationId
             // Fetch the independent lookups concurrently — running them sequentially made every
             // notification transition wait on ~6 round-trips back to back, which felt slow.
-            val baseDeferred = async { notificationRepository.getById(notificationId).getOrNull() }
+            val baseDeferred = async { notificationRepository.getById(id).getOrNull() }
             val cardsDeferred = async { cardRepository.getCards().getOrDefault(emptyList()) }
             val tagsDeferred = async { tagRepository.getAllTags().getOrDefault(emptyList()) }
             val contextsDeferred = async { tagRepository.getAllContexts().getOrDefault(emptyList()) }
@@ -98,6 +109,7 @@ class WizardViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isLoading = false,
+                        isSwitching = false,
                         error = "Não foi possível abrir esta notificação. " +
                             "Ela pode já ter sido classificada ou removida.",
                     )
@@ -110,12 +122,13 @@ class WizardViewModel @Inject constructor(
             val series = seriesDeferred.await()
             val queue = queueDeferred.await()
 
-            val classifyResult = notificationRepository.classify(notificationId, base)
+            val classifyResult = notificationRepository.classify(id, base)
             val classified = classifyResult.getOrNull()
 
             if (classified?.pendingTransactionId != null) {
                 _state.value = WizardUiState(
                     notification = classified.notification,
+                    queue = queue,
                     cards = cards,
                     allTags = tags,
                     contexts = contexts,
@@ -135,6 +148,8 @@ class WizardViewModel @Inject constructor(
                 NotificationTokenizer.tokenize(notification.text, notification.parsed)
             }
 
+            // Switching to a different item resets to that item's fresh draft/step/tokens; only the
+            // on-screen transition kept the previous item visible until this point.
             _state.value = WizardUiState(
                 notification = notification,
                 draft = draft,
@@ -149,6 +164,13 @@ class WizardViewModel @Inject constructor(
                 error = degradeError,
             )
         }
+    }
+
+    /** Switches the wizard to a different queued item in place, keeping the current one visible. */
+    private fun goTo(id: String) {
+        if (_state.value.isSwitching || _state.value.isSaving) return
+        notificationId = id
+        loadNotification(initial = false)
     }
 
     private fun resolveStartStep(notification: NotificationItem): WizardStep {
@@ -317,25 +339,30 @@ class WizardViewModel @Inject constructor(
         }
     }
 
-    /** Jumps to the next still-pending item without deciding; wraps past the last back to the first. */
-    fun skipToNext(onOpen: (String) -> Unit) {
-        if (_state.value.isSaving) return
-        val queue = _state.value.queue
+    /** Jumps to the next still-pending item in place; wraps past the last back to the first. */
+    fun skipToNext() {
+        val state = _state.value
+        if (state.isSwitching || state.isSaving) return
+        val queue = state.queue
+        if (queue.size < 2) return
         val i = queue.indexOf(notificationId)
-        if (i < 0 || queue.size < 2) return
-        onOpen(queue[(i + 1) % queue.size])
+        if (i < 0) return
+        goTo(queue[(i + 1) % queue.size])
     }
 
-    /** Jumps to the previous still-pending item without deciding; wraps before the first to the last. */
-    fun skipToPrevious(onOpen: (String) -> Unit) {
-        if (_state.value.isSaving) return
-        val queue = _state.value.queue
+    /** Jumps to the previous still-pending item in place; wraps before the first to the last. */
+    fun skipToPrevious() {
+        val state = _state.value
+        if (state.isSwitching || state.isSaving) return
+        val queue = state.queue
+        if (queue.size < 2) return
         val i = queue.indexOf(notificationId)
-        if (i < 0 || queue.size < 2) return
-        onOpen(queue[(i - 1 + queue.size) % queue.size])
+        if (i < 0) return
+        goTo(queue[(i - 1 + queue.size) % queue.size])
     }
 
-    fun save(onNext: (String) -> Unit, onDone: () -> Unit) {
+    fun save(onDone: () -> Unit) {
+        if (_state.value.isSaving || _state.value.isSwitching) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             val draft = _state.value.draft
@@ -350,7 +377,7 @@ class WizardViewModel @Inject constructor(
                     runCatching { notificationRepository.markClassified(notificationId, transactionId) }
                     // Process the review queue in place: load the next pending item, or return to
                     // the app when none remain.
-                    advanceToNext(onNext, onDone)
+                    advanceToNext(onDone)
                 }
                 .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
         }
@@ -358,24 +385,29 @@ class WizardViewModel @Inject constructor(
 
     /**
      * Discards the captured notification (marks it ignored so it leaves "Para revisar") and then
-     * advances the queue: loads the next pending item via [onNext], or returns to the app via
-     * [onDone] when none remain. Navigation runs only after the calls return so leaving the screen
-     * doesn't cancel them; the ignore is best-effort.
+     * advances the queue: loads the next pending item in place, or returns to the app via [onDone]
+     * when none remain. The ignore is best-effort.
      */
-    fun ignore(onNext: (String) -> Unit, onDone: () -> Unit) {
-        if (_state.value.isSaving) return
+    fun ignore(onDone: () -> Unit) {
+        if (_state.value.isSaving || _state.value.isSwitching) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             notificationRepository.markIgnored(notificationId)
-            advanceToNext(onNext, onDone)
+            advanceToNext(onDone)
         }
     }
 
-    /** Loads the next still-pending item via [onNext], or returns to the app via [onDone]. */
-    private suspend fun advanceToNext(onNext: (String) -> Unit, onDone: () -> Unit) {
+    /** Loads the next still-pending item in place, or returns to the app via [onDone] when none remain. */
+    private suspend fun advanceToNext(onDone: () -> Unit) {
         val next = notificationRepository.getPendingReview().getOrNull()
             ?.firstOrNull { it.id != notificationId }
-        if (next != null) onNext(next.id) else onDone()
+        if (next == null) {
+            onDone()
+            return
+        }
+        // Clear the save/ignore flag so the in-place switch isn't blocked by its own guard.
+        _state.update { it.copy(isSaving = false) }
+        goTo(next.id)
     }
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {

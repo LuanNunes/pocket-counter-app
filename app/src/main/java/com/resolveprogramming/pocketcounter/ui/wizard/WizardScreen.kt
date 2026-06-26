@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 
 import android.app.DatePickerDialog
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -34,12 +35,15 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -60,12 +64,13 @@ import java.time.LocalDate
 fun WizardScreen(
     onDismiss: () -> Unit,
     onBackToApp: () -> Unit,
-    onOpenNext: (String) -> Unit,
     viewModel: WizardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    if (state.isLoading) {
+    // Full-screen spinner only on the very first open, when there's nothing to keep on screen.
+    // Switching between queued items keeps the current item visible (see isSwitching below).
+    if (state.isLoading && state.notification == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = PocketTheme.colors.accent)
         }
@@ -118,16 +123,28 @@ fun WizardScreen(
         WizardTopBar(
             step = state.step,
             onBack = onDismiss,
-            onIgnore = { viewModel.ignore(onNext = onOpenNext, onDone = onBackToApp) },
+            onIgnore = { viewModel.ignore(onDone = onBackToApp) },
         )
+
+        // Slim, unobtrusive loading hint while the next queued item resolves in place.
+        if (state.isSwitching) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = PocketTheme.colors.accent,
+                trackColor = Color.Transparent,
+            )
+        }
 
         val queueIndex = state.queue.indexOf(notification.id)
         if (state.queue.size >= 2 && queueIndex >= 0) {
             WizardQueueStrip(
                 position = queueIndex + 1,
                 total = state.queue.size,
-                onPrevItem = { viewModel.skipToPrevious(onOpenNext) },
-                onNextItem = { viewModel.skipToNext(onOpenNext) },
+                enabled = !state.isSwitching,
+                onPrevItem = viewModel::skipToPrevious,
+                onNextItem = viewModel::skipToNext,
             )
         }
 
@@ -136,126 +153,132 @@ fun WizardScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .alpha(0.6f.takeIf { state.isSwitching } ?: 1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
             Spacer(Modifier.height(16.dp))
 
-            if (state.tokens.isNotEmpty()) {
-                SourceTextCard(
-                    notification = notification,
-                    tokens = state.tokens,
-                    selectedTokenIndex = state.selectedTokenIndex,
-                    onTokenTap = { viewModel.selectToken(it) },
-                )
-
-                if (state.selectedTokenIndex != null) {
-                    Spacer(Modifier.height(8.dp))
-                    TokenLabelPicker(
-                        token = state.tokens[state.selectedTokenIndex!!],
-                        onRoleSelected = { role ->
-                            viewModel.assignTokenRole(state.selectedTokenIndex!!, role)
-                        },
-                        onRemoveRole = { viewModel.removeTokenRole(state.selectedTokenIndex!!) },
-                    )
-                }
-
-                Spacer(Modifier.height(20.dp))
-            }
-
-            AnimatedContent(
-                targetState = state.step,
-                transitionSpec = {
-                    run {
-                        if (targetState.index > initialState.index) {
-                            return@run slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
-                        }
-                        slideInHorizontally { -it } togetherWith slideOutHorizontally { it }
-                    }
-                },
-                label = "wizard_step",
-            ) { step ->
-                when (step) {
-                    WizardStep.TYPE -> StepType(
-                        suggestedType = notification.parsed.type,
-                        selectedType = state.draft.type,
-                        onSelect = viewModel::selectType,
-                    )
-
-                    WizardStep.AMOUNT -> {
-                        val context = LocalContext.current
-                        StepAmount(
-                            amount = state.draft.amount,
-                            date = state.draft.date,
-                            statusPayment = state.draft.statusPayment,
-                            hasInstallments = notification.parsed.installments != null,
-                            installmentsEnabled = state.draft.installments != null,
-                            installmentCount = notification.parsed.installments,
-                            installmentValue = notification.parsed.installmentValue,
-                            isFixo = state.draft.isFixo,
-                            recurrenceDay = state.draft.recurrenceDay,
-                            name = state.draft.name,
-                            type = state.draft.type,
-                            onNameChange = viewModel::updateName,
-                            onAmountChange = viewModel::updateAmount,
-                            onDateTap = {
-                                val current = state.draft.date ?: LocalDate.now()
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, day ->
-                                        viewModel.updateDate(LocalDate.of(year, month + 1, day))
-                                    },
-                                    current.year,
-                                    current.monthValue - 1,
-                                    current.dayOfMonth,
-                                ).show()
-                            },
-                            onStatusChange = viewModel::updateStatusPayment,
-                            onToggleInstallments = viewModel::toggleInstallments,
-                            onToggleFixo = viewModel::toggleFixo,
-                            onRecurrenceDayChange = viewModel::updateRecurrenceDay,
+            Crossfade(targetState = notification.id, label = "wizard_item") { _ ->
+                Column {
+                    if (state.tokens.isNotEmpty()) {
+                        SourceTextCard(
+                            notification = notification,
+                            tokens = state.tokens,
+                            selectedTokenIndex = state.selectedTokenIndex,
+                            onTokenTap = { viewModel.selectToken(it) },
                         )
+
+                        if (state.selectedTokenIndex != null) {
+                            Spacer(Modifier.height(8.dp))
+                            TokenLabelPicker(
+                                token = state.tokens[state.selectedTokenIndex!!],
+                                onRoleSelected = { role ->
+                                    viewModel.assignTokenRole(state.selectedTokenIndex!!, role)
+                                },
+                                onRemoveRole = { viewModel.removeTokenRole(state.selectedTokenIndex!!) },
+                            )
+                        }
+
+                        Spacer(Modifier.height(20.dp))
                     }
 
-                    WizardStep.PAYMENT -> StepPayment(
-                        type = state.draft.type,
-                        cards = state.cards,
-                        selectedMethod = state.draft.paymentMethod,
-                        selectedCardId = state.draft.cardId,
-                        onSelectMethod = viewModel::selectPaymentMethod,
-                        onSelectCard = viewModel::selectCard,
-                    )
+                    AnimatedContent(
+                        targetState = state.step,
+                        transitionSpec = {
+                            run {
+                                if (targetState.index > initialState.index) {
+                                    return@run slideInHorizontally { it } togetherWith slideOutHorizontally { -it }
+                                }
+                                slideInHorizontally { -it } togetherWith slideOutHorizontally { it }
+                            }
+                        },
+                        label = "wizard_step",
+                    ) { step ->
+                        when (step) {
+                            WizardStep.TYPE -> StepType(
+                                suggestedType = notification.parsed.type,
+                                selectedType = state.draft.type,
+                                onSelect = viewModel::selectType,
+                            )
 
-                    WizardStep.TAGS -> StepTags(
-                        type = state.draft.type ?: TransactionType.EXPENSE,
-                        tags = state.allTags,
-                        contexts = state.contexts,
-                        selectedTagIds = state.draft.tagIds,
-                        searchQuery = state.tagSearchQuery,
-                        learnRule = state.draft.learnRule,
-                        paymentHint = notification.parsed.paymentHint,
-                        merchant = state.draft.merchant,
-                        onSearchChange = viewModel::updateTagSearch,
-                        onToggleTag = viewModel::toggleTag,
-                        onToggleLearnRule = viewModel::toggleLearnRule,
-                    )
+                            WizardStep.AMOUNT -> {
+                                val context = LocalContext.current
+                                StepAmount(
+                                    amount = state.draft.amount,
+                                    date = state.draft.date,
+                                    statusPayment = state.draft.statusPayment,
+                                    hasInstallments = notification.parsed.installments != null,
+                                    installmentsEnabled = state.draft.installments != null,
+                                    installmentCount = notification.parsed.installments,
+                                    installmentValue = notification.parsed.installmentValue,
+                                    isFixo = state.draft.isFixo,
+                                    recurrenceDay = state.draft.recurrenceDay,
+                                    name = state.draft.name,
+                                    type = state.draft.type,
+                                    onNameChange = viewModel::updateName,
+                                    onAmountChange = viewModel::updateAmount,
+                                    onDateTap = {
+                                        val current = state.draft.date ?: LocalDate.now()
+                                        DatePickerDialog(
+                                            context,
+                                            { _, year, month, day ->
+                                                viewModel.updateDate(LocalDate.of(year, month + 1, day))
+                                            },
+                                            current.year,
+                                            current.monthValue - 1,
+                                            current.dayOfMonth,
+                                        ).show()
+                                    },
+                                    onStatusChange = viewModel::updateStatusPayment,
+                                    onToggleInstallments = viewModel::toggleInstallments,
+                                    onToggleFixo = viewModel::toggleFixo,
+                                    onRecurrenceDayChange = viewModel::updateRecurrenceDay,
+                                )
+                            }
+
+                            WizardStep.PAYMENT -> StepPayment(
+                                type = state.draft.type,
+                                cards = state.cards,
+                                selectedMethod = state.draft.paymentMethod,
+                                selectedCardId = state.draft.cardId,
+                                onSelectMethod = viewModel::selectPaymentMethod,
+                                onSelectCard = viewModel::selectCard,
+                            )
+
+                            WizardStep.TAGS -> StepTags(
+                                type = state.draft.type ?: TransactionType.EXPENSE,
+                                tags = state.allTags,
+                                contexts = state.contexts,
+                                selectedTagIds = state.draft.tagIds,
+                                searchQuery = state.tagSearchQuery,
+                                learnRule = state.draft.learnRule,
+                                paymentHint = notification.parsed.paymentHint,
+                                merchant = state.draft.merchant,
+                                onSearchChange = viewModel::updateTagSearch,
+                                onToggleTag = viewModel::toggleTag,
+                                onToggleLearnRule = viewModel::toggleLearnRule,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
                 }
             }
-
-            Spacer(Modifier.height(20.dp))
         }
 
         WizardFooter(
             step = state.step,
             draft = state.draft,
             isSaving = state.isSaving,
+            enabled = !state.isSwitching,
             onBack = {
                 if (state.step == WizardStep.TYPE) onDismiss()
                 if (state.step != WizardStep.TYPE) viewModel.previousStep()
             },
             onNext = {
                 if (state.step == WizardStep.TAGS) {
-                    viewModel.save(onNext = onOpenNext, onDone = onBackToApp)
+                    viewModel.save(onDone = onBackToApp)
                 }
                 if (state.step != WizardStep.TAGS) viewModel.nextStep()
             },
@@ -355,6 +378,7 @@ private fun WizardTopBar(
 private fun WizardQueueStrip(
     position: Int,
     total: Int,
+    enabled: Boolean,
     onPrevItem: () -> Unit,
     onNextItem: () -> Unit,
 ) {
@@ -369,7 +393,7 @@ private fun WizardQueueStrip(
             modifier = Modifier
                 .size(40.dp)
                 .clip(PocketTheme.shapes.icon)
-                .clickable(onClick = onPrevItem),
+                .clickable(enabled = enabled, onClick = onPrevItem),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -395,7 +419,7 @@ private fun WizardQueueStrip(
             modifier = Modifier
                 .size(40.dp)
                 .clip(PocketTheme.shapes.icon)
-                .clickable(onClick = onNextItem),
+                .clickable(enabled = enabled, onClick = onNextItem),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -440,6 +464,7 @@ private fun WizardFooter(
     step: WizardStep,
     draft: WizardDraft,
     isSaving: Boolean,
+    enabled: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
 ) {
@@ -468,6 +493,7 @@ private fun WizardFooter(
             text = "Voltar",
             onClick = onBack,
             variant = PocketButtonVariant.SOFT,
+            enabled = enabled,
             fillMaxWidth = true,
             modifier = Modifier.weight(1f),
         )
@@ -475,7 +501,7 @@ private fun WizardFooter(
             text = "Salvando...".takeIf { isSaving } ?: nextLabel,
             onClick = onNext,
             variant = PocketButtonVariant.PRIMARY,
-            enabled = canAdvance && !isSaving,
+            enabled = canAdvance && !isSaving && enabled,
             fillMaxWidth = true,
             modifier = Modifier.weight(1.5f),
         )

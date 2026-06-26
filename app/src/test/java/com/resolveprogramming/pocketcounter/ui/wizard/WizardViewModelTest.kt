@@ -64,6 +64,14 @@ class WizardViewModelTest {
             Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, null))
         coEvery { seriesRepository.setTags(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.linkTransaction(any(), any(), any()) } returns Result.success(Unit)
+        // Broad fallbacks so in-place switches resolve without NPE; tests override for specific ids.
+        coEvery { notificationRepository.getById(any()) } answers {
+            Result.success(makeNotification(id = firstArg()))
+        }
+        coEvery { notificationRepository.classify(any(), any()) } answers {
+            Result.success(ClassifiedNotification(notification = secondArg(), pendingTransactionId = null))
+        }
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         // Default: queue is empty after any save/ignore → onDone is called
         coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
         coEvery { notificationRepository.markIgnored(any()) } returns Result.success(Unit)
@@ -428,7 +436,7 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markClassified("notif-1", "tx-new-99") }
@@ -447,7 +455,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(doneCalled)
@@ -466,7 +474,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(doneCalled)
@@ -484,7 +492,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertFalse(doneCalled)
@@ -502,7 +510,7 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("save failed", vm.state.value.error)
@@ -519,7 +527,7 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertFalse(vm.state.value.isSaving)
@@ -673,7 +681,7 @@ class WizardViewModelTest {
         // draft.isFixo defaults to false — no toggleFixo call
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 0) { seriesRepository.create(any(), any(), any()) }
@@ -702,7 +710,7 @@ class WizardViewModelTest {
         // draft.seriesId remains null — no selectSeries call
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerifyOrder {
@@ -731,7 +739,7 @@ class WizardViewModelTest {
         vm.toggleFixo(true)
         vm.updateRecurrenceDay(5)
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { seriesRepository.create("IFOOD", any(), any()) }
@@ -753,7 +761,7 @@ class WizardViewModelTest {
         vm.toggleFixo(true)
         vm.updateRecurrenceDay(5)
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 0) { seriesRepository.setTags(any(), any()) }
@@ -776,7 +784,7 @@ class WizardViewModelTest {
         vm.updateRecurrenceDay(5)
         vm.selectSeries("s-existing")
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { seriesRepository.linkTransaction("s-existing", "tx-1", false) }
@@ -802,7 +810,7 @@ class WizardViewModelTest {
         vm.updateRecurrenceDay(5)
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { transactionRepository.save(any()) }
@@ -830,7 +838,7 @@ class WizardViewModelTest {
         vm.updateRecurrenceDay(5)
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(doneCalled)
@@ -841,7 +849,7 @@ class WizardViewModelTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `save advances to next pending item when queue has another notification`() = runTest {
+    fun `save advances to next pending item in place when queue has another notification`() = runTest {
         val notification = makeNotification(id = "notif-1")
         val nextNotification = makeNotification(id = "notif-2")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
@@ -854,12 +862,11 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        var nextId: String? = null
         var doneCalled = false
-        vm.save(onNext = { nextId = it }, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals("notif-2", nextId)
+        assertEquals("notif-2", vm.state.value.notification?.id)
         assertFalse(doneCalled)
     }
 
@@ -877,7 +884,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.save(onNext = {}, onDone = { doneCalled = true })
+        vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(doneCalled)
@@ -888,7 +895,7 @@ class WizardViewModelTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `ignore marks notification ignored and advances to next pending item`() = runTest {
+    fun `ignore marks notification ignored and advances in place to next pending item`() = runTest {
         val notification = makeNotification(id = "notif-1")
         val nextNotification = makeNotification(id = "notif-2")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
@@ -899,13 +906,12 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        var nextId: String? = null
         var doneCalled = false
-        vm.ignore(onNext = { nextId = it }, onDone = { doneCalled = true })
+        vm.ignore(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
-        assertEquals("notif-2", nextId)
+        assertEquals("notif-2", vm.state.value.notification?.id)
         assertFalse(doneCalled)
     }
 
@@ -921,7 +927,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.ignore(onNext = {}, onDone = { doneCalled = true })
+        vm.ignore(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
@@ -1012,7 +1018,7 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `skipToNext opens the next pending id, wrapping after the last`() = runTest {
+    fun `skipToNext loads the next pending id in place, wrapping after the last`() = runTest {
         val notification = makeNotification(id = "notif-3")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-3") } returns Result.success(notification)
@@ -1028,14 +1034,14 @@ class WizardViewModelTest {
         val vm = makeViewModel(notificationId = "notif-3")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        var opened: String? = null
-        vm.skipToNext { opened = it }
+        vm.skipToNext()
+        testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals("notif-1", opened)
+        assertEquals("notif-1", vm.state.value.notification?.id)
     }
 
     @Test
-    fun `skipToPrevious opens the previous pending id, wrapping before the first`() = runTest {
+    fun `skipToPrevious loads the previous pending id in place, wrapping before the first`() = runTest {
         val notification = makeNotification(id = "notif-1")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -1051,10 +1057,10 @@ class WizardViewModelTest {
         val vm = makeViewModel(notificationId = "notif-1")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        var opened: String? = null
-        vm.skipToPrevious { opened = it }
+        vm.skipToPrevious()
+        testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals("notif-3", opened)
+        assertEquals("notif-3", vm.state.value.notification?.id)
     }
 
     @Test
@@ -1070,10 +1076,10 @@ class WizardViewModelTest {
         val vm = makeViewModel(notificationId = "notif-1")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        var opened: String? = null
-        vm.skipToNext { opened = it }
+        vm.skipToNext()
+        testDispatcher.scheduler.advanceUntilIdle()
 
-        assertNull(opened)
+        assertEquals("notif-1", vm.state.value.notification?.id)
     }
 
     @Test
@@ -1094,13 +1100,12 @@ class WizardViewModelTest {
         val vm = makeViewModel(notificationId = "notif-1")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save(onNext = {}, onDone = {})
+        vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
         assertTrue(vm.state.value.isSaving)
 
-        var opened: String? = null
-        vm.skipToNext { opened = it }
+        vm.skipToNext()
 
-        assertNull(opened)
+        assertEquals("notif-1", vm.state.value.notification?.id)
     }
 }

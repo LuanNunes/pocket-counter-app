@@ -158,17 +158,12 @@ fun PocketNavHost(
             route = Routes.WIZARD,
             arguments = listOf(navArgument("notificationId") { type = NavType.StringType }),
         ) {
+            // The route arg notificationId is only the initial item; the wizard processes the rest
+            // of the review queue in place (swapping its internal id) without re-navigating.
             WizardScreen(
                 onDismiss = { navController.popBackStack() },
                 onBackToApp = {
                     navController.popBackStack(Routes.HOME, inclusive = false)
-                },
-                // Replace the current wizard with the next pending item so the user processes the
-                // review queue in place instead of bouncing back to Home between items.
-                onOpenNext = { nextId ->
-                    navController.navigate(Routes.wizard(nextId)) {
-                        popUpTo(Routes.WIZARD) { inclusive = true }
-                    }
                 },
             )
         }
