@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.ui.mais
 import androidx.fragment.app.FragmentActivity
 import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.local.BiometricSettingsStore
+import com.resolveprogramming.pocketcounter.data.repository.AuthRepository
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAuthResult
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAvailability
 import com.resolveprogramming.pocketcounter.platform.biometric.BiometricAuthenticator
@@ -44,6 +45,7 @@ class MaisViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private val authenticator: BiometricAuthenticator = mockk()
     private val settingsStore: BiometricSettingsStore = mockk()
+    private val authRepository: AuthRepository = mockk(relaxed = true)
     private val activity: FragmentActivity = mockk()
 
     private val lockEnabledFlow = MutableStateFlow(false)
@@ -59,7 +61,7 @@ class MaisViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun makeViewModel() = MaisViewModel(authenticator, settingsStore)
+    private fun makeViewModel() = MaisViewModel(authenticator, settingsStore, authRepository)
 
     // -------------------------------------------------------------------------
     // availability Available + auth Success → persist true
@@ -249,5 +251,36 @@ class MaisViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(true, vm.state.value.lockEnabled)
+    }
+
+    // -------------------------------------------------------------------------
+    // logout()
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `logout delegates to authRepository logout`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.logout() } returns Unit
+
+        val vm = makeViewModel()
+        vm.logout()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify { authRepository.logout() }
+    }
+
+    @Test
+    fun `logout does not mutate MaisUiState`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.logout() } returns Unit
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val stateBefore = vm.state.value
+
+        vm.logout()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(stateBefore, vm.state.value)
     }
 }

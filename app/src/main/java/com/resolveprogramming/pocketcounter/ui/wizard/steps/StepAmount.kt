@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -192,16 +195,24 @@ fun StepAmount(
                 style = PocketTheme.typography.body,
                 color = PocketTheme.colors.text2,
             )
-            Box(
+            Row(
                 modifier = Modifier
                     .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
                     .clickable(onClick = onDateTap)
                     .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
-                    text = (date ?: LocalDate.now()).format(dateFormatter) + "  ▾",
+                    text = (date ?: LocalDate.now()).format(dateFormatter),
                     style = PocketTheme.typography.monoSm,
                     color = PocketTheme.colors.text,
+                )
+                Icon(
+                    imageVector = Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = PocketTheme.colors.text,
                 )
             }
         }

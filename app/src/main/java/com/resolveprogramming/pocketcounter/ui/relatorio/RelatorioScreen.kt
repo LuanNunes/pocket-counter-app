@@ -14,7 +14,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.horizontalScroll
@@ -67,7 +72,7 @@ fun RelatorioScreen(
             actions = {
                 val report = state.report
                 SquareIconButton(
-                    glyph = "↑",
+                    icon = Icons.Filled.FileUpload,
                     enabled = report != null,
                     contentDescription = "Exportar",
                     onClick = {
@@ -89,13 +94,23 @@ fun RelatorioScreen(
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("‹", modifier = Modifier.size(28.dp).clickable { viewModel.stepPeriod(-1) }, color = PocketTheme.colors.text, style = PocketTheme.typography.stepQuestion)
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        contentDescription = "Período anterior",
+                        modifier = Modifier.size(28.dp).clickable { viewModel.stepPeriod(-1) },
+                        tint = PocketTheme.colors.text,
+                    )
                     Text(
                         state.report?.rangeLabel?.replaceFirstChar { it.uppercase() } ?: "",
                         style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                         color = PocketTheme.colors.text,
                     )
-                    Text("›", modifier = Modifier.size(28.dp).clickable { viewModel.stepPeriod(1) }, color = PocketTheme.colors.text, style = PocketTheme.typography.stepQuestion)
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "Próximo período",
+                        modifier = Modifier.size(28.dp).clickable { viewModel.stepPeriod(1) },
+                        tint = PocketTheme.colors.text,
+                    )
                 }
             }
             item {

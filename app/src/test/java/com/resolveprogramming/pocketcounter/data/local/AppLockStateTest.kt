@@ -55,4 +55,33 @@ class AppLockStateTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    // -------------------------------------------------------------------------
+    // lock()
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `lock re-locks after unlock`() = runTest {
+        val state = makeState()
+        state.unlock()
+
+        state.lock()
+
+        assertFalse(state.isUnlocked.value)
+    }
+
+    @Test
+    fun `lock emits false after unlock`() = runTest {
+        val state = makeState()
+        state.unlock()
+
+        state.isUnlocked.test {
+            assertTrue(awaitItem()) // already unlocked
+
+            state.lock()
+
+            assertFalse(awaitItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 }

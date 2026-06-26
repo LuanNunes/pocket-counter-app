@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.data.remote.api.AuthApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.LoginRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.TokenResponse
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -14,6 +15,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import retrofit2.Response
+import java.io.IOException
 
 /**
  * Unit tests for AuthRepository ensuring the AppLockState integration:
@@ -99,6 +101,78 @@ class AuthRepositoryTest {
         val repo = makeRepo()
         repo.login("user@example.com", "password123")
 
+        assertFalse(appLockState.isUnlocked.value)
+    }
+
+    // -------------------------------------------------------------------------
+    // logout() — clears tokens
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `logout clears tokens`() = runTest {
+        coEvery { tokenStore.getRefreshToken() } returns null
+
+        val repo = makeRepo()
+        repo.logout()
+
+        coVerify { tokenStore.clear() }
+    }
+
+    // -------------------------------------------------------------------------
+    // logout() — calls backend when refresh token present
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `logout calls backend with refresh token when present`() = runTest {
+        val refreshToken = "some-refresh-token"
+        coEvery { tokenStore.getRefreshToken() } returns refreshToken
+        coEvery { authApi.logout(any()) } returns Response.success(Unit)
+
+        val repo = makeRepo()
+        repo.logout()
+
+        coVerify { authApi.logout(match { it.token == refreshToken }) }
+    }
+
+    @Test
+    fun `logout skips backend and still clears and re-locks when no refresh token`() = runTest {
+        coEvery { tokenStore.getRefreshToken() } returns null
+        appLockState.unlock()
+
+        val repo = makeRepo()
+        repo.logout()
+
+        coVerify(exactly = 0) { authApi.logout(any()) }
+        coVerify { tokenStore.clear() }
+        assertFalse(appLockState.isUnlocked.value)
+    }
+
+    // -------------------------------------------------------------------------
+    // logout() — re-locks AppLockState
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `logout re-locks AppLockState`() = runTest {
+        coEvery { tokenStore.getRefreshToken() } returns null
+        appLockState.unlock() // pre-unlock so the assertion is meaningful
+
+        val repo = makeRepo()
+        repo.logout()
+
+        assertFalse(appLockState.isUnlocked.value)
+    }
+
+    @Test
+    fun `logout still clears and re-locks when backend throws`() = runTest {
+        val refreshToken = "refresh-tok"
+        coEvery { tokenStore.getRefreshToken() } returns refreshToken
+        coEvery { authApi.logout(any()) } throws IOException("network error")
+        appLockState.unlock()
+
+        val repo = makeRepo()
+        repo.logout()
+
+        coVerify { tokenStore.clear() }
         assertFalse(appLockState.isUnlocked.value)
     }
 }

@@ -26,6 +26,11 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,7 +87,11 @@ fun AssistantScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SquareIconButton(glyph = "‹", onClick = onBack)
+            SquareIconButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Voltar",
+                onClick = onBack,
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text("Assistente", style = PocketTheme.typography.screenH1, color = PocketTheme.colors.text)
                 state.remaining?.let { r ->
@@ -98,7 +107,12 @@ fun AssistantScreen(
         if (state.unavailable) {
             Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("✦", style = PocketTheme.typography.display, color = PocketTheme.colors.text3)
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = PocketTheme.colors.text3,
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text("Assistente indisponível", style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = PocketTheme.colors.text)
                     Spacer(Modifier.height(4.dp))
@@ -137,7 +151,12 @@ fun AssistantScreen(
 @Composable
 private fun EmptyState(onSuggestion: (String) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("✦", style = PocketTheme.typography.display, color = PocketTheme.colors.accent)
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            modifier = Modifier.size(40.dp),
+            tint = PocketTheme.colors.accent,
+        )
         Spacer(Modifier.height(8.dp))
         Text("Pergunte sobre suas finanças", style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold), color = PocketTheme.colors.text)
         Spacer(Modifier.height(4.dp))
@@ -299,7 +318,12 @@ private fun Composer(
                     .clickable(enabled = canSend, onClick = onSend),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("➤", color = PocketTheme.colors.accentInk)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Enviar",
+                    modifier = Modifier.size(20.dp),
+                    tint = PocketTheme.colors.accentInk,
+                )
             }
         }
         // Reveal the counter only as the user nears the cap (last ~60 chars).

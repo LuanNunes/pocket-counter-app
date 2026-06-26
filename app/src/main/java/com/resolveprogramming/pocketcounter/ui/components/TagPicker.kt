@@ -17,6 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -188,8 +194,15 @@ private fun ExpenseDrill(
                 .clickable(onClick = onBack)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = PocketTheme.colors.text2,
+            )
+            Spacer(Modifier.width(4.dp))
             Text(
-                text = "‹ $title",
+                text = title,
                 style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.SemiBold),
                 color = PocketTheme.colors.text2,
             )
@@ -254,10 +267,11 @@ private fun CategoryRow(
             color = PocketTheme.colors.text3,
         )
         Spacer(Modifier.width(6.dp))
-        Text(
-            text = "›",
-            style = PocketTheme.typography.body,
-            color = PocketTheme.colors.text3,
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text3,
         )
     }
 }
@@ -323,10 +337,11 @@ fun TagOptionChip(
         )
         if (selected) {
             Spacer(Modifier.width(6.dp))
-            Text(
-                text = "✓",
-                style = PocketTheme.typography.bodySm,
-                color = PocketTheme.colors.accentInk,
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = PocketTheme.colors.accentInk,
             )
         }
     }
@@ -370,10 +385,11 @@ fun SelectedTagPills(
                     color = PocketTheme.colors.accentInk,
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "×",
-                    style = PocketTheme.typography.body,
-                    color = PocketTheme.colors.accentInk.copy(alpha = 0.7f),
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Remover",
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.accentInk.copy(alpha = 0.7f),
                 )
             }
         }

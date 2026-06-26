@@ -16,8 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Sell
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -199,7 +205,12 @@ private fun SeriesRow(
                 modifier = Modifier.size(32.dp).background(PocketTheme.colors.surface2, PocketTheme.shapes.icon),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("↻", color = PocketTheme.colors.text2)
+                Icon(
+                    imageVector = Icons.Filled.Autorenew,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = PocketTheme.colors.text2,
+                )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -210,9 +221,21 @@ private fun SeriesRow(
                 val sub = series.recurrenceDay?.let { "dia $it" } ?: "sem dia fixo"
                 Text(sub, style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.text3)
             }
-            SquareIconButton(glyph = "✎", onClick = onRename)
-            SquareIconButton(glyph = "#", onClick = onTags)
-            SquareIconButton(glyph = "🗑", onClick = onDelete)
+            SquareIconButton(
+                icon = Icons.Filled.Edit,
+                contentDescription = "Renomear",
+                onClick = onRename,
+            )
+            SquareIconButton(
+                icon = Icons.Filled.Sell,
+                contentDescription = "Tags",
+                onClick = onTags,
+            )
+            SquareIconButton(
+                icon = Icons.Outlined.DeleteOutline,
+                contentDescription = "Excluir",
+                onClick = onDelete,
+            )
         }
         if (series.tagIds.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

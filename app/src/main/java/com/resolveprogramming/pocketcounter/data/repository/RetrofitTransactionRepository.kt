@@ -30,7 +30,7 @@ class RetrofitTransactionRepository @Inject constructor(
         // newest-first when nothing has been reordered (all displayOrder == 0).
         (incomes + expenses)
             .map { it.toHistoryItem() }
-            .sortedWith(compareBy<HistoryItem> { it.displayOrder }.thenByDescending { it.date })
+            .sortedWith(HistoryItem.LEDGER_ORDER)
     }
 
     override suspend fun save(draft: WizardDraft): Result<String> = runCatching {

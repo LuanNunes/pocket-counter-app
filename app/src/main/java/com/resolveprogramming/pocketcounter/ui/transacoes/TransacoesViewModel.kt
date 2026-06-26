@@ -345,13 +345,14 @@ class TransacoesViewModel @Inject constructor(
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
         val searched = filterItems(items, query, tags)
         val filtered = searched.filter { it.isFixo }.takeIf { ledgerFilter == LedgerFilter.FIXOS } ?: searched
-        val days = filtered
+        val canonical = filtered.sortedWith(HistoryItem.LEDGER_ORDER)
+        val days = canonical
             .groupBy { it.date }
             .toSortedMap(reverseOrder())
             .map { (date, dayItems) -> DayGroup(date = date, label = dayLabel(date), items = dayItems) }
         val ledger = run {
             if (groupMode == GroupMode.LISTA) return@run emptyList()
-            groupLedger(filtered, groupMode, tags, contexts, CuratedPalette.argb)
+            groupLedger(canonical, groupMode, tags, contexts, CuratedPalette.argb)
         }
         return copy(dayGroups = days, ledgerGroups = ledger, fixoCount = items.count { it.isFixo })
     }

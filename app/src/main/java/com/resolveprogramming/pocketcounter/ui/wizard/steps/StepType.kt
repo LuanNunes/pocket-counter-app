@@ -10,10 +10,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -64,7 +71,8 @@ fun StepType(
             TypeCard(
                 label = "Despesa",
                 helper = "algo que saiu da conta",
-                icon = "↑",
+                icon = Icons.Filled.ArrowUpward,
+                iconTint = PocketTheme.colors.expense,
                 isSelected = selectedType == TransactionType.EXPENSE,
                 onClick = { onSelect(TransactionType.EXPENSE) },
                 modifier = Modifier.weight(1f),
@@ -72,7 +80,8 @@ fun StepType(
             TypeCard(
                 label = "Receita",
                 helper = "algo que entrou na conta",
-                icon = "↓",
+                icon = Icons.Filled.ArrowDownward,
+                iconTint = PocketTheme.colors.income,
                 isSelected = selectedType == TransactionType.INCOME,
                 onClick = { onSelect(TransactionType.INCOME) },
                 modifier = Modifier.weight(1f),
@@ -85,7 +94,8 @@ fun StepType(
 private fun TypeCard(
     label: String,
     helper: String,
-    icon: String,
+    icon: ImageVector,
+    iconTint: Color,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -101,10 +111,11 @@ private fun TypeCard(
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = icon,
-            style = PocketTheme.typography.stepQuestion,
-            color = PocketTheme.colors.text,
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(28.dp),
+            tint = iconTint,
         )
         Spacer(Modifier.height(8.dp))
         Text(

@@ -18,9 +18,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -247,7 +256,11 @@ private fun MonthStepperBar(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StepperButton(glyph = "‹", onClick = onPrev)
+            StepperButton(
+                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Mês anterior",
+                onClick = onPrev,
+            )
             Spacer(Modifier.size(4.dp))
             Text(
                 text = label.replaceFirstChar { it.uppercase() },
@@ -255,7 +268,11 @@ private fun MonthStepperBar(
                 color = PocketTheme.colors.text,
             )
             Spacer(Modifier.size(4.dp))
-            StepperButton(glyph = "›", onClick = onNext)
+            StepperButton(
+                icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Próximo mês",
+                onClick = onNext,
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(
@@ -266,7 +283,12 @@ private fun MonthStepperBar(
                     .clickable(onClick = onGenerateBalance),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("↻", color = PocketTheme.colors.text2)
+                Icon(
+                    imageVector = Icons.Filled.Autorenew,
+                    contentDescription = "Gerar saldo",
+                    modifier = Modifier.size(20.dp),
+                    tint = PocketTheme.colors.text2,
+                )
             }
             Box(
                 modifier = Modifier
@@ -283,14 +305,19 @@ private fun MonthStepperBar(
                     .clickable(onClick = onToggleSearch),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("⌕", color = PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.text2)
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = "Buscar",
+                    modifier = Modifier.size(20.dp),
+                    tint = PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.text2,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun StepperButton(glyph: String, onClick: () -> Unit) {
+private fun StepperButton(icon: ImageVector, contentDescription: String?, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -299,10 +326,11 @@ private fun StepperButton(glyph: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            glyph,
-            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text,
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text,
         )
     }
 }
@@ -520,10 +548,11 @@ private fun PinToggle(pinned: Boolean, onToggle: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            "↻",
-            style = PocketTheme.typography.body,
-            color = PocketTheme.colors.accent.takeIf { pinned } ?: PocketTheme.colors.text3,
+        Icon(
+            imageVector = Icons.Filled.Autorenew,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.accent.takeIf { pinned } ?: PocketTheme.colors.text3,
         )
     }
 }
@@ -693,7 +722,13 @@ private fun GroupHeader(group: LedgerGroup, collapsed: Boolean, onClick: () -> U
             style = PocketTheme.typography.monoSm,
         )
         Spacer(Modifier.size(6.dp))
-        Text("▸".takeIf { collapsed } ?: "▾", color = PocketTheme.colors.text3)
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight.takeIf { collapsed }
+                ?: Icons.Filled.ExpandMore,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text3,
+        )
     }
 }
 
@@ -722,7 +757,12 @@ private fun DragHandle(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text("⠿", style = PocketTheme.typography.body, color = PocketTheme.colors.text3)
+        Icon(
+            imageVector = Icons.Filled.DragIndicator,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = PocketTheme.colors.text3,
+        )
     }
 }
 
