@@ -115,7 +115,7 @@ object BrNotificationParser {
     private fun String.containsWord(word: String): Boolean =
         Regex("(?<![\\p{L}])" + Regex.escape(word) + "(?![\\p{L}])").containsMatchIn(this)
 
-    private val AMOUNT_REGEX = Regex("""R\$\s?\d{1,3}(\.\d{3})*(,\d{2})?""")
+    private val AMOUNT_REGEX = Regex("""(?<![\p{L}])(R\$|RS|BRL)\s?\d{1,3}(\.\d{3})*(,\d{2})?""")
 
     private val EXPENSE_PHRASES = listOf("pix enviado", "transferência enviada", "transferencia enviada", "você pagou", "voce pagou")
     private val EXPENSE_WORDS = listOf("compra", "débito", "debito", "pagamento", "saque", "fatura")

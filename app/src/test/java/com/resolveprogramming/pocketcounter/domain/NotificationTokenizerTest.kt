@@ -79,6 +79,20 @@ class NotificationTokenizerTest {
         assertEquals(BigDecimal("10.00"), result)
     }
 
+    @Test
+    fun `parseBrAmount RS prefix with decimal`() {
+        val result = NotificationTokenizer.parseBrAmount("RS 30,96")
+
+        assertEquals(0, BigDecimal("30.96").compareTo(result))
+    }
+
+    @Test
+    fun `parseBrAmount BRL prefix with decimal`() {
+        val result = NotificationTokenizer.parseBrAmount("BRL 123,45")
+
+        assertEquals(0, BigDecimal("123.45").compareTo(result))
+    }
+
     // -------------------------------------------------------------------------
     // tokenize — basic splitting
     // -------------------------------------------------------------------------

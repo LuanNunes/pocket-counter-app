@@ -540,6 +540,51 @@ class BrNotificationParserTest {
         assertEquals("final 9988", result.parsed.paymentHint)
     }
 
+    // -------------------------------------------------------------------------
+    // RS / BRL currency forms — Brazilian card SMS uses "RS" (no $ sign)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parse exact Uber card SMS with RS currency form is financial`() {
+        val text = "Pre-autorizacao aprovada no seu PERSON BLACK CASHBAC final 3685 - DL *UberRides valor RS 30,96 em 26/06, as 18h33."
+        val result = BrNotificationParser.parse(text, NOW)
+
+        assertTrue(result.isFinancial)
+        assertEquals(0, BigDecimal("30.96").compareTo(result.parsed.amount))
+    }
+
+    @Test
+    fun `parse RS currency form in simple text is financial with correct amount`() {
+        val result = BrNotificationParser.parse("Compra aprovada RS 50,00", NOW)
+
+        assertTrue(result.isFinancial)
+        assertEquals(0, BigDecimal("50.00").compareTo(result.parsed.amount))
+    }
+
+    @Test
+    fun `parse BRL currency form in simple text is financial with correct amount`() {
+        val result = BrNotificationParser.parse("Pagamento BRL 123,45 realizado", NOW)
+
+        assertTrue(result.isFinancial)
+        assertEquals(0, BigDecimal("123.45").compareTo(result.parsed.amount))
+    }
+
+    @Test
+    fun `parse text with bare numbers but no currency token is not financial`() {
+        // "final 3685", "26/06", "18h33" must not trigger the relevance gate
+        val result = BrNotificationParser.parse("final 3685 em 26/06 as 18h33", NOW)
+
+        assertFalse(result.isFinancial)
+    }
+
+    @Test
+    fun `parse word ending in RS followed by number is not financial`() {
+        // "CARS" ends in RS but the lookbehind must block it from matching as a currency token
+        val result = BrNotificationParser.parse("CARS 30,00 vendidos", NOW)
+
+        assertFalse(result.isFinancial)
+    }
+
     @Test
     fun `parse pix recebido is not classified as EXPENSE due to recebido presence`() {
         // "recebido" is in INCOME_WORDS. If "pix recebido" phrase also matches INCOME_PHRASES,
