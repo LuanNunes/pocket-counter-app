@@ -49,7 +49,8 @@ data class WizardUiState(
     val contexts: List<TagContext> = emptyList(),
     val tagSearchQuery: String = "",
     val tokens: List<Token> = emptyList(),
-    val selectedTokenIndex: Int? = null,
+    val selectionAnchor: Int? = null,
+    val selectionFocus: Int? = null,
     val availableSeries: List<Series> = emptyList(),
     val pendingTransactionId: String? = null,
     val isConfirmingPending: Boolean = false,
@@ -59,7 +60,14 @@ data class WizardUiState(
     val isLoading: Boolean = true,
     val isSwitching: Boolean = false,
     val error: String? = null,
-)
+) {
+    val selectionRange: IntRange?
+        get() = if (selectionAnchor != null && selectionFocus != null) {
+            minOf(selectionAnchor, selectionFocus)..maxOf(selectionAnchor, selectionFocus)
+        } else {
+            null
+        }
+}
 
 @HiltViewModel
 class WizardViewModel @Inject constructor(
@@ -252,30 +260,62 @@ class WizardViewModel @Inject constructor(
         _state.update { it.copy(draft = it.draft.copy(learnRule = enabled)) }
     }
 
-    fun selectToken(index: Int?) {
-        _state.update { it.copy(selectedTokenIndex = index) }
+    /**
+     * Routes a token tap into the span selection model:
+     *  - tapping an already-assigned token selects its whole contiguous same-role run (edit mode),
+     *  - tapping with no active selection starts a length-1 selection,
+     *  - tapping with an active selection extends it, keeping the original anchor sticky.
+     */
+    fun tapToken(i: Int) {
+        _state.update { state ->
+            val tokens = state.tokens
+            val role = tokens.getOrNull(i)?.role
+            if (role != null) {
+                var start = i
+                while (start > 0 && tokens[start - 1].role == role) start--
+                var end = i
+                while (end < tokens.lastIndex && tokens[end + 1].role == role) end++
+                return@update state.copy(selectionAnchor = start, selectionFocus = end)
+            }
+            if (state.selectionAnchor == null) {
+                return@update state.copy(selectionAnchor = i, selectionFocus = i)
+            }
+            state.copy(selectionFocus = i)
+        }
     }
 
-    fun assignTokenRole(tokenIndex: Int, role: TokenRole) {
+    fun clearSelection() {
+        _state.update { it.copy(selectionAnchor = null, selectionFocus = null) }
+    }
+
+    fun assignRoleToSelection(role: TokenRole) {
         _state.update { state ->
+            val range = state.selectionRange ?: return@update state
+            val joined = state.tokens.subList(range.first, range.last + 1)
+                .joinToString(" ") { it.text }
             val newTokens = state.tokens.mapIndexed { i, token ->
                 run {
-                    if (i == tokenIndex) return@run token.copy(role = role)
+                    if (i in range) return@run token.copy(role = role, value = joined)
                     if (token.role == role) return@run token.copy(role = null, value = null)
                     token
                 }
             }
-
-            val newDraft = applyTokenRoleToDraft(state.draft, newTokens[tokenIndex], role)
-            state.copy(tokens = newTokens, draft = newDraft, selectedTokenIndex = null)
+            val newDraft = applyTokenRoleToDraft(state.draft, joined, role)
+            state.copy(
+                tokens = newTokens,
+                draft = newDraft,
+                selectionAnchor = null,
+                selectionFocus = null,
+            )
         }
     }
 
-    fun removeTokenRole(tokenIndex: Int) {
+    fun removeRoleFromSelection() {
         _state.update { state ->
-            val removedRole = state.tokens.getOrNull(tokenIndex)?.role
+            val range = state.selectionRange ?: return@update state
+            val removedRole = state.tokens.getOrNull(range.first)?.role
             val newTokens = state.tokens.mapIndexed { i, token ->
-                token.copy(role = null, value = null).takeIf { i == tokenIndex } ?: token
+                token.copy(role = null, value = null).takeIf { i in range } ?: token
             }
             val newDraft = run {
                 when (removedRole) {
@@ -289,21 +329,26 @@ class WizardViewModel @Inject constructor(
                 }
                 state.draft
             }
-            state.copy(tokens = newTokens, draft = newDraft, selectedTokenIndex = null)
+            state.copy(
+                tokens = newTokens,
+                draft = newDraft,
+                selectionAnchor = null,
+                selectionFocus = null,
+            )
         }
     }
 
     private fun applyTokenRoleToDraft(
         draft: WizardDraft,
-        token: Token,
+        joined: String,
         role: TokenRole,
     ): WizardDraft = when (role) {
         TokenRole.AMOUNT ->
-            draft.copy(amount = NotificationTokenizer.parseBrAmount(token.text) ?: draft.amount)
-        TokenRole.MERCHANT -> draft.copy(merchant = token.text, name = token.text)
-        TokenRole.DATE -> draft.copy(date = parseBrDate(token.text) ?: draft.date)
+            draft.copy(amount = NotificationTokenizer.parseBrAmount(joined) ?: draft.amount)
+        TokenRole.MERCHANT -> draft.copy(merchant = joined, name = joined)
+        TokenRole.DATE -> draft.copy(date = parseBrDate(joined) ?: draft.date)
         // TYPE/PAYMENT/INSTALLMENTS can't be reliably derived from free token text;
-        // the chip still highlights the token, but the draft field is set elsewhere.
+        // the chip still highlights the span, but the draft field is set elsewhere.
         TokenRole.TYPE -> draft
         TokenRole.PAYMENT -> draft
         TokenRole.INSTALLMENTS -> draft

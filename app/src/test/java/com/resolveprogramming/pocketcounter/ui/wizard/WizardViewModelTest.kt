@@ -1108,4 +1108,138 @@ class WizardViewModelTest {
 
         assertEquals("notif-1", vm.state.value.notification?.id)
     }
+
+    // -------------------------------------------------------------------------
+    // Span token selection: tapToken / assignRoleToSelection / removeRoleFromSelection
+    // -------------------------------------------------------------------------
+
+    private fun spanTokens() = listOf(
+        Token(text = "PERSON"),
+        Token(text = "BLACK"),
+        Token(text = "CASHBAC"),
+        Token(text = "final"),
+        Token(text = "3685"),
+    )
+
+    private fun makeSpanViewModel(tokens: List<Token> = spanTokens()): WizardViewModel {
+        val notification = makeNotification(tokens = tokens)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        return vm
+    }
+
+    @Test
+    fun `tapToken starts a length-1 selection`() = runTest {
+        val vm = makeSpanViewModel()
+
+        vm.tapToken(2)
+
+        assertEquals(2..2, vm.state.value.selectionRange)
+    }
+
+    @Test
+    fun `tapToken then tapToken extends the selection and keeps anchor sticky`() = runTest {
+        val vm = makeSpanViewModel()
+
+        vm.tapToken(1)
+        vm.tapToken(3)
+        assertEquals(1..3, vm.state.value.selectionRange)
+
+        // Tapping a third token recomputes against the original anchor (index 1).
+        vm.tapToken(0)
+        assertEquals(0..1, vm.state.value.selectionRange)
+    }
+
+    @Test
+    fun `assignRoleToSelection MERCHANT over a span tags every token and sets draft`() = runTest {
+        val vm = makeSpanViewModel()
+
+        vm.tapToken(0)
+        vm.tapToken(4)
+        vm.assignRoleToSelection(TokenRole.MERCHANT)
+
+        val joined = "PERSON BLACK CASHBAC final 3685"
+        val state = vm.state.value
+        state.tokens.forEach { token ->
+            assertEquals(TokenRole.MERCHANT, token.role)
+            assertEquals(joined, token.value)
+        }
+        assertEquals(joined, state.draft.name)
+        assertEquals(joined, state.draft.merchant)
+        assertNull(state.selectionRange)
+    }
+
+    @Test
+    fun `assignRoleToSelection clears the same role from tokens outside the new span`() = runTest {
+        val vm = makeSpanViewModel()
+
+        // First tag token 0 as MERCHANT.
+        vm.tapToken(0)
+        vm.assignRoleToSelection(TokenRole.MERCHANT)
+        assertEquals(TokenRole.MERCHANT, vm.state.value.tokens[0].role)
+
+        // Now tag a different span as MERCHANT — token 0 must lose the role.
+        vm.tapToken(2)
+        vm.tapToken(3)
+        vm.assignRoleToSelection(TokenRole.MERCHANT)
+
+        val tokens = vm.state.value.tokens
+        assertNull(tokens[0].role)
+        assertNull(tokens[0].value)
+        assertEquals(TokenRole.MERCHANT, tokens[2].role)
+        assertEquals(TokenRole.MERCHANT, tokens[3].role)
+        assertEquals("CASHBAC final", vm.state.value.draft.name)
+    }
+
+    @Test
+    fun `tapToken on an assigned token selects its whole contiguous run`() = runTest {
+        val vm = makeSpanViewModel()
+
+        vm.tapToken(1)
+        vm.tapToken(3)
+        vm.assignRoleToSelection(TokenRole.MERCHANT)
+
+        // Tapping any token within the run reselects the full run bounds.
+        vm.tapToken(2)
+
+        assertEquals(1..3, vm.state.value.selectionRange)
+    }
+
+    @Test
+    fun `removeRoleFromSelection clears the whole span and nulls draft fields`() = runTest {
+        val vm = makeSpanViewModel()
+
+        vm.tapToken(0)
+        vm.tapToken(2)
+        vm.assignRoleToSelection(TokenRole.MERCHANT)
+
+        // Re-select the run (edit mode) and remove.
+        vm.tapToken(1)
+        vm.removeRoleFromSelection()
+
+        val state = vm.state.value
+        listOf(0, 1, 2).forEach { i ->
+            assertNull(state.tokens[i].role)
+            assertNull(state.tokens[i].value)
+        }
+        assertNull(state.draft.name)
+        assertNull(state.draft.merchant)
+        assertNull(state.selectionRange)
+    }
+
+    @Test
+    fun `assignRoleToSelection AMOUNT parses the joined span into draft amount`() = runTest {
+        val vm = makeSpanViewModel(
+            tokens = listOf(Token(text = "RS"), Token(text = "30,96")),
+        )
+
+        vm.tapToken(0)
+        vm.tapToken(1)
+        vm.assignRoleToSelection(TokenRole.AMOUNT)
+
+        assertEquals(BigDecimal("30.96"), vm.state.value.draft.amount)
+    }
 }

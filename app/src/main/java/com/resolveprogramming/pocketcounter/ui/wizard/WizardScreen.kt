@@ -162,21 +162,25 @@ fun WizardScreen(
             Crossfade(targetState = notification.id, label = "wizard_item") { _ ->
                 Column {
                     if (state.tokens.isNotEmpty()) {
+                        val range = state.selectionRange
                         SourceTextCard(
                             notification = notification,
                             tokens = state.tokens,
-                            selectedTokenIndex = state.selectedTokenIndex,
-                            onTokenTap = { viewModel.selectToken(it) },
+                            selectionStart = range?.first,
+                            selectionEnd = range?.last,
+                            onTokenTap = viewModel::tapToken,
                         )
 
-                        if (state.selectedTokenIndex != null) {
+                        if (range != null) {
                             Spacer(Modifier.height(8.dp))
+                            val preview = state.tokens.subList(range.first, range.last + 1)
+                                .joinToString(" ") { it.text }
                             TokenLabelPicker(
-                                token = state.tokens[state.selectedTokenIndex!!],
-                                onRoleSelected = { role ->
-                                    viewModel.assignTokenRole(state.selectedTokenIndex!!, role)
-                                },
-                                onRemoveRole = { viewModel.removeTokenRole(state.selectedTokenIndex!!) },
+                                preview = preview,
+                                currentRole = state.tokens[range.first].role,
+                                onRoleSelected = viewModel::assignRoleToSelection,
+                                onRemoveRole = viewModel::removeRoleFromSelection,
+                                onClear = viewModel::clearSelection,
                             )
                         }
 
