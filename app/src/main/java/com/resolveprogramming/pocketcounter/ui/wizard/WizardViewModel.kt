@@ -312,16 +312,19 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * Discards the captured notification: marks it ignored on the backend so it leaves "Para
-     * revisar", then navigates back via [onComplete]. Navigation runs only after the call returns
-     * so leaving the screen doesn't cancel it; the result is best-effort (we leave regardless).
+     * Discards the captured notification (marks it ignored so it leaves "Para revisar") and then
+     * advances the queue: loads the next pending item via [onNext], or returns to the app via
+     * [onDone] when none remain. Navigation runs only after the calls return so leaving the screen
+     * doesn't cancel them; the ignore is best-effort.
      */
-    fun ignore(onComplete: () -> Unit) {
+    fun ignore(onNext: (String) -> Unit, onDone: () -> Unit) {
         if (_state.value.isSaving) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             notificationRepository.markIgnored(notificationId)
-            onComplete()
+            val next = notificationRepository.getPendingReview().getOrNull()
+                ?.firstOrNull { it.id != notificationId }
+            if (next != null) onNext(next.id) else onDone()
         }
     }
 

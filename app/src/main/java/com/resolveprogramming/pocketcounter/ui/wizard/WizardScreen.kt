@@ -55,6 +55,7 @@ import java.time.LocalDate
 fun WizardScreen(
     onDismiss: () -> Unit,
     onBackToApp: () -> Unit,
+    onOpenNext: (String) -> Unit,
     viewModel: WizardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -115,7 +116,7 @@ fun WizardScreen(
                 if (state.step == WizardStep.TYPE) onDismiss()
                 if (state.step != WizardStep.TYPE) viewModel.previousStep()
             },
-            onIgnore = { viewModel.ignore(onComplete = onDismiss) },
+            onIgnore = { viewModel.ignore(onNext = onOpenNext, onDone = onBackToApp) },
         )
 
         WizardProgressBar(step = state.step)
