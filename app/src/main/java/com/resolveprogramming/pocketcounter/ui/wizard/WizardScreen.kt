@@ -13,12 +13,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import androidx.compose.foundation.rememberScrollState
@@ -99,7 +103,11 @@ fun WizardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(PocketTheme.colors.bg),
+            .background(PocketTheme.colors.bg)
+            // Edge-to-edge is on; without this the top bar (Ignorar) hides under the status bar and
+            // the footer actions (Voltar/Continuar/Salvar) hide under the system navigation bar.
+            .windowInsetsPadding(WindowInsets.systemBars)
+            .imePadding(),
     ) {
         WizardTopBar(
             step = state.step,
