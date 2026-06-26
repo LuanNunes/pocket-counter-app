@@ -149,6 +149,16 @@ class WizardViewModel @Inject constructor(
         _state.update { it.copy(draft = it.draft.copy(amount = amount)) }
     }
 
+    /**
+     * The "Descrição" field is the persisted title (draft.name); merchant tracks it as the
+     * non-persisted series-name/hint fallback, so the two never diverge. Blank → null.
+     */
+    fun updateName(value: String) {
+        _state.update {
+            it.copy(draft = it.draft.copy(name = value, merchant = value.takeIf { v -> v.isNotBlank() }))
+        }
+    }
+
     fun updateDate(date: LocalDate) {
         _state.update { it.copy(draft = it.draft.copy(date = date)) }
     }
@@ -233,7 +243,7 @@ class WizardViewModel @Inject constructor(
             val newDraft = run {
                 when (removedRole) {
                     TokenRole.AMOUNT -> return@run state.draft.copy(amount = null)
-                    TokenRole.MERCHANT -> return@run state.draft.copy(merchant = null)
+                    TokenRole.MERCHANT -> return@run state.draft.copy(merchant = null, name = null)
                     TokenRole.DATE -> return@run state.draft.copy(date = null)
                     TokenRole.TYPE -> Unit
                     TokenRole.PAYMENT -> Unit
@@ -253,7 +263,7 @@ class WizardViewModel @Inject constructor(
     ): WizardDraft = when (role) {
         TokenRole.AMOUNT ->
             draft.copy(amount = NotificationTokenizer.parseBrAmount(token.text) ?: draft.amount)
-        TokenRole.MERCHANT -> draft.copy(merchant = token.text)
+        TokenRole.MERCHANT -> draft.copy(merchant = token.text, name = token.text)
         TokenRole.DATE -> draft.copy(date = parseBrDate(token.text) ?: draft.date)
         // TYPE/PAYMENT/INSTALLMENTS can't be reliably derived from free token text;
         // the chip still highlights the token, but the draft field is set elsewhere.
@@ -292,7 +302,7 @@ class WizardViewModel @Inject constructor(
         }
     }
 
-    fun save() {
+    fun save(onNext: (String) -> Unit, onDone: () -> Unit) {
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             val draft = _state.value.draft
@@ -300,12 +310,14 @@ class WizardViewModel @Inject constructor(
                 .onSuccess { transactionId ->
                     // The transaction is the source of truth and is never rolled back. The
                     // recurring-series steps below are best-effort: a series create/link failure
-                    // is swallowed so it can't block isSuccess. Carry-forward later seeds each
+                    // is swallowed so it can't block advancing. Carry-forward later seeds each
                     // instance's amount from the source month — the backend has no series
                     // defaultAmount (handoff §3.3 divergence).
                     linkSeries(draft, transactionId)
                     runCatching { notificationRepository.markClassified(notificationId, transactionId) }
-                    _state.update { it.copy(isSaving = false, isSuccess = true) }
+                    // Process the review queue in place: load the next pending item, or return to
+                    // the app when none remain.
+                    advanceToNext(onNext, onDone)
                 }
                 .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
         }
@@ -322,10 +334,15 @@ class WizardViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             notificationRepository.markIgnored(notificationId)
-            val next = notificationRepository.getPendingReview().getOrNull()
-                ?.firstOrNull { it.id != notificationId }
-            if (next != null) onNext(next.id) else onDone()
+            advanceToNext(onNext, onDone)
         }
+    }
+
+    /** Loads the next still-pending item via [onNext], or returns to the app via [onDone]. */
+    private suspend fun advanceToNext(onNext: (String) -> Unit, onDone: () -> Unit) {
+        val next = notificationRepository.getPendingReview().getOrNull()
+            ?.firstOrNull { it.id != notificationId }
+        if (next != null) onNext(next.id) else onDone()
     }
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {

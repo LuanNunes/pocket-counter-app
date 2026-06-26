@@ -63,6 +63,9 @@ class WizardViewModelTest {
             Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, null))
         coEvery { seriesRepository.setTags(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.linkTransaction(any(), any(), any()) } returns Result.success(Unit)
+        // Default: queue is empty after any save/ignore → onDone is called
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        coEvery { notificationRepository.markIgnored(any()) } returns Result.success(Unit)
     }
 
     @After
@@ -424,14 +427,14 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save()
+        vm.save(onNext = {}, onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markClassified("notif-1", "tx-new-99") }
     }
 
     @Test
-    fun `save sets isSuccess true after successful transaction save`() = runTest {
+    fun `save calls onDone after successful transaction save`() = runTest {
         val notification = makeNotification()
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -442,14 +445,15 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(vm.state.value.isSuccess)
+        assertTrue(doneCalled)
     }
 
     @Test
-    fun `save sets isSuccess true even when markClassified returns failure (best-effort)`() = runTest {
+    fun `save calls onDone even when markClassified returns failure (best-effort)`() = runTest {
         val notification = makeNotification()
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -460,14 +464,15 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(vm.state.value.isSuccess)
+        assertTrue(doneCalled)
     }
 
     @Test
-    fun `save does not set isSuccess when transactionRepository save fails`() = runTest {
+    fun `save does not call onDone when transactionRepository save fails`() = runTest {
         val notification = makeNotification()
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -477,9 +482,11 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
+        assertFalse(doneCalled)
         assertFalse(vm.state.value.isSuccess)
     }
 
@@ -494,25 +501,24 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save()
+        vm.save(onNext = {}, onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("save failed", vm.state.value.error)
     }
 
     @Test
-    fun `save sets isSaving false after completion`() = runTest {
+    fun `save resets isSaving to false on transaction save failure`() = runTest {
         val notification = makeNotification()
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-99")
-        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.save()
+        vm.save(onNext = {}, onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertFalse(vm.state.value.isSaving)
@@ -665,12 +671,13 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
         // draft.isFixo defaults to false — no toggleFixo call
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 0) { seriesRepository.create(any(), any(), any()) }
         coVerify(exactly = 0) { seriesRepository.linkTransaction(any(), any(), any()) }
-        assertTrue(vm.state.value.isSuccess)
+        assertTrue(doneCalled)
     }
 
     @Test
@@ -693,7 +700,8 @@ class WizardViewModelTest {
         vm.updateRecurrenceDay(10)
         // draft.seriesId remains null — no selectSeries call
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerifyOrder {
@@ -702,12 +710,13 @@ class WizardViewModelTest {
             seriesRepository.setTags("s-new", listOf("t1"))
             seriesRepository.linkTransaction("s-new", "tx-1", false)
         }
-        assertTrue(vm.state.value.isSuccess)
+        assertTrue(doneCalled)
     }
 
     @Test
-    fun `save fixo derives series name from merchant when draft name is null`() = runTest {
-        // makeNotification sets merchantRaw = "IFOOD"; name defaults to null in WizardDraft
+    fun `save fixo derives series name from merchant`() = runTest {
+        // makeNotification sets merchantRaw = "IFOOD"; fromNotification seeds both merchant and name
+        // from merchantRaw, so draft.merchant = "IFOOD" drives the series name via linkSeries
         val notification = makeNotification()
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -721,7 +730,7 @@ class WizardViewModelTest {
         vm.toggleFixo(true)
         vm.updateRecurrenceDay(5)
 
-        vm.save()
+        vm.save(onNext = {}, onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { seriesRepository.create("IFOOD", any(), any()) }
@@ -743,7 +752,7 @@ class WizardViewModelTest {
         vm.toggleFixo(true)
         vm.updateRecurrenceDay(5)
 
-        vm.save()
+        vm.save(onNext = {}, onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 0) { seriesRepository.setTags(any(), any()) }
@@ -766,7 +775,7 @@ class WizardViewModelTest {
         vm.updateRecurrenceDay(5)
         vm.selectSeries("s-existing")
 
-        vm.save()
+        vm.save(onNext = {}, onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { seriesRepository.linkTransaction("s-existing", "tx-1", false) }
@@ -791,12 +800,13 @@ class WizardViewModelTest {
         vm.toggleFixo(true)
         vm.updateRecurrenceDay(5)
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { transactionRepository.save(any()) }
         coVerify(exactly = 1) { notificationRepository.markClassified(any(), any()) }
-        assertTrue(vm.state.value.isSuccess)
+        assertTrue(doneCalled)
     }
 
     @Test
@@ -818,9 +828,161 @@ class WizardViewModelTest {
         vm.toggleFixo(true)
         vm.updateRecurrenceDay(5)
 
-        vm.save()
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(vm.state.value.isSuccess)
+        assertTrue(doneCalled)
+    }
+
+    // -------------------------------------------------------------------------
+    // save() — queue advancement
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `save advances to next pending item when queue has another notification`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val nextNotification = makeNotification(id = "notif-2")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-99")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(nextNotification))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var nextId: String? = null
+        var doneCalled = false
+        vm.save(onNext = { nextId = it }, onDone = { doneCalled = true })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("notif-2", nextId)
+        assertFalse(doneCalled)
+    }
+
+    @Test
+    fun `save calls onDone when no more pending notifications`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-99")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var doneCalled = false
+        vm.save(onNext = {}, onDone = { doneCalled = true })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(doneCalled)
+    }
+
+    // -------------------------------------------------------------------------
+    // ignore() path
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `ignore marks notification ignored and advances to next pending item`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val nextNotification = makeNotification(id = "notif-2")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(nextNotification))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var nextId: String? = null
+        var doneCalled = false
+        vm.ignore(onNext = { nextId = it }, onDone = { doneCalled = true })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+        assertEquals("notif-2", nextId)
+        assertFalse(doneCalled)
+    }
+
+    @Test
+    fun `ignore calls onDone when no more pending notifications`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var doneCalled = false
+        vm.ignore(onNext = {}, onDone = { doneCalled = true })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+        assertTrue(doneCalled)
+    }
+
+    // -------------------------------------------------------------------------
+    // updateName()
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `updateName sets name and merchant on draft`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.updateName("Coffee Shop")
+
+        val draft = vm.state.value.draft
+        assertEquals("Coffee Shop", draft.name)
+        assertEquals("Coffee Shop", draft.merchant)
+    }
+
+    @Test
+    fun `updateName with blank value sets name to blank and clears merchant`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.updateName("Coffee")
+        vm.updateName("")
+
+        val draft = vm.state.value.draft
+        assertEquals("", draft.name)
+        assertNull(draft.merchant)
+    }
+
+    // -------------------------------------------------------------------------
+    // fromNotification — name seeded from merchantRaw (via initial state)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `loadNotification seeds draft name from notification merchantRaw`() = runTest {
+        // makeNotification sets merchantRaw = "IFOOD"; fromNotification now seeds both
+        // name and merchant from that field so the Descrição field opens pre-filled
+        val notification = makeNotification() // merchantRaw = "IFOOD"
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("IFOOD", vm.state.value.draft.name)
+        assertEquals("IFOOD", vm.state.value.draft.merchant)
     }
 }

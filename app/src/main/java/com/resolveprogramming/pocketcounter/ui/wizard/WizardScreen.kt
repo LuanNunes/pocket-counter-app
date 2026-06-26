@@ -182,6 +182,9 @@ fun WizardScreen(
                             installmentValue = notification.parsed.installmentValue,
                             isFixo = state.draft.isFixo,
                             recurrenceDay = state.draft.recurrenceDay,
+                            name = state.draft.name,
+                            type = state.draft.type,
+                            onNameChange = viewModel::updateName,
                             onAmountChange = viewModel::updateAmount,
                             onDateTap = {
                                 val current = state.draft.date ?: LocalDate.now()
@@ -239,7 +242,9 @@ fun WizardScreen(
                 if (state.step != WizardStep.TYPE) viewModel.previousStep()
             },
             onNext = {
-                if (state.step == WizardStep.TAGS) viewModel.save()
+                if (state.step == WizardStep.TAGS) {
+                    viewModel.save(onNext = onOpenNext, onDone = onBackToApp)
+                }
                 if (state.step != WizardStep.TAGS) viewModel.nextStep()
             },
         )

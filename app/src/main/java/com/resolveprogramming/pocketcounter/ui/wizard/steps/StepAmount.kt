@@ -36,6 +36,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.ui.components.FormLabel
+import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -52,6 +55,9 @@ fun StepAmount(
     installmentValue: BigDecimal?,
     isFixo: Boolean,
     recurrenceDay: Int?,
+    name: String?,
+    type: TransactionType?,
+    onNameChange: (String) -> Unit,
     onAmountChange: (BigDecimal?) -> Unit,
     onDateTap: () -> Unit,
     onStatusChange: (PaymentStatus) -> Unit,
@@ -178,6 +184,17 @@ fun StepAmount(
                 )
             }
         }
+
+        Spacer(Modifier.height(12.dp))
+
+        FormLabel("Descrição")
+        Spacer(Modifier.height(8.dp))
+        FormTextField(
+            value = name.orEmpty(),
+            onValueChange = onNameChange,
+            placeholder = "Ex.: Salário, Cliente X…".takeIf { type == TransactionType.INCOME }
+                ?: "Ex.: iFood, Aluguel…",
+        )
 
         Spacer(Modifier.height(12.dp))
 
