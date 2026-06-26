@@ -42,6 +42,7 @@ data class WizardUiState(
     val notification: NotificationItem? = null,
     val draft: WizardDraft = WizardDraft(),
     val step: WizardStep = WizardStep.TYPE,
+    val queue: List<String> = emptyList(),
     val cards: List<CreditCard> = emptyList(),
     val allTags: List<Tag> = emptyList(),
     val contexts: List<TagContext> = emptyList(),
@@ -95,6 +96,7 @@ class WizardViewModel @Inject constructor(
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
             val series = seriesRepository.getAll().getOrDefault(emptyList())
+            val queue = notificationRepository.getPendingReview().getOrDefault(emptyList()).map { it.id }
 
             val classifyResult = notificationRepository.classify(notificationId, base)
             val classified = classifyResult.getOrNull()
@@ -125,6 +127,7 @@ class WizardViewModel @Inject constructor(
                 notification = notification,
                 draft = draft,
                 step = resolveStartStep(notification),
+                queue = queue,
                 cards = cards,
                 allTags = tags,
                 contexts = contexts,
@@ -300,6 +303,24 @@ class WizardViewModel @Inject constructor(
             val prevStep = WizardStep.entries.getOrNull(state.step.index - 1) ?: return@update state
             state.copy(step = prevStep)
         }
+    }
+
+    /** Jumps to the next still-pending item without deciding; wraps past the last back to the first. */
+    fun skipToNext(onOpen: (String) -> Unit) {
+        if (_state.value.isSaving) return
+        val queue = _state.value.queue
+        val i = queue.indexOf(notificationId)
+        if (i < 0 || queue.size < 2) return
+        onOpen(queue[(i + 1) % queue.size])
+    }
+
+    /** Jumps to the previous still-pending item without deciding; wraps before the first to the last. */
+    fun skipToPrevious(onOpen: (String) -> Unit) {
+        if (_state.value.isSaving) return
+        val queue = _state.value.queue
+        val i = queue.indexOf(notificationId)
+        if (i < 0 || queue.size < 2) return
+        onOpen(queue[(i - 1 + queue.size) % queue.size])
     }
 
     fun save(onNext: (String) -> Unit, onDone: () -> Unit) {

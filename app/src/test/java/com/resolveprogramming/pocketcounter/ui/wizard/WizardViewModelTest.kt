@@ -25,6 +25,7 @@ import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -984,5 +985,122 @@ class WizardViewModelTest {
 
         assertEquals("IFOOD", vm.state.value.draft.name)
         assertEquals("IFOOD", vm.state.value.draft.merchant)
+    }
+
+    // -------------------------------------------------------------------------
+    // Item-axis navigation: queue + skipToNext / skipToPrevious
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `loadNotification populates queue from getPendingReview`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(
+                makeNotification(id = "notif-1"),
+                makeNotification(id = "notif-2"),
+                makeNotification(id = "notif-3"),
+            ),
+        )
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf("notif-1", "notif-2", "notif-3"), vm.state.value.queue)
+    }
+
+    @Test
+    fun `skipToNext opens the next pending id, wrapping after the last`() = runTest {
+        val notification = makeNotification(id = "notif-3")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-3") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-3", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(
+                makeNotification(id = "notif-1"),
+                makeNotification(id = "notif-2"),
+                makeNotification(id = "notif-3"),
+            ),
+        )
+
+        val vm = makeViewModel(notificationId = "notif-3")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var opened: String? = null
+        vm.skipToNext { opened = it }
+
+        assertEquals("notif-1", opened)
+    }
+
+    @Test
+    fun `skipToPrevious opens the previous pending id, wrapping before the first`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(
+                makeNotification(id = "notif-1"),
+                makeNotification(id = "notif-2"),
+                makeNotification(id = "notif-3"),
+            ),
+        )
+
+        val vm = makeViewModel(notificationId = "notif-1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var opened: String? = null
+        vm.skipToPrevious { opened = it }
+
+        assertEquals("notif-3", opened)
+    }
+
+    @Test
+    fun `skipToNext does nothing when queue has less than 2 items`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(makeNotification(id = "notif-1")),
+        )
+
+        val vm = makeViewModel(notificationId = "notif-1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var opened: String? = null
+        vm.skipToNext { opened = it }
+
+        assertNull(opened)
+    }
+
+    @Test
+    fun `skipToNext is a no-op while isSaving`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(
+                makeNotification(id = "notif-1"),
+                makeNotification(id = "notif-2"),
+            ),
+        )
+        // A save in flight that never completes keeps isSaving = true.
+        coEvery { transactionRepository.save(any()) } coAnswers { awaitCancellation() }
+
+        val vm = makeViewModel(notificationId = "notif-1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.save(onNext = {}, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.isSaving)
+
+        var opened: String? = null
+        vm.skipToNext { opened = it }
+
+        assertNull(opened)
     }
 }

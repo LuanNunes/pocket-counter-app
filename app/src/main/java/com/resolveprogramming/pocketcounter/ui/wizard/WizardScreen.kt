@@ -28,7 +28,9 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -37,7 +39,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -112,12 +117,19 @@ fun WizardScreen(
     ) {
         WizardTopBar(
             step = state.step,
-            onBack = {
-                if (state.step == WizardStep.TYPE) onDismiss()
-                if (state.step != WizardStep.TYPE) viewModel.previousStep()
-            },
+            onBack = onDismiss,
             onIgnore = { viewModel.ignore(onNext = onOpenNext, onDone = onBackToApp) },
         )
+
+        val queueIndex = state.queue.indexOf(notification.id)
+        if (state.queue.size >= 2 && queueIndex >= 0) {
+            WizardQueueStrip(
+                position = queueIndex + 1,
+                total = state.queue.size,
+                onPrevItem = { viewModel.skipToPrevious(onOpenNext) },
+                onNextItem = { viewModel.skipToNext(onOpenNext) },
+            )
+        }
 
         WizardProgressBar(step = state.step)
 
@@ -310,9 +322,9 @@ private fun WizardTopBar(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Voltar",
-                    modifier = Modifier.size(20.dp),
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Fechar",
+                    modifier = Modifier.size(24.dp),
                     tint = PocketTheme.colors.text,
                 )
             }
@@ -336,6 +348,63 @@ private fun WizardTopBar(
             color = PocketTheme.colors.text3,
             modifier = Modifier.clickable(onClick = onIgnore),
         )
+    }
+}
+
+@Composable
+private fun WizardQueueStrip(
+    position: Int,
+    total: Int,
+    onPrevItem: () -> Unit,
+    onNextItem: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(PocketTheme.shapes.icon)
+                .clickable(onClick = onPrevItem),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "Voltar ao pendente anterior",
+                modifier = Modifier.size(24.dp),
+                tint = PocketTheme.colors.text2,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .clearAndSetSemantics { contentDescription = "Pendente $position de $total" }
+                .background(PocketTheme.colors.accentBg, PocketTheme.shapes.pill)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = "Pendente $position de $total",
+                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Medium),
+                color = PocketTheme.colors.accent,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(PocketTheme.shapes.icon)
+                .clickable(onClick = onNextItem),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "Pular para o próximo pendente",
+                modifier = Modifier.size(24.dp),
+                tint = PocketTheme.colors.text2,
+            )
+        }
     }
 }
 
