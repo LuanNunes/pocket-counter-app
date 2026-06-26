@@ -26,6 +26,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +37,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.resolveprogramming.pocketcounter.navigation.Routes
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
@@ -66,6 +70,16 @@ fun HomeContent(
     }
 
     FlashEffect(state.flashId, state.flashNonce, reducedMotion, viewModel::consumeFlash)
+
+    // init already loads; only refresh on subsequent resumes (e.g. returning from the wizard).
+    val isFirstResume = remember { mutableStateOf(true) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (isFirstResume.value) {
+            isFirstResume.value = false
+            return@LifecycleEventEffect
+        }
+        viewModel.refresh()
+    }
 
     if (state.isLoading && state.shownItems.isEmpty() && state.isEmptyMonth.not()) {
         Box(
@@ -112,7 +126,9 @@ fun HomeContent(
                 item {
                     RevisarBanner(
                         count = state.pendingReviewCount,
-                        onClick = onOpenTransacoes,
+                        onClick = {
+                            state.pendingReviewFirstId?.let { onNavigate(Routes.wizard(it)) }
+                        },
                     )
                 }
             }

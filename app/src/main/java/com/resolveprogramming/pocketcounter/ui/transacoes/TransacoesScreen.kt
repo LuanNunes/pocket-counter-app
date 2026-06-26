@@ -68,6 +68,7 @@ import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
@@ -166,7 +167,7 @@ fun TransacoesContent(
 
                     isLista -> LedgerCardList(
                         groups = state.dayGroups,
-                        meta = { txMeta(it, state.cards, state.tags) },
+                        meta = { txMeta(it, state.cards, state.tags, state.contexts) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
@@ -174,7 +175,7 @@ fun TransacoesContent(
 
                     else -> CategoryCardList(
                         groups = state.ledgerGroups,
-                        meta = { txMeta(it, state.cards, state.tags) },
+                        meta = { txMeta(it, state.cards, state.tags, state.contexts) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
@@ -659,7 +660,12 @@ private data class TxMeta(
     val payment: String,
 )
 
-private fun txMeta(item: HistoryItem, cards: List<CreditCard>, tags: Map<String, Tag>): TxMeta {
+private fun txMeta(
+    item: HistoryItem,
+    cards: List<CreditCard>,
+    tags: Map<String, Tag>,
+    contexts: List<TagContext>,
+): TxMeta {
     val payment = run {
         if (item.paymentMethod != PaymentMethod.CREDIT) return@run item.paymentMethod?.label().orEmpty()
         val cardName = item.cardId?.let { id -> cards.firstOrNull { it.id == id }?.name }
@@ -667,9 +673,12 @@ private fun txMeta(item: HistoryItem, cards: List<CreditCard>, tags: Map<String,
     }
     val tagIds = item.tagIds.orEmpty()
     val first = tagIds.firstOrNull()?.let { tags[it] }
+    // Tags rarely carry their own color; fall back to their context (category) color so the
+    // chip dot is colored like the design instead of grey.
+    val tagColor = first?.color ?: contexts.firstOrNull { it.id == first?.idContext }?.color
     return TxMeta(
         tagName = first?.name,
-        tagColor = first?.color,
+        tagColor = tagColor,
         extraTags = (tagIds.size - 1).coerceAtLeast(0),
         payment = payment,
     )

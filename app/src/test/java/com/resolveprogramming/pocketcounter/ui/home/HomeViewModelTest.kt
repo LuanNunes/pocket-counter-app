@@ -8,12 +8,14 @@ import com.resolveprogramming.pocketcounter.data.repository.TransactionRepositor
 import com.resolveprogramming.pocketcounter.domain.model.AutomationStat
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
+import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -281,5 +283,66 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(0, vm.state.value.monthCount)
+    }
+
+    // =========================================================================
+    // pendingReviewFirstId — teaching-wizard entry from the Revisar banner
+    // =========================================================================
+
+    private fun pendingNotification(id: String): NotificationItem =
+        mockk(relaxed = true) { every { this@mockk.id } returns id }
+
+    @Test
+    fun `pendingReviewFirstId is the first pending id on current month`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(pendingNotification("pend-1"), pendingNotification("pend-2")),
+        )
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(2, vm.state.value.pendingReviewCount)
+        assertEquals("pend-1", vm.state.value.pendingReviewFirstId)
+    }
+
+    @Test
+    fun `pendingReviewFirstId is null when no pendencies`() = runTest {
+        // setUp already stubs getPendingReview() to empty.
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.pendingReviewCount)
+        assertNull(vm.state.value.pendingReviewFirstId)
+    }
+
+    @Test
+    fun `pendingReviewFirstId is null off the current month`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(pendingNotification("pend-1")),
+        )
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.pendingReviewCount)
+        assertNull(vm.state.value.pendingReviewFirstId)
+    }
+
+    @Test
+    fun `refresh clears pending banner when list becomes empty`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(
+            listOf(pendingNotification("pend-1")),
+        )
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("pend-1", vm.state.value.pendingReviewFirstId)
+
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        vm.refresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.pendingReviewCount)
+        assertNull(vm.state.value.pendingReviewFirstId)
     }
 }

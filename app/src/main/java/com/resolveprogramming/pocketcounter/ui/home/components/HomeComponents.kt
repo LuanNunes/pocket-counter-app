@@ -171,7 +171,12 @@ fun BalanceHero(
                     Text(
                         text = formatter.format(balance),
                         style = PocketTheme.typography.monoBalance,
-                        color = ink,
+                        // Net saldo carries sign meaning: green when up, red when down, neutral at zero.
+                        color = when (balance.signum()) {
+                            1 -> dark.income
+                            -1 -> dark.expense
+                            else -> ink
+                        },
                     )
                 }
                 Box(

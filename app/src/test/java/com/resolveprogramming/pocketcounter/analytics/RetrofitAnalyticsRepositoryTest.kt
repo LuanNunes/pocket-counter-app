@@ -1,8 +1,10 @@
 package com.resolveprogramming.pocketcounter.analytics
 
+import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.Tag
@@ -24,9 +26,10 @@ import java.math.BigDecimal
 class RetrofitAnalyticsRepositoryTest {
 
     private val transactionApi = mockk<TransactionApi>()
+    private val invoiceItemApi = mockk<InvoiceItemApi>()
     private val tagRepository = mockk<TagRepository>()
 
-    private val repo = RetrofitAnalyticsRepository(transactionApi, tagRepository)
+    private val repo = RetrofitAnalyticsRepository(transactionApi, invoiceItemApi, tagRepository)
 
     private val incomeTag = Tag(
         id = "it1",
@@ -144,6 +147,112 @@ class RetrofitAnalyticsRepositoryTest {
             "income tag 'it1' must not appear in expense groups",
             groupIds.contains("it1"),
         )
+        assertEquals("Sem categoria", summary.groups.single().name)
+    }
+
+    // -------------------------------------------------------------------------
+    // Credit-card invoice expansion
+    // -------------------------------------------------------------------------
+
+    /** Catalog with two EXPENSE tags mapping to two distinct contexts. */
+    private fun stubTwoContextCatalog() {
+        coEvery { tagRepository.getAllTags() } returns Result.success(
+            listOf(
+                Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "c1"),
+                Tag(id = "t2", name = "farmácia", kind = TransactionType.EXPENSE, idContext = "c2"),
+            ),
+        )
+        coEvery { tagRepository.getAllContexts() } returns Result.success(
+            listOf(
+                TagContext(id = "c1", name = "Mercado", color = 0xFF112233),
+                TagContext(id = "c2", name = "Saúde", color = 0xFF445566),
+            ),
+        )
+    }
+
+    private fun invoice(amount: String, id: String = "inv1") = TransactionDto(
+        id = id,
+        transactionType = "EXPENSE",
+        amount = BigDecimal(amount),
+        isInvoice = true,
+        cardId = "card1",
+    )
+
+    private fun item(amount: String, tagId: String, tagName: String) = TransactionItemDto(
+        idTransaction = "inv1",
+        name = tagName,
+        amount = BigDecimal(amount),
+        tags = listOf(TagDto(id = tagId, name = tagName)),
+    )
+
+    @Test
+    fun `invoice expands into its items breaking down by each item's own context`() = runTest {
+        stubTwoContextCatalog()
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "150.00"))
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            item(amount = "100.00", tagId = "t1", tagName = "supermercado"),
+            item(amount = "50.00", tagId = "t2", tagName = "farmácia"),
+        )
+
+        val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
+
+        // Total reflects the items, and (here) equals the container only because items sum to it.
+        assertEquals(BigDecimal("150.00"), summary.total)
+        val byId = summary.groups.associateBy { it.id }
+        assertEquals(BigDecimal("100.00"), byId.getValue("c1").total)
+        assertEquals(BigDecimal("50.00"), byId.getValue("c2").total)
+    }
+
+    @Test
+    fun `invoice container amount is replaced not added to the items`() = runTest {
+        // Container amount (999) is a red herring — totals must come from the items (30), never both.
+        stubTwoContextCatalog()
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "999.00"))
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            item(amount = "30.00", tagId = "t1", tagName = "supermercado"),
+        )
+
+        val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
+
+        assertEquals(BigDecimal("30.00"), summary.total)
+        assertEquals(BigDecimal("30.00"), summary.groups.single().total)
+    }
+
+    @Test
+    fun `non-invoice expense alongside an invoice is left untouched`() = runTest {
+        stubTwoContextCatalog()
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(
+            invoice(amount = "150.00"),
+            TransactionDto(
+                id = "e9",
+                transactionType = "EXPENSE",
+                amount = BigDecimal("20.00"),
+                tags = listOf(TagDto(id = "t1", name = "supermercado")),
+            ),
+        )
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            item(amount = "100.00", tagId = "t1", tagName = "supermercado"),
+            item(amount = "50.00", tagId = "t2", tagName = "farmácia"),
+        )
+
+        val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
+
+        assertEquals(BigDecimal("170.00"), summary.total)
+        val byId = summary.groups.associateBy { it.id }
+        assertEquals(BigDecimal("120.00"), byId.getValue("c1").total)
+        assertEquals(BigDecimal("50.00"), byId.getValue("c2").total)
+    }
+
+    @Test
+    fun `invoice with zero items falls back to the container amount`() = runTest {
+        stubTwoContextCatalog()
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "80.00"))
+        coEvery { invoiceItemApi.getItems("inv1") } returns emptyList()
+
+        val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
+
+        assertEquals(BigDecimal("80.00"), summary.total)
+        // No item tags → the container itself is untagged → Sem categoria.
         assertEquals("Sem categoria", summary.groups.single().name)
     }
 }

@@ -162,7 +162,9 @@ internal object RemoteMappers {
         val signed = raw.negate().takeIf { type == TransactionType.EXPENSE } ?: raw
         return HistoryItem(
             id = id.orEmpty(),
-            date = parseDate(datePaid) ?: parseDate(dateDue) ?: LocalDate.now(),
+            // Order/group by the stable due date, not datePaid — otherwise marking a row paid
+            // sets datePaid (~today) and the row jumps in the LEDGER_ORDER sort / day grouping.
+            date = parseDate(dateDue) ?: parseDate(datePaid) ?: LocalDate.now(),
             amount = signed,
             type = type,
             // Preserve null = inherit vs non-null = override (drop .orEmpty()).
