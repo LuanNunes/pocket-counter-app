@@ -1,6 +1,7 @@
 package com.resolveprogramming.pocketcounter.data.remote
 
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleTagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
@@ -124,6 +125,20 @@ internal object RemoteMappers {
     fun CarryForwardResultDto.toDomain(): CarryForwardResult = CarryForwardResult(
         createdCount = createdCount,
         skippedCount = skippedCount,
+    )
+
+    /** Serializes a learned rule for create. Only expense tags carry a context (idCategory). */
+    fun ClassificationRule.toDto(): ClassificationRuleDto = ClassificationRuleDto(
+        patterns = patterns,
+        matchType = matchType,
+        active = active,
+        transactionType = transactionType?.let { "INCOME".takeIf { _ -> it == TransactionType.INCOME } ?: "EXPENSE" },
+        paymentMethod = paymentMethod?.name,
+        cardId = cardId,
+        tagIds = tags.mapNotNull { tag ->
+            val context = tag.idContext ?: return@mapNotNull null
+            ClassificationRuleTagDto(idTag = tag.id, idCategory = context)
+        },
     )
 
     fun ClassificationRuleDto.toDomain(): ClassificationRule = ClassificationRule(

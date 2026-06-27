@@ -115,7 +115,13 @@ object BrNotificationParser {
     private fun String.containsWord(word: String): Boolean =
         Regex("(?<![\\p{L}])" + Regex.escape(word) + "(?![\\p{L}])").containsMatchIn(this)
 
-    private val AMOUNT_REGEX = Regex("""(?<![\p{L}])(R\$|RS|BRL)\s?\d{1,3}(\.\d{3})*(,\d{2})?""")
+    // R$ is unambiguous, so it matches with or without decimals and even glued to a preceding word
+    // (e.g. "CompraR$50,00"). Bare "RS"/"BRL" are ambiguous (RS is also a state code), so they
+    // require a letter-boundary AND two decimal places to avoid matching things like a CEP
+    // ("Porto Alegre RS 90000-000").
+    private val AMOUNT_REGEX = Regex(
+        """R\$\s?\d{1,3}(\.\d{3})*(,\d{2})?|(?<![\p{L}])(RS|BRL)\s?\d{1,3}(\.\d{3})*,\d{2}""",
+    )
 
     private val EXPENSE_PHRASES = listOf("pix enviado", "transferência enviada", "transferencia enviada", "você pagou", "voce pagou")
     private val EXPENSE_WORDS = listOf("compra", "débito", "debito", "pagamento", "saque", "fatura")

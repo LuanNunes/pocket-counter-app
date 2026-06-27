@@ -9,5 +9,6 @@ import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
  */
 interface ClassificationRuleRepository {
     suspend fun getAll(): Result<List<ClassificationRule>>
+    suspend fun create(rule: ClassificationRule): Result<Unit>
     suspend fun delete(id: String): Result<Unit>
 }
