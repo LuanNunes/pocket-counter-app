@@ -45,13 +45,8 @@ fun TagEditSheet(
             contexts = contexts,
             selectedTagIds = selected,
             searchQuery = search,
-            learnRule = false,
-            paymentHint = null,
-            merchant = null,
             onSearchChange = { search = it },
             onToggleTag = { id -> selected = (selected - id).takeIf { id in selected } ?: (selected + id) },
-            onToggleLearnRule = { },
-            showLearnToggle = false,
         )
 
         Spacer(Modifier.height(16.dp))

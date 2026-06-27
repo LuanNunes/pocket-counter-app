@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -127,9 +126,8 @@ fun SourceTextCard(
                     modifier = Modifier
                         .then(borderMod)
                         .background(fillColor, shape)
-                        .minimumInteractiveComponentSize()
                         .clickable { onTokenTap(index) }
-                        .padding(horizontal = 4.dp, vertical = 6.dp)
+                        .padding(horizontal = 5.dp, vertical = 5.dp)
                         .semantics {
                             contentDescription = token.text
                             if (stateDesc.isNotEmpty()) stateDescription = stateDesc

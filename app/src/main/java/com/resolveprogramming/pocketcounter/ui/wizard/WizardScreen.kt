@@ -82,18 +82,6 @@ fun WizardScreen(
         return
     }
 
-    if (state.isSuccess) {
-        SuccessScreen(
-            draft = state.draft,
-            cards = state.cards,
-            allTags = state.allTags,
-            contexts = state.contexts,
-            onViewTransaction = onDismiss,
-            onBackToApp = onBackToApp,
-        )
-        return
-    }
-
     val notification = state.notification ?: run {
         // notification == null here only when the initial load failed (loading already returned
         // above) — render a recoverable error instead of a blank screen.
@@ -256,12 +244,8 @@ fun WizardScreen(
                                 contexts = state.contexts,
                                 selectedTagIds = state.draft.tagIds,
                                 searchQuery = state.tagSearchQuery,
-                                learnRule = state.draft.learnRule,
-                                paymentHint = notification.parsed.paymentHint,
-                                merchant = state.draft.merchant,
                                 onSearchChange = viewModel::updateTagSearch,
                                 onToggleTag = viewModel::toggleTag,
-                                onToggleLearnRule = viewModel::toggleLearnRule,
                             )
                         }
                     }
@@ -269,6 +253,18 @@ fun WizardScreen(
                     Spacer(Modifier.height(20.dp))
                 }
             }
+        }
+
+        // Pinned outside the scroll so the learn toggle stays visible on the TAGS step regardless
+        // of how long the tag list grows (it scrolls off-screen if placed inside StepTags).
+        if (state.step == WizardStep.TAGS) {
+            LearnPatternToggle(
+                checked = state.draft.learnRule,
+                // Merchant-first so the promised match key is what the rule actually keys on.
+                hint = state.draft.merchant ?: notification.parsed.paymentHint ?: "...",
+                onCheckedChange = viewModel::toggleLearnRule,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
         }
 
         WizardFooter(

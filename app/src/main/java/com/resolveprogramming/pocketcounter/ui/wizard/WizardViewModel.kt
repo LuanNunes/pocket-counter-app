@@ -4,10 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
@@ -55,7 +57,6 @@ data class WizardUiState(
     val pendingTransactionId: String? = null,
     val isConfirmingPending: Boolean = false,
     val isSaving: Boolean = false,
-    val isSuccess: Boolean = false,
     val pendingConfirmed: Boolean = false,
     val isLoading: Boolean = true,
     val isSwitching: Boolean = false,
@@ -77,6 +78,7 @@ class WizardViewModel @Inject constructor(
     private val tagRepository: TagRepository,
     private val transactionRepository: TransactionRepository,
     private val seriesRepository: SeriesRepository,
+    private val classificationRuleRepository: ClassificationRuleRepository,
 ) : ViewModel() {
 
     private var notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -320,7 +322,9 @@ class WizardViewModel @Inject constructor(
             val newDraft = run {
                 when (removedRole) {
                     TokenRole.AMOUNT -> return@run state.draft.copy(amount = null)
-                    TokenRole.MERCHANT -> return@run state.draft.copy(merchant = null, name = null)
+                    // Clear only the merchant hint — name is the user-editable Descrição and must
+                    // not be wiped when un-marking the merchant span.
+                    TokenRole.MERCHANT -> return@run state.draft.copy(merchant = null)
                     TokenRole.DATE -> return@run state.draft.copy(date = null)
                     TokenRole.TYPE -> Unit
                     TokenRole.PAYMENT -> Unit
@@ -420,6 +424,9 @@ class WizardViewModel @Inject constructor(
                     // defaultAmount (handoff §3.3 divergence).
                     linkSeries(draft, transactionId)
                     runCatching { notificationRepository.markClassified(notificationId, transactionId) }
+                    // Best-effort: persist a learned rule so future matching notifications
+                    // pre-fill these tags. Never blocks advancing.
+                    learnRuleIfRequested(draft)
                     // Process the review queue in place: load the next pending item, or return to
                     // the app when none remain.
                     advanceToNext(onDone)
@@ -453,6 +460,46 @@ class WizardViewModel @Inject constructor(
         // Clear the save/ignore flag so the in-place switch isn't blocked by its own guard.
         _state.update { it.copy(isSaving = false) }
         goTo(next.id)
+    }
+
+    /**
+     * Creates a learned classification rule when the user enabled "Aprender este padrão".
+     *
+     * The CONTAINS pattern must be a substring of the notification text, or it can never match a
+     * future notification — so candidates (merchant first, then parsed merchant, then payment hint)
+     * are validated against [NotificationItem.text] and free-text edits to the Descrição that don't
+     * appear in the message are skipped. Only tags carrying a context (idCategory) survive
+     * serialization, so a rule is created only when at least one such tag exists (income tags have
+     * no context, mirroring the card path). Best-effort — failures are swallowed.
+     */
+    private suspend fun learnRuleIfRequested(draft: WizardDraft) {
+        if (!draft.learnRule) return
+        val notification = _state.value.notification ?: return
+        val sourceText = notification.text
+        val pattern = listOfNotNull(
+            draft.merchant?.takeIf { it.isNotBlank() },
+            notification.parsed.merchantRaw?.takeIf { it.isNotBlank() },
+            notification.parsed.paymentHint?.takeIf { it.isNotBlank() },
+        ).map { it.trim() }.firstOrNull { it.isNotBlank() && sourceText.contains(it, ignoreCase = true) }
+        if (pattern.isNullOrBlank()) return
+        // Only tags with a context serialize into the rule (ClassificationRuleTagDto needs idCategory).
+        val ruleTags = _state.value.allTags.filter { it.id in draft.tagIds && !it.idContext.isNullOrBlank() }
+        if (ruleTags.isEmpty()) return
+        runCatching {
+            classificationRuleRepository.create(
+                ClassificationRule(
+                    id = null,
+                    patterns = listOf(pattern),
+                    matchType = "CONTAINS",
+                    active = true,
+                    appliedCount = 0,
+                    transactionType = draft.type,
+                    paymentMethod = draft.paymentMethod,
+                    cardId = draft.cardId,
+                    tags = ruleTags,
+                ),
+            )
+        }
     }
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {

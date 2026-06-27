@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -51,6 +52,7 @@ class WizardViewModelTest {
     private val tagRepository: TagRepository = mockk()
     private val transactionRepository: TransactionRepository = mockk()
     private val seriesRepository: SeriesRepository = mockk()
+    private val classificationRuleRepository: ClassificationRuleRepository = mockk()
 
     @Before
     fun setUp() {
@@ -64,6 +66,7 @@ class WizardViewModelTest {
             Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, null))
         coEvery { seriesRepository.setTags(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.linkTransaction(any(), any(), any()) } returns Result.success(Unit)
+        coEvery { classificationRuleRepository.create(any()) } returns Result.success(Unit)
         // Broad fallbacks so in-place switches resolve without NPE; tests override for specific ids.
         coEvery { notificationRepository.getById(any()) } answers {
             Result.success(makeNotification(id = firstArg()))
@@ -138,6 +141,7 @@ class WizardViewModelTest {
             tagRepository = tagRepository,
             transactionRepository = transactionRepository,
             seriesRepository = seriesRepository,
+            classificationRuleRepository = classificationRuleRepository,
         )
     }
 
@@ -244,7 +248,6 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 0) { transactionRepository.markPaid(any()) }
-        assertFalse(vm.state.value.isSuccess)
     }
 
     // -------------------------------------------------------------------------
@@ -496,7 +499,6 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertFalse(doneCalled)
-        assertFalse(vm.state.value.isSuccess)
     }
 
     @Test
@@ -1209,7 +1211,7 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `removeRoleFromSelection clears the whole span and nulls draft fields`() = runTest {
+    fun `removeRoleFromSelection clears the span and merchant but keeps the description`() = runTest {
         val vm = makeSpanViewModel()
 
         vm.tapToken(0)
@@ -1225,8 +1227,9 @@ class WizardViewModelTest {
             assertNull(state.tokens[i].role)
             assertNull(state.tokens[i].value)
         }
-        assertNull(state.draft.name)
+        // merchant (the hint) is cleared, but name (the user-editable Descrição) is preserved.
         assertNull(state.draft.merchant)
+        assertEquals("PERSON BLACK CASHBAC", state.draft.name)
         assertNull(state.selectionRange)
     }
 

@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -65,7 +68,12 @@ fun RelatorioScreen(
     val isExpense = state.kind == TransactionType.EXPENSE
     val context = LocalContext.current
 
-    Column(modifier = Modifier.fillMaxSize().background(PocketTheme.colors.bg)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PocketTheme.colors.bg)
+            .windowInsetsPadding(WindowInsets.systemBars),
+    ) {
         ManageTopBar(
             title = "Relatório",
             onBack = onBack,
@@ -182,8 +190,8 @@ private fun KpiTile(
     rawValue: String? = null,
     showSign: Boolean = false,
 ) {
-    // Half-width tiles can't fit 26sp currency values without wrapping; render the
-    // headline a touch smaller and force a single line so large amounts never break.
+    // Half-width tiles can't fit 26sp currency values; start at 20sp and let AmountText
+    // auto-shrink to fit one line so large yearly amounts never clip.
     val valueStyle = PocketTheme.typography.monoTotal.copy(fontSize = 20.sp)
     PocketCard(modifier = modifier.heightIn(min = 84.dp)) {
         Column {
@@ -195,8 +203,7 @@ private fun KpiTile(
                     color = color,
                     showSign = showSign,
                     style = valueStyle,
-                    maxLines = 1,
-                    softWrap = false,
+                    autoSize = true,
                 )
             }
             if (amount == null) {
