@@ -38,9 +38,9 @@ class RetrofitAnalyticsRepository @Inject constructor(
 ) : AnalyticsRepository {
 
     private val ptBr = Locale("pt", "BR")
-    private val noContextId = "sem-contexto"
+    private val noContextId = com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_CONTEXT_ID
     private val noContextColor = 0xFF9AA0A6
-    private val noIncomeCategoryId = "sem-categoria"
+    private val noIncomeCategoryId = com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_INCOME_ID
     private val incomeFallbackColor = 0xFF33AA77
 
     override suspend fun compareOptions(monthKey: String): Result<List<CompareOption>> = runCatching {
@@ -122,7 +122,9 @@ class RetrofitAnalyticsRepository @Inject constructor(
             allTags.filter { it.kind == TransactionType.INCOME }.associateBy { it.id }
         val contextById = tagRepository.getAllContexts().getOrDefault(emptyList()).associateBy { it.id }
 
-        val all = transactionApi.getRange(fromRef, toRef)
+        // Expand credit-card faturas into their line items so each purchase is attributed to its
+        // own context instead of the whole invoice collapsing into "Sem categoria".
+        val all = expandInvoices(transactionApi.getRange(fromRef, toRef))
         val byMonthRef = all.groupBy { it.refYearMonth }
 
         val reportMonths = monthsList.map { ym ->
@@ -194,7 +196,11 @@ class RetrofitAnalyticsRepository @Inject constructor(
         return buckets.map { (gid, b) ->
             val total = b.txs.sumAmount()
             SummaryGroup(gid, b.name, b.color, total, ratio(total, grand), null, null, emptyList())
-        }.sortedByDescending { it.total }
+        }.sortedWith(
+            compareBy<SummaryGroup> {
+                it.id in com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_GROUP_IDS
+            }.thenByDescending { it.total },
+        )
     }
 
     private suspend fun fetch(kind: TransactionType, ym: YearMonth): List<TransactionDto> {
@@ -208,6 +214,10 @@ class RetrofitAnalyticsRepository @Inject constructor(
      * whose individual purchases live in the items sub-resource — each carrying its OWN amount and
      * tags. Replace each invoice with its line items so totals and per-context breakdown attribute
      * every purchase correctly. An invoice with no items keeps its container so nothing is lost.
+     *
+     * The container's own amount is treated as a red herring: totals come from the items, never both
+     * (see RetrofitAnalyticsRepositoryTest). The backend itemizes the full fatura, so there is no
+     * un-itemized remainder to add back.
      */
     private suspend fun expandInvoices(txs: List<TransactionDto>): List<TransactionDto> =
         coroutineScope {
