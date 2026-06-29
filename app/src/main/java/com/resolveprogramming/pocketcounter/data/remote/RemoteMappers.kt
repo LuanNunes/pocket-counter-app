@@ -15,6 +15,7 @@ import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
@@ -132,13 +133,18 @@ internal object RemoteMappers {
         patterns = patterns,
         matchType = matchType,
         active = active,
-        transactionType = transactionType?.let { "INCOME".takeIf { _ -> it == TransactionType.INCOME } ?: "EXPENSE" },
-        paymentMethod = paymentMethod?.name,
-        cardId = cardId,
-        tagIds = tags.mapNotNull { tag ->
+        // An IGNORE rule carries only a pattern — no type/payment/tags to serialize.
+        transactionType = transactionType
+            ?.takeIf { action == RuleAction.SUGGEST }
+            ?.let { "INCOME".takeIf { _ -> it == TransactionType.INCOME } ?: "EXPENSE" },
+        paymentMethod = paymentMethod?.name?.takeIf { action == RuleAction.SUGGEST },
+        cardId = cardId?.takeIf { action == RuleAction.SUGGEST },
+        tagIds = tags.takeIf { action == RuleAction.SUGGEST }.orEmpty().mapNotNull { tag ->
             val context = tag.idContext ?: return@mapNotNull null
             ClassificationRuleTagDto(idTag = tag.id, idCategory = context)
         },
+        // Omitted (null) on write for SUGGEST so existing rules stay wire-compatible.
+        action = "IGNORE".takeIf { action == RuleAction.IGNORE },
     )
 
     fun ClassificationRuleDto.toDomain(): ClassificationRule = ClassificationRule(
@@ -153,6 +159,7 @@ internal object RemoteMappers {
         // Names are resolved against the loaded tag list in the UI layer.
         // Rule tags are always expense (the rule DTO keeps its own idCategory field).
         tags = tagIds.map { Tag(id = it.idTag, name = "", kind = TransactionType.EXPENSE, idContext = it.idCategory) },
+        action = RuleAction.IGNORE.takeIf { action.equals("IGNORE", ignoreCase = true) } ?: RuleAction.SUGGEST,
     )
 
     fun CategoryDto.toDomain(): TagContext = TagContext(

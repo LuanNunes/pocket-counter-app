@@ -10,6 +10,7 @@ import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
@@ -440,12 +441,39 @@ class WizardViewModel @Inject constructor(
      * advances the queue: loads the next pending item in place, or returns to the app via [onDone]
      * when none remain. The ignore is best-effort.
      */
-    fun ignore(onDone: () -> Unit) {
+    fun ignore(learn: Boolean, onDone: () -> Unit) {
         if (_state.value.isSaving || _state.value.isSwitching) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
+            // Best-effort: learn an ignore-rule first so future similar notifications are auto-ignored.
+            if (learn) learnIgnoreRule()
             notificationRepository.markIgnored(notificationId)
             advanceToNext(onDone)
+        }
+    }
+
+    /**
+     * Creates an IGNORE-action classification rule so the backend auto-ignores future notifications
+     * matching the same merchant pattern. Carries only the pattern (no tags/type). Best-effort: a
+     * missing pattern or a create failure is swallowed and the ignore still proceeds.
+     */
+    private suspend fun learnIgnoreRule() {
+        val pattern = learnPattern(_state.value.draft) ?: return
+        runCatching {
+            classificationRuleRepository.create(
+                ClassificationRule(
+                    id = null,
+                    patterns = listOf(pattern),
+                    matchType = "CONTAINS",
+                    active = true,
+                    appliedCount = 0,
+                    transactionType = null,
+                    paymentMethod = null,
+                    cardId = null,
+                    tags = emptyList(),
+                    action = RuleAction.IGNORE,
+                ),
+            )
         }
     }
 
@@ -474,14 +502,7 @@ class WizardViewModel @Inject constructor(
      */
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
-        val notification = _state.value.notification ?: return
-        val sourceText = notification.text
-        val pattern = listOfNotNull(
-            draft.merchant?.takeIf { it.isNotBlank() },
-            notification.parsed.merchantRaw?.takeIf { it.isNotBlank() },
-            notification.parsed.paymentHint?.takeIf { it.isNotBlank() },
-        ).map { it.trim() }.firstOrNull { it.isNotBlank() && sourceText.contains(it, ignoreCase = true) }
-        if (pattern.isNullOrBlank()) return
+        val pattern = learnPattern(draft) ?: return
         // Only tags with a context serialize into the rule (ClassificationRuleTagDto needs idCategory).
         val ruleTags = _state.value.allTags.filter { it.id in draft.tagIds && !it.idContext.isNullOrBlank() }
         if (ruleTags.isEmpty()) return
@@ -500,6 +521,21 @@ class WizardViewModel @Inject constructor(
                 ),
             )
         }
+    }
+
+    /**
+     * The CONTAINS pattern for a learned rule: the first merchant-ish candidate (edited merchant, then
+     * parsed merchant, then payment hint) that is actually a substring of the notification text — a
+     * pattern that doesn't appear in the message could never match a future notification.
+     */
+    private fun learnPattern(draft: WizardDraft): String? {
+        val notification = _state.value.notification ?: return null
+        return listOfNotNull(
+            draft.merchant?.takeIf { it.isNotBlank() },
+            notification.parsed.merchantRaw?.takeIf { it.isNotBlank() },
+            notification.parsed.paymentHint?.takeIf { it.isNotBlank() },
+        ).map { it.trim() }
+            .firstOrNull { it.isNotBlank() && notification.text.contains(it, ignoreCase = true) }
     }
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
