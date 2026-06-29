@@ -62,16 +62,16 @@ class RetrofitCardRepository @Inject constructor(
             val (items, total) = run {
                 if (invoiceTx != null) {
                     val invoiceId = invoiceTx.id!!
-                    val itemDtos = invoiceItemApi.getItems(invoiceId)
-                    if (itemDtos.isNotEmpty()) {
-                        // Items have no own date field; the purchase date is embedded in the name.
-                        // Fall back to the invoice's date (not today) when the name carries none.
-                        val invoiceDate = RemoteMappers.parseDate(invoiceTx.datePaid)
-                            ?: RemoteMappers.parseDate(invoiceTx.dateDue)
-                            ?: LocalDate.now()
-                        val builtItems = itemDtos.map { it.toInvoiceItem(invoiceId, invoiceDate) }
-                        return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
-                    }
+                    // Items have no own date field; the purchase date is embedded in the name.
+                    // Fall back to the invoice's date (not today) when the name carries none.
+                    val invoiceDate = RemoteMappers.parseDate(invoiceTx.datePaid)
+                        ?: RemoteMappers.parseDate(invoiceTx.dateDue)
+                        ?: LocalDate.now()
+                    val builtItems = invoiceItemApi.getItems(invoiceId)
+                        .map { it.toInvoiceItem(invoiceId, invoiceDate) }
+                    // The invoice header is the source of truth for the total — honor its amount even
+                    // when it has no line items yet (a manual/projected fatura, e.g. a future month).
+                    return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
                 }
                 val fallback = fallbackItems(cardExpenses)
                 fallback to fallback.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount }
