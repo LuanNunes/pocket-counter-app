@@ -25,8 +25,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CheckCircle
@@ -73,6 +71,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
+import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
@@ -346,56 +345,6 @@ private fun TransacoesTopBar(
                 tint = PocketTheme.colors.accent.takeIf { searchOpen } ?: PocketTheme.colors.text2,
             )
         }
-    }
-}
-
-@Composable
-private fun MonthStepperRow(
-    label: String,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StepperButton(
-            icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-            contentDescription = "Mês anterior",
-            onClick = onPrev,
-        )
-        Text(
-            text = label.replaceFirstChar { it.uppercase() },
-            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text,
-        )
-        StepperButton(
-            icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = "Próximo mês",
-            onClick = onNext,
-        )
-    }
-}
-
-@Composable
-private fun StepperButton(icon: ImageVector, contentDescription: String?, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(36.dp)
-            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.icon)
-            .background(PocketTheme.colors.surface, PocketTheme.shapes.icon)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            modifier = Modifier.size(20.dp),
-            tint = PocketTheme.colors.text2,
-        )
     }
 }
 

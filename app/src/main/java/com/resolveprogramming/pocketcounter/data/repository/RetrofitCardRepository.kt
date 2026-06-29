@@ -43,9 +43,9 @@ class RetrofitCardRepository @Inject constructor(
         cardsCache.get { creditCards() }
     }
 
-    override suspend fun getOpenInvoices(): Result<List<OpenInvoice>> = runCatching {
+    override suspend fun getOpenInvoices(refYearMonth: Int): Result<List<OpenInvoice>> = runCatching {
         val cards = creditCards()
-        val ref = RemoteMappers.currentRefYearMonth()
+        val ref = refYearMonth
         val expenses = transactionApi.getExpenses(ref)
 
         // The fatura on screen is the data month's (ref) statement. Anchor its closing/due label

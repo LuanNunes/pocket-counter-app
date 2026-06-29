@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
@@ -101,21 +102,28 @@ class TransacoesViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val seriesRepository: SeriesRepository,
+    private val viewedMonth: ViewedMonthStore,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
     private val currencyFormat = NumberFormat.getCurrencyInstance(ptBr)
     private val _state = MutableStateFlow(
         TransacoesUiState(
-            monthKey = YearMonth.now().toString(),
-            monthLabel = monthLabel(YearMonth.now()),
+            monthKey = viewedMonth.month.value,
+            monthLabel = monthLabel(YearMonth.parse(viewedMonth.month.value)),
         ),
     )
     val state: StateFlow<TransacoesUiState> = _state.asStateFlow()
 
     init {
         loadLookups()
-        loadMonth()
+        // Follow the app-wide viewed month: reload whenever it changes (incl. the initial value).
+        viewModelScope.launch {
+            viewedMonth.month.collect { key ->
+                _state.update { it.copy(monthKey = key, monthLabel = monthLabel(YearMonth.parse(key))) }
+                loadMonth()
+            }
+        }
     }
 
     private fun loadLookups() {
@@ -156,13 +164,7 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun stepMonth(delta: Int) {
-        val next = YearMonth.parse(_state.value.monthKey).plusMonths(delta.toLong())
-        _state.update {
-            it.copy(monthKey = next.toString(), monthLabel = monthLabel(next))
-        }
-        loadMonth()
-    }
+    fun stepMonth(delta: Int) = viewedMonth.step(delta)
 
     fun setQuery(query: String) {
         _state.update { it.copy(query = query).recomputed() }

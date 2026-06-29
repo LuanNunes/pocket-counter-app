@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
@@ -131,6 +132,7 @@ class TransacoesViewModelTest {
         cardRepository = cardRepository,
         tagRepository = tagRepository,
         seriesRepository = seriesRepository,
+        viewedMonth = ViewedMonthStore(),
     )
 
     // -------------------------------------------------------------------------

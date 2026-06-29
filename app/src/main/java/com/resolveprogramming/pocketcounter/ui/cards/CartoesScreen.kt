@@ -58,6 +58,7 @@ import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
+import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketChip
@@ -79,13 +80,6 @@ fun CartoesScreen(
     viewModel: CartoesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-
-    if (state.isLoading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = PocketTheme.colors.accent)
-        }
-        return
-    }
 
     val formatter = NumberFormat.getCurrencyInstance(Locale("pt", "BR"))
     val toastState = remember { PocketToastState() }
@@ -113,17 +107,32 @@ fun CartoesScreen(
                 PocketTabBar(active = TabId.CARTOES, onNav = onNav)
             },
         ) { padding ->
-            CartoesCarousel(
-                invoices = state.invoices,
-                contexts = state.allContexts,
-                formatter = formatter,
-                onItemClick = { invoice, item ->
-                    classifyTarget = ClassifyTarget(invoice.card, item)
-                },
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-            )
+            ) {
+                MonthStepperRow(
+                    label = state.monthLabel,
+                    onPrev = { viewModel.stepMonth(-1) },
+                    onNext = { viewModel.stepMonth(1) },
+                )
+                if (state.isLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = PocketTheme.colors.accent)
+                    }
+                } else {
+                    CartoesCarousel(
+                        invoices = state.invoices,
+                        contexts = state.allContexts,
+                        formatter = formatter,
+                        onItemClick = { invoice, item ->
+                            classifyTarget = ClassifyTarget(invoice.card, item)
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
 
         PocketToastHost(state = toastState)

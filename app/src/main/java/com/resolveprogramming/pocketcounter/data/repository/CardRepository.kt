@@ -1,12 +1,15 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
+import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 
 interface CardRepository {
     suspend fun getCards(): Result<List<CreditCard>>
-    suspend fun getOpenInvoices(): Result<List<OpenInvoice>>
+
+    /** The statement (fatura) for [refYearMonth] per card; defaults to the current month. */
+    suspend fun getOpenInvoices(refYearMonth: Int = RemoteMappers.currentRefYearMonth()): Result<List<OpenInvoice>>
 
     /**
      * Persists [tags] onto the invoice line item (PUT items/{itemId}) and, when [learnRule]
