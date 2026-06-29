@@ -56,6 +56,7 @@ import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
@@ -114,6 +115,7 @@ fun CartoesScreen(
         ) { padding ->
             CartoesCarousel(
                 invoices = state.invoices,
+                contexts = state.allContexts,
                 formatter = formatter,
                 onItemClick = { invoice, item ->
                     classifyTarget = ClassifyTarget(invoice.card, item)
@@ -161,6 +163,7 @@ private data class ClassifyTarget(
 @Composable
 private fun CartoesCarousel(
     invoices: List<OpenInvoice>,
+    contexts: List<TagContext>,
     formatter: NumberFormat,
     onItemClick: (OpenInvoice, InvoiceItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -218,6 +221,7 @@ private fun CartoesCarousel(
             items(current.items, key = { it.itemId ?: it.transactionId }) { item ->
                 InvoiceItemRow(
                     item = item,
+                    contexts = contexts,
                     formatter = formatter,
                     onClick = { onItemClick(current, item) },
                 )
@@ -498,6 +502,7 @@ private fun FaturaCard(
 @Composable
 private fun InvoiceItemRow(
     item: InvoiceItem,
+    contexts: List<TagContext>,
     formatter: NumberFormat,
     onClick: () -> Unit,
 ) {
@@ -509,9 +514,16 @@ private fun InvoiceItemRow(
 
     val dayFormatter = DateTimeFormatter.ofPattern("dd MMM", Locale("pt", "BR"))
     val dateStr = item.date.format(dayFormatter).lowercase(Locale("pt", "BR"))
-    val firstTag = item.tags.firstOrNull()?.name
-    val tagLabel = firstTag ?: "classificar"
-    val tagColor = PocketTheme.colors.warn.takeIf { firstTag == null } ?: PocketTheme.colors.text3
+    val tag = item.tags.firstOrNull()
+    val tagLabel = tag?.name ?: "classificar"
+    // Tags rarely carry their own color; fall back to their context (category) color so the chip
+    // dot is colored like the design instead of grey, then to the accent token as a last resort.
+    val dotColor = run {
+        if (tag == null) return@run PocketTheme.colors.warn
+        val argb = tag.color ?: contexts.firstOrNull { it.id == tag.idContext }?.color
+        argb?.let { Color(it) } ?: PocketTheme.colors.accent
+    }
+    val labelColor = PocketTheme.colors.warn.takeIf { tag == null } ?: PocketTheme.colors.text2
 
     Row(
         modifier = Modifier
@@ -561,11 +573,29 @@ private fun InvoiceItemRow(
                     }
                 }
             }
-            Text(
-                text = "$dateStr · $tagLabel",
-                style = PocketTheme.typography.bodyXs,
-                color = tagColor,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = dateStr,
+                    style = PocketTheme.typography.bodyXs,
+                    color = PocketTheme.colors.text3,
+                )
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(PocketTheme.shapes.pill)
+                        .background(dotColor),
+                )
+                Text(
+                    text = tagLabel,
+                    style = PocketTheme.typography.bodyXs,
+                    color = labelColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
         Spacer(Modifier.width(8.dp))

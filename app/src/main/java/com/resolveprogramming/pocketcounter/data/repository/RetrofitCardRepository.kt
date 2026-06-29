@@ -48,6 +48,13 @@ class RetrofitCardRepository @Inject constructor(
         val ref = RemoteMappers.currentRefYearMonth()
         val expenses = transactionApi.getExpenses(ref)
 
+        // The fatura on screen is the data month's (ref) statement. Anchor its closing/due label
+        // to that month so the card reads the SAME month as the values shown. Using LocalDate.now()
+        // rolled the closing into the next month once today passed billDay (June data → "jul"
+        // vencimento). Anchoring to the first of the ref month keeps closesInDays and dueLabel
+        // consistent with each other and with the month being displayed.
+        val statementAnchor = LocalDate.of(ref / 100, ref % 100, 1)
+
         cards.map { card ->
             val cardExpenses = expenses.filter { it.cardId == card.id }
             val invoiceTx = cardExpenses.firstOrNull { it.isInvoice && it.id != null }
@@ -80,8 +87,8 @@ class RetrofitCardRepository @Inject constructor(
                 card = card,
                 total = total,
                 usage = usage,
-                closesInDays = BillingCycle.closesInDays(card.billDay),
-                dueLabel = BillingCycle.dueLabel(card.billDay),
+                closesInDays = BillingCycle.closesInDays(card.billDay, statementAnchor),
+                dueLabel = BillingCycle.dueLabel(card.billDay, statementAnchor),
                 items = items.sortedByDescending { it.date },
             )
         }

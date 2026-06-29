@@ -44,6 +44,16 @@ fun AmountText(
         return
     }
 
+    if (autoSize) {
+        AutoSizeText(
+            text = "$prefix$formatted",
+            style = style,
+            color = resolvedColor,
+            modifier = modifier,
+        )
+        return
+    }
+
     Text(
         text = text,
         style = style,

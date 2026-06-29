@@ -142,6 +142,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
+import com.resolveprogramming.pocketcounter.domain.billing.BillingCycle
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.Tag
@@ -157,6 +158,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class RetrofitCardRepositoryTest {
 
@@ -261,6 +265,9 @@ class RetrofitCardRepositoryTest {
         val supermarketItem = invoice.items.first { it.name == "Supermercado Extra" }
         assertEquals(BigDecimal("200.00"), supermarketItem.amount)
         assertEquals("t1", supermarketItem.tags.single().id)
+        // The item's category (idCategory → idContext) must survive the mapping so the UI can
+        // resolve the chip color and show the classification.
+        assertEquals("cat1", supermarketItem.tags.single().idContext)
         assertEquals("it-1", supermarketItem.itemId)
         assertEquals(invoiceId, supermarketItem.invoiceId)
 
@@ -271,6 +278,46 @@ class RetrofitCardRepositoryTest {
 
         // The non-isInvoice expense must NOT appear in invoice items
         assertTrue(invoice.items.none { it.name == "Café" })
+    }
+
+    @Test
+    fun `getOpenInvoices anchors the due label to the data month, not the next month`() = runTest {
+        val today = LocalDate.now()
+        // Force the off-by-one trigger: a billDay strictly before today's day-of-month is exactly
+        // what made the old closingDate roll into the NEXT month. The label must stay in the month
+        // whose values are shown (the data / ref month), so June data reads "jun", never "jul".
+        val billDay = (today.dayOfMonth - 1).coerceAtLeast(1)
+        val cardWithBillDay = cardDto.copy(closingDay = billDay)
+        val invoiceTx = TransactionDto(
+            id = invoiceId,
+            transactionType = "EXPENSE",
+            paymentMethod = "CREDIT",
+            cardId = cardId,
+            isInvoice = true,
+            amount = BigDecimal("100.00"),
+        )
+        val itemDto = TransactionItemDto(
+            id = "it-1",
+            idTransaction = invoiceId,
+            name = "Netflix",
+            amount = BigDecimal("100.00"),
+        )
+
+        coEvery { creditCardApi.getCards() } returns listOf(cardWithBillDay)
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoiceTx)
+        coEvery { invoiceItemApi.getItems(invoiceId) } returns listOf(itemDto)
+
+        val invoice = repo.getOpenInvoices().getOrThrow().single()
+
+        val monthAbbrev = today.withDayOfMonth(1)
+            .format(DateTimeFormatter.ofPattern("MMM", Locale("pt", "BR")))
+            .lowercase(Locale("pt", "BR"))
+            .trimEnd('.')
+        assertTrue(
+            "dueLabel '${invoice.dueLabel}' must stay in the data month ($monthAbbrev)",
+            invoice.dueLabel.endsWith(monthAbbrev),
+        )
+        assertEquals(BillingCycle.dueLabel(billDay, today.withDayOfMonth(1)), invoice.dueLabel)
     }
 
     @Test
