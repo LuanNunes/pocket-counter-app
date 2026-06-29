@@ -36,6 +36,13 @@ fun AmountText(
         if (showSign && amount > BigDecimal.ZERO) return@run "+  "
         ""
     }
+    val text = "$prefix$formatted"
+
+    // Shrink-to-fit headline so large amounts never clip; delegates to the shared primitive.
+    if (autoSize) {
+        AutoSizeText(text = text, style = style, color = resolvedColor, modifier = modifier)
+        return
+    }
 
     if (autoSize) {
         AutoSizeText(
@@ -48,7 +55,7 @@ fun AmountText(
     }
 
     Text(
-        text = "$prefix$formatted",
+        text = text,
         style = style,
         color = resolvedColor,
         maxLines = maxLines,

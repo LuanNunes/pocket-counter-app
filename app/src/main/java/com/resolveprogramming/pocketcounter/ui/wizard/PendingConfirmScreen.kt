@@ -1,7 +1,10 @@
 package com.resolveprogramming.pocketcounter.ui.wizard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -117,6 +120,47 @@ fun PendingConfirmedScreen(
             isPrimary = true,
             onClick = onBackToApp,
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+fun WizardButton(
+    text: String,
+    isPrimary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val bg = run {
+        if (!enabled) return@run PocketTheme.colors.accent.copy(alpha = 0.4f)
+        if (isPrimary) return@run PocketTheme.colors.accent
+        PocketTheme.colors.surface
+    }
+    val textColor = PocketTheme.colors.accentInk.takeIf { isPrimary } ?: PocketTheme.colors.text
+    // The non-primary button reads as a soft surface tile with a line border.
+    val surfaceMod = run {
+        if (!isPrimary) {
+            return@run Modifier
+                .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
+                .background(bg, PocketTheme.shapes.chip)
+        }
+        Modifier.background(bg, PocketTheme.shapes.chip)
+    }
+
+    Box(
+        modifier = modifier
+            .then(surfaceMod)
+            .then(
+                Modifier.clickable(onClick = onClick).takeIf { enabled } ?: Modifier
+            )
+            .padding(vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = PocketTheme.typography.button,
+            color = textColor,
         )
     }
 }

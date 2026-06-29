@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,7 +73,9 @@ fun HomeContent(
     FlashEffect(state.flashId, state.flashNonce, reducedMotion, viewModel::consumeFlash)
 
     // init already loads; only refresh on subsequent resumes (e.g. returning from the wizard).
-    val isFirstResume = remember { mutableStateOf(true) }
+    // rememberSaveable so the flag survives this destination being disposed during navigation —
+    // a plain remember resets to true on return and would suppress the post-wizard refresh.
+    val isFirstResume = rememberSaveable { mutableStateOf(true) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         if (isFirstResume.value) {
             isFirstResume.value = false

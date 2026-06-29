@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
+import com.resolveprogramming.pocketcounter.data.cache.SuspendCache
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
@@ -36,8 +37,10 @@ class RetrofitCardRepository @Inject constructor(
     private val invoiceItemApi: InvoiceItemApi,
 ) : CardRepository {
 
+    private val cardsCache = SuspendCache<List<CreditCard>>()
+
     override suspend fun getCards(): Result<List<CreditCard>> = runCatching {
-        creditCards()
+        cardsCache.get { creditCards() }
     }
 
     override suspend fun getOpenInvoices(): Result<List<OpenInvoice>> = runCatching {
@@ -61,7 +64,12 @@ class RetrofitCardRepository @Inject constructor(
                     val invoiceId = invoiceTx.id!!
                     val itemDtos = invoiceItemApi.getItems(invoiceId)
                     if (itemDtos.isNotEmpty()) {
-                        val builtItems = itemDtos.map { it.toInvoiceItem(invoiceId) }
+                        // Items have no own date field; the purchase date is embedded in the name.
+                        // Fall back to the invoice's date (not today) when the name carries none.
+                        val invoiceDate = RemoteMappers.parseDate(invoiceTx.datePaid)
+                            ?: RemoteMappers.parseDate(invoiceTx.dateDue)
+                            ?: LocalDate.now()
+                        val builtItems = itemDtos.map { it.toInvoiceItem(invoiceId, invoiceDate) }
                         return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
                     }
                 }
@@ -119,8 +127,12 @@ class RetrofitCardRepository @Inject constructor(
         }
 
         val ruleCreated = runCatching {
+            // Key on the merchant, not the date-stamped item name — a pattern like
+            // "<merchant> · 2026-05-28" would never CONTAINS-match a future purchase.
+            val (cleanName, _) = splitTrailingDate(existing.name)
+            val pattern = cleanName.takeIf { it.isNotBlank() } ?: existing.name
             val dto = ClassificationRuleDto(
-                patterns = listOf(existing.name),
+                patterns = listOf(pattern),
                 matchType = "CONTAINS",
                 transactionType = "EXPENSE",
                 paymentMethod = "CREDIT",
@@ -145,18 +157,34 @@ class RetrofitCardRepository @Inject constructor(
         val created = creditCardApi.getCards().firstOrNull { it.id == id }
             ?: CreditCardDto(id = id, name = name, brand = brand, closingDay = closingDay, color = color)
         created.toCreditCard()
+    }.onSuccess { cardsCache.invalidate() }
+
+    private fun TransactionItemDto.toInvoiceItem(invoiceId: String, fallbackDate: LocalDate): InvoiceItem {
+        val (cleanName, parsedDate) = splitTrailingDate(name)
+        return InvoiceItem(
+            transactionId = invoiceId,
+            invoiceId = invoiceId,
+            itemId = id,
+            name = cleanName.takeIf { it.isNotBlank() } ?: "Compra",
+            date = parsedDate ?: fallbackDate,
+            amount = amount.abs(),
+            tags = tags.orEmpty().map { it.toDomain() },
+            installmentLabel = null,
+        )
     }
 
-    private fun TransactionItemDto.toInvoiceItem(invoiceId: String): InvoiceItem = InvoiceItem(
-        transactionId = invoiceId,
-        invoiceId = invoiceId,
-        itemId = id,
-        name = name.takeIf { it.isNotBlank() } ?: "Compra",
-        date = LocalDate.now(),
-        amount = amount.abs(),
-        tags = tags.orEmpty().map { it.toDomain() },
-        installmentLabel = null,
-    )
+    /**
+     * Invoice item names arrive as "<merchant> · YYYY-MM-DD" — the only place the per-item purchase
+     * date is carried (the DTO has no date field). Splits the trailing ISO date off so the date
+     * shows on the date line, not appended to the merchant name. Returns the name unchanged + null
+     * when no trailing date is present.
+     */
+    private fun splitTrailingDate(raw: String): Pair<String, LocalDate?> {
+        val match = TRAILING_ISO_DATE.find(raw) ?: return raw to null
+        val date = runCatching { LocalDate.parse(match.groupValues[1]) }.getOrNull() ?: return raw to null
+        val name = raw.removeRange(match.range).trim().trimEnd('·', '-', ' ').trim()
+        return name to date
+    }
 
     private fun fallbackItems(cardExpenses: List<TransactionDto>): List<InvoiceItem> =
         cardExpenses
@@ -195,5 +223,10 @@ class RetrofitCardRepository @Inject constructor(
             limit = BigDecimal.ZERO,
             billDay = closingDay ?: 1,
         )
+    }
+
+    private companion object {
+        // Trailing " · 2026-05-28" (separator optional) at the end of an invoice item name.
+        val TRAILING_ISO_DATE = Regex("""[\s·-]*(\d{4}-\d{2}-\d{2})\s*$""")
     }
 }

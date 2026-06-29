@@ -1,7 +1,9 @@
 package com.resolveprogramming.pocketcounter
 
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.service.notification.NotificationListenerService
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -16,6 +18,8 @@ import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.domain.model.CapturedMessage
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.navigation.PocketNavHost
+import com.resolveprogramming.pocketcounter.platform.capture.CapturePermissions
+import com.resolveprogramming.pocketcounter.platform.capture.PocketNotificationListenerService
 import com.resolveprogramming.pocketcounter.ui.theme.LocalPocketThemeController
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.theme.rememberPocketThemeController
@@ -44,6 +48,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        rebindNotificationListenerIfGranted()
         // Only on a fresh launch — a recreation (rotation / process restore) keeps the launch
         // intent, and re-handling it would double-ingest the forwarded message.
         if (savedInstanceState == null) handleSharedText(intent)
@@ -61,6 +66,18 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * The system unbinds a NotificationListenerService whenever the app is updated/reinstalled,
+     * so capture goes silently dead even though Notification Access still reads as granted. Asking
+     * for a rebind on launch re-establishes it without the user toggling the setting off/on.
+     */
+    private fun rebindNotificationListenerIfGranted() {
+        if (!CapturePermissions.isNotificationAccessGranted(this)) return
+        NotificationListenerService.requestRebind(
+            ComponentName(this, PocketNotificationListenerService::class.java),
+        )
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -15,13 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.Token
-import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -29,7 +30,8 @@ import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 fun SourceTextCard(
     notification: NotificationItem,
     tokens: List<Token>,
-    selectedTokenIndex: Int?,
+    selectionStart: Int?,
+    selectionEnd: Int?,
     onTokenTap: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -64,62 +66,51 @@ fun SourceTextCard(
 
         Spacer(Modifier.height(10.dp))
 
+        val palette = TokenPalette(
+            accent = PocketTheme.colors.accent,
+            accentBg = PocketTheme.colors.accentBg,
+            text2 = PocketTheme.colors.text2,
+            text3 = PocketTheme.colors.text3,
+            expense = PocketTheme.colors.expense,
+            income = PocketTheme.colors.income,
+            warn = PocketTheme.colors.warn,
+            accent2 = PocketTheme.colors.accent2,
+            defaultShape = PocketTheme.shapes.icon,
+        )
+        val selection = if (selectionStart != null && selectionEnd != null) {
+            selectionStart..selectionEnd
+        } else {
+            null
+        }
+
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             tokens.forEachIndexed { index, token ->
-                val bg = tokenBackground(token.role)
-                val textColor = tokenTextColor(token.role)
-                val isSelected = selectedTokenIndex == index
-                val borderMod = run {
-                    if (isSelected) {
-                        return@run Modifier.border(2.dp, PocketTheme.colors.accent, PocketTheme.shapes.icon)
-                    }
-                    if (token.role != null) {
-                        return@run Modifier.border(1.dp, bg.copy(alpha = 0.5f), PocketTheme.shapes.icon)
-                    }
-                    Modifier
-                }
+                val visual = tokenVisual(index, tokens, selection, palette)
 
                 Text(
                     text = token.text,
                     style = PocketTheme.typography.monoSm.copy(
-                        fontWeight = FontWeight.Medium.takeIf { token.role != null } ?: FontWeight.Normal,
+                        fontWeight = if (visual.emphasized) FontWeight.Medium else FontWeight.Normal,
                     ),
-                    color = textColor,
+                    color = visual.textColor,
                     modifier = Modifier
-                        .then(borderMod)
-                        .background(
-                            bg.copy(alpha = 0.15f).takeIf { token.role != null } ?: Color.Transparent,
-                            PocketTheme.shapes.icon,
+                        .then(
+                            visual.border
+                                ?.let { Modifier.border(it.width, it.color, visual.shape) }
+                                ?: Modifier,
                         )
+                        .background(visual.fillColor, visual.shape)
                         .clickable { onTokenTap(index) }
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                        .padding(horizontal = 5.dp, vertical = 5.dp)
+                        .semantics {
+                            contentDescription = token.text
+                            if (visual.stateDesc.isNotEmpty()) stateDescription = visual.stateDesc
+                        },
                 )
             }
         }
     }
-}
-
-@Composable
-private fun tokenBackground(role: TokenRole?): Color = when (role) {
-    TokenRole.TYPE -> PocketTheme.colors.expense
-    TokenRole.AMOUNT -> PocketTheme.colors.income
-    TokenRole.PAYMENT -> PocketTheme.colors.accent
-    TokenRole.MERCHANT -> PocketTheme.colors.warn
-    TokenRole.DATE -> PocketTheme.colors.text3
-    TokenRole.INSTALLMENTS -> PocketTheme.colors.accent2
-    null -> Color.Transparent
-}
-
-@Composable
-private fun tokenTextColor(role: TokenRole?): Color = when (role) {
-    TokenRole.TYPE -> PocketTheme.colors.expense
-    TokenRole.AMOUNT -> PocketTheme.colors.income
-    TokenRole.PAYMENT -> PocketTheme.colors.accent
-    TokenRole.MERCHANT -> PocketTheme.colors.warn
-    TokenRole.DATE -> PocketTheme.colors.text3
-    TokenRole.INSTALLMENTS -> PocketTheme.colors.accent2
-    null -> PocketTheme.colors.text2
 }

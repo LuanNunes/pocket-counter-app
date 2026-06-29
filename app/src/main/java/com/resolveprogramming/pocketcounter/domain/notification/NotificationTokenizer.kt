@@ -11,9 +11,9 @@ import java.math.BigDecimal
  */
 object NotificationTokenizer {
 
-    /** Normalizes a BR-formatted currency token ("R$ 1.234,56") to a [BigDecimal]. */
+    /** Normalizes a BR-formatted currency token ("R$ 1.234,56", "RS 30,96", "BRL 123,45") to a [BigDecimal]. */
     fun parseBrAmount(text: String): BigDecimal? =
-        text.replace("R$", "")
+        text.replace(Regex("R\\$|RS|BRL"), "")
             .replace(".", "")
             .replace(",", ".")
             .trim()

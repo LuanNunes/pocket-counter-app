@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
+import com.resolveprogramming.pocketcounter.data.cache.SuspendCache
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
 import com.resolveprogramming.pocketcounter.data.remote.api.CategoryApi
@@ -17,13 +18,16 @@ class RetrofitTagRepository @Inject constructor(
     private val categoryApi: CategoryApi,
 ) : TagRepository {
 
+    private val tagsCache = SuspendCache<List<Tag>>()
+    private val contextsCache = SuspendCache<List<TagContext>>()
+
     override suspend fun getAllContexts(): Result<List<TagContext>> = runCatching {
-        categoryApi.getCategories().map { it.toDomain() }
+        contextsCache.get { categoryApi.getCategories().map { it.toDomain() } }
     }
 
     /** GET /tags carries kind/idCategory/color per tag, so a single fetch is enough. */
     override suspend fun getAllTags(): Result<List<Tag>> = runCatching {
-        tagApi.getTags().map { it.toDomain() }
+        tagsCache.get { tagApi.getTags().map { it.toDomain() } }
     }
 
     override suspend fun createTag(input: TagInput): Result<Tag> = runCatching {
@@ -36,7 +40,7 @@ class RetrofitTagRepository @Inject constructor(
             ),
         ).trim('"')
         Tag(id = id, name = input.name, kind = input.kind, idContext = input.idContext, color = input.color)
-    }
+    }.onSuccess { invalidateLookups() }
 
     override suspend fun updateTag(id: String, input: TagInput): Result<Tag> = runCatching {
         tagApi.update(
@@ -50,26 +54,32 @@ class RetrofitTagRepository @Inject constructor(
             ),
         )
         Tag(id = id, name = input.name, kind = input.kind, idContext = input.idContext, color = input.color)
-    }
+    }.onSuccess { invalidateLookups() }
 
     override suspend fun deleteTag(id: String): Result<Unit> = runCatching {
         tagApi.delete(id)
-    }
+    }.onSuccess { invalidateLookups() }
 
     override suspend fun createContext(input: ContextInput): Result<TagContext> = runCatching {
         val id = categoryApi.addCategory(
             CategoryDto(name = input.name, color = RemoteMappers.colorToHex(input.color)),
         ).trim('"')
         TagContext(id = id, name = input.name, color = input.color)
-    }
+    }.onSuccess { invalidateLookups() }
 
     override suspend fun updateContext(id: String, input: ContextInput): Result<TagContext> = runCatching {
         // displayOrder omitted (null) so the backend preserves order — reorder is a later milestone.
         categoryApi.update(id, CategoryDto(id = id, name = input.name, color = RemoteMappers.colorToHex(input.color)))
         TagContext(id = id, name = input.name, color = input.color)
-    }
+    }.onSuccess { invalidateLookups() }
 
     override suspend fun deleteContext(id: String): Result<Unit> = runCatching {
         categoryApi.delete(id)
+    }.onSuccess { invalidateLookups() }
+
+    /** A context delete can cascade to its tags on the backend, so both caches drop together. */
+    private fun invalidateLookups() {
+        tagsCache.invalidate()
+        contextsCache.invalidate()
     }
 }

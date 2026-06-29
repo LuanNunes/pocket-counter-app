@@ -64,6 +64,9 @@ data class WizardDraft(
                 // isFixo is a user toggle ("Repete todo mês"); the classify suggestion
                 // doesn't carry it, so a fresh draft always starts non-fixo.
                 tagIds = notification.suggestions.tagIds,
+                // Seed the persisted title (name) and the series/hint fallback (merchant) from the
+                // parsed merchant so the wizard's "Descrição" field opens pre-filled and editable.
+                name = notification.parsed.merchantRaw,
                 merchant = notification.parsed.merchantRaw,
                 installments = notification.parsed.installments,
                 installmentValue = notification.parsed.installmentValue,

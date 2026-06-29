@@ -359,6 +359,60 @@ class WizardDraftTest {
     }
 
     @Test
+    fun `fromNotification seeds name from merchantRaw`() {
+        val notification = NotificationItem(
+            id = "n3",
+            app = "Nubank",
+            channel = NotificationChannel.SMS,
+            time = "agora",
+            received = "10:00",
+            text = "Pagamento",
+            status = NotificationStatus.NEEDS_REVIEW,
+            parsed = ParsedNotification(
+                type = TransactionType.EXPENSE,
+                amount = BigDecimal("99.00"),
+                date = LocalDate.of(2026, 6, 25),
+                merchantRaw = "PADARIA DO ZE",
+                paymentHint = null,
+            ),
+            suggestions = ClassificationSuggestion(emptyList()),
+            tokens = emptyList(),
+        )
+
+        val draft = WizardDraft.fromNotification(notification)
+
+        assertEquals("PADARIA DO ZE", draft.name)
+        assertEquals("PADARIA DO ZE", draft.merchant)
+    }
+
+    @Test
+    fun `fromNotification seeds null name when merchantRaw is null`() {
+        val notification = NotificationItem(
+            id = "n4",
+            app = "App",
+            channel = NotificationChannel.SMS,
+            time = "agora",
+            received = "10:00",
+            text = "text",
+            status = NotificationStatus.NEEDS_REVIEW,
+            parsed = ParsedNotification(
+                type = null,
+                amount = null,
+                date = null,
+                merchantRaw = null,
+                paymentHint = null,
+            ),
+            suggestions = ClassificationSuggestion(emptyList()),
+            tokens = emptyList(),
+        )
+
+        val draft = WizardDraft.fromNotification(notification)
+
+        assertNull(draft.name)
+        assertNull(draft.merchant)
+    }
+
+    @Test
     fun `fromNotification drops CREDIT and cardId when type is INCOME`() {
         // A misfired classifier suggesting credit on an income must NOT produce a
         // credit draft — fromNotification routes the suggestion through the guard.

@@ -249,4 +249,47 @@ class RetrofitSeriesRepositoryTest {
 
         assertTrue(result.isFailure)
     }
+
+    // -------------------------------------------------------------------------
+    // getAll caching
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `getAll caches the series list so a second read hits the api once`() = runTest {
+        coEvery { api.getAll() } returns emptyList()
+
+        repo.getAll()
+        repo.getAll()
+
+        coVerify(exactly = 1) { api.getAll() }
+    }
+
+    @Test
+    fun `create invalidates the series cache so the next read refetches`() = runTest {
+        coEvery { api.getAll() } returns emptyList()
+        coEvery { api.create(any()) } returns RecurringSeriesDto(
+            id = "s-1",
+            name = "Aluguel",
+            transactionType = "EXPENSE",
+            recurrenceDay = null,
+        )
+
+        repo.getAll()
+        repo.create(name = "Aluguel", type = TransactionType.EXPENSE, recurrenceDay = null)
+        repo.getAll()
+
+        coVerify(exactly = 2) { api.getAll() }
+    }
+
+    @Test
+    fun `getAll does not cache a failed read so the next call retries the api`() = runTest {
+        coEvery { api.getAll() } throws RuntimeException("boom") andThen emptyList()
+
+        val first = repo.getAll()
+        val second = repo.getAll()
+
+        assertTrue(first.isFailure)
+        assertTrue(second.isSuccess)
+        coVerify(exactly = 2) { api.getAll() }
+    }
 }

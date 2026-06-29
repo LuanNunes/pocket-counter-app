@@ -3,6 +3,11 @@ package com.resolveprogramming.pocketcounter.domain.model
 import java.math.BigDecimal
 import java.time.YearMonth
 
+/** Catch-all bucket ids for un-tagged expenses / income. Always ranked last in report listings. */
+const val UNCATEGORIZED_CONTEXT_ID = "sem-contexto"
+const val UNCATEGORIZED_INCOME_ID = "sem-categoria"
+val UNCATEGORIZED_GROUP_IDS = setOf(UNCATEGORIZED_CONTEXT_ID, UNCATEGORIZED_INCOME_ID)
+
 enum class ReportPeriod { MES, TRIMESTRE, ANO }
 
 enum class ReportChartType { BARS, AREA, LINES, PIE }
@@ -88,5 +93,5 @@ fun seriesFrom(
             null
         }
         ReportSeries(id, nameColor.first, nameColor.second, vals, total, delta)
-    }.sortedByDescending { it.total }
+    }.sortedWith(compareBy<ReportSeries> { it.id in UNCATEGORIZED_GROUP_IDS }.thenByDescending { it.total })
 }
