@@ -52,8 +52,8 @@ import java.time.LocalDate
  *   fun setLedgerFilter(filter: LedgerFilter)
  *   fun toggleFixo(item: HistoryItem)
  *
- * Displayed list asserted against: state.dayGroups
- *   (default LISTA GroupMode; items are flattened from DayGroup.items across all day buckets)
+ * Displayed list asserted against: state.listItems
+ *   (default LISTA GroupMode; a flat list in the backend's order — no day grouping)
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TransacoesViewModelTest {
@@ -137,9 +137,9 @@ class TransacoesViewModelTest {
     // Helpers
     // -------------------------------------------------------------------------
 
-    /** Flattens all DayGroup.items into a single list. */
+    /** The flat displayed list (LISTA mode). */
     private fun flatDisplayedItems(state: TransacoesUiState): List<HistoryItem> =
-        state.dayGroups.flatMap { it.items }
+        state.listItems
 
     // -------------------------------------------------------------------------
     // setLedgerFilter: FIXOS shows only series-linked rows; TODOS shows all
@@ -492,7 +492,7 @@ class TransacoesViewModelTest {
     }
 
     @Test
-    fun `dayGroups preserve the backend order and never re-sort`() = runTest {
+    fun `the list preserves the backend order and never re-sorts`() = runTest {
         // Same day, distinct displayOrder. The backend already returns rows in displayOrder order; the
         // client must render that order verbatim — here [C, A, B] — not re-sort by date/amount/id.
         val itemA = HistoryItem(
@@ -561,7 +561,7 @@ class TransacoesViewModelTest {
     }
 
     @Test
-    fun `optimistic status toggle preserves backend order and day grouping`() = runTest {
+    fun `optimistic status toggle preserves backend order and the flat list`() = runTest {
         val ordA = HistoryItem(
             id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
             type = TransactionType.EXPENSE, tagIds = null,
@@ -591,8 +591,7 @@ class TransacoesViewModelTest {
         // Inspect the optimistic state before the backend confirm/reload runs.
         val afterItems = flatDisplayedItems(vm.state.value)
         assertEquals(beforeIds, afterItems.map { it.id })
-        assertEquals(1, vm.state.value.dayGroups.size)
-        assertEquals(3, vm.state.value.dayGroups.first().items.size)
+        assertEquals(3, vm.state.value.listItems.size)
         assertEquals(PaymentStatus.PAID, afterItems.first { it.id == "ord-b" }.statusPayment)
     }
 
@@ -653,7 +652,7 @@ class TransacoesViewModelTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `setTypeFilter INCOME shows only INCOME rows in dayGroups`() = runTest {
+    fun `setTypeFilter INCOME shows only INCOME rows in the list`() = runTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 

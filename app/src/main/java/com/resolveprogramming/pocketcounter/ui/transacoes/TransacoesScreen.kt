@@ -43,7 +43,9 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -61,7 +63,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
-import com.resolveprogramming.pocketcounter.domain.model.DayGroup
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
@@ -83,6 +84,9 @@ import com.resolveprogramming.pocketcounter.ui.components.SquareIconButton
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.theme.pocketCardShadow
 import com.resolveprogramming.pocketcounter.ui.wizard.label
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 
 @Composable
 fun TransacoesContent(
@@ -100,6 +104,7 @@ fun TransacoesContent(
     }
 
     val isIncome = state.typeFilter == TransactionType.INCOME
+    var confirmCopyData by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -138,7 +143,7 @@ fun TransacoesContent(
                             ?: LedgerFilter.FIXOS
                         viewModel.setLedgerFilter(next)
                     },
-                    onGenerateBalance = viewModel::generateBalance,
+                    onGenerateBalance = { confirmCopyData = true },
                 )
 
                 if (state.searchOpen) {
@@ -146,7 +151,7 @@ fun TransacoesContent(
                 }
 
                 val isLista = state.groupMode == GroupMode.LISTA
-                val emptyForMode = state.dayGroups.isEmpty().takeIf { isLista }
+                val emptyForMode = state.listItems.isEmpty().takeIf { isLista }
                     ?: state.ledgerGroups.isEmpty()
                 val onToggleStatus: (HistoryItem) -> Unit = { item ->
                     if (item.statusPayment == PaymentStatus.PAID) viewModel.markPending(item.id)
@@ -166,7 +171,7 @@ fun TransacoesContent(
                     )
 
                     isLista -> LedgerCardList(
-                        groups = state.dayGroups,
+                        rows = state.listItems,
                         meta = { txMeta(it, state.cards, state.tags, state.contexts) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
@@ -240,6 +245,35 @@ fun TransacoesContent(
             },
             dismissButton = {
                 TextButton(onClick = viewModel::cancelDelete) {
+                    Text("Cancelar", color = PocketTheme.colors.text2)
+                }
+            },
+            containerColor = PocketTheme.colors.surface,
+        )
+    }
+
+    if (confirmCopyData) {
+        AlertDialog(
+            onDismissRequest = { confirmCopyData = false },
+            title = { Text("Copiar dados?", color = PocketTheme.colors.text) },
+            text = {
+                Text(
+                    "As contas fixas do mês anterior serão copiadas para este mês.",
+                    color = PocketTheme.colors.text2,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmCopyData = false
+                        viewModel.generateBalance()
+                    },
+                ) {
+                    Text("Copiar", color = PocketTheme.colors.accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmCopyData = false }) {
                     Text("Cancelar", color = PocketTheme.colors.text2)
                 }
             },
@@ -499,7 +533,7 @@ private fun SummaryLine(
             )
         }
         PocketButton(
-            text = "Gerar saldo",
+            text = "Copiar Dados",
             onClick = onGenerateBalance,
             variant = PocketButtonVariant.SOFT,
             size = PocketButtonSize.SMALL,
@@ -553,7 +587,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 
 @Composable
 private fun LedgerCardList(
-    groups: List<DayGroup>,
+    rows: List<HistoryItem>,
     meta: (HistoryItem) -> TxMeta,
     onRowClick: (HistoryItem) -> Unit,
     onToggleStatus: (HistoryItem) -> Unit,
@@ -564,24 +598,15 @@ private fun LedgerCardList(
             .fillMaxSize()
             .padding(horizontal = 20.dp),
     ) {
-        groups.forEach { group ->
-            item(key = "h_${group.date}") {
-                Text(
-                    text = group.label.uppercase(),
-                    style = PocketTheme.typography.sectionHeader,
-                    color = PocketTheme.colors.text3,
-                    modifier = Modifier.padding(top = 14.dp, bottom = 8.dp),
-                )
-            }
-            items(group.items, key = { it.id }) { item ->
-                TxCard(
-                    item = item,
-                    meta = meta(item),
-                    onClick = { onRowClick(item) },
-                    onToggleStatus = { onToggleStatus(item) },
-                    onTogglePin = { onTogglePin(item) },
-                )
-            }
+        item { Spacer(Modifier.size(8.dp)) }
+        items(rows, key = { it.id }) { item ->
+            TxCard(
+                item = item,
+                meta = meta(item),
+                onClick = { onRowClick(item) },
+                onToggleStatus = { onToggleStatus(item) },
+                onTogglePin = { onTogglePin(item) },
+            )
         }
         item { Spacer(Modifier.size(80.dp)) }
     }
@@ -652,8 +677,9 @@ private fun CategoryHeader(group: LedgerGroup) {
     }
 }
 
-/** Resolved secondary-line data for a row: leading tag chip, +N badge, and a payment label. */
+/** Resolved secondary-line data for a row: its date, leading tag chip, +N badge, and a payment label. */
 private data class TxMeta(
+    val date: String,
     val tagName: String?,
     val tagColor: Long?,
     val extraTags: Int,
@@ -677,11 +703,23 @@ private fun txMeta(
     // chip dot is colored like the design instead of grey.
     val tagColor = first?.color ?: contexts.firstOrNull { it.id == first?.idContext }?.color
     return TxMeta(
+        date = formatTxDate(item.date),
         tagName = first?.name,
         tagColor = tagColor,
         extraTags = (tagIds.size - 1).coerceAtLeast(0),
         payment = payment,
     )
+}
+
+private val txDateLocale = Locale("pt", "BR")
+
+/** Short row date: "Hoje" / "Ontem" / "04 jun". */
+private fun formatTxDate(date: LocalDate): String {
+    val today = LocalDate.now()
+    if (date == today) return "Hoje"
+    if (date == today.minusDays(1)) return "Ontem"
+    val month = date.month.getDisplayName(TextStyle.SHORT, txDateLocale).trimEnd('.').lowercase(txDateLocale)
+    return "%02d %s".format(date.dayOfMonth, month)
 }
 
 private val TX_CARD_SHAPE = RoundedCornerShape(16.dp)
@@ -804,27 +842,25 @@ private fun TxMetaRow(meta: TxMeta) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
-        if (meta.tagName == null) {
-            if (meta.payment.isNotBlank()) {
+        Text(
+            text = meta.date,
+            style = PocketTheme.typography.bodyXs,
+            color = PocketTheme.colors.text3,
+            maxLines = 1,
+        )
+        meta.tagName?.let { tag ->
+            Text(text = "·", style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.text3)
+            TagChip(name = tag, color = meta.tagColor)
+            if (meta.extraTags > 0) {
                 Text(
-                    text = meta.payment,
-                    style = PocketTheme.typography.bodyXs,
+                    text = "+${meta.extraTags}",
+                    style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
                     color = PocketTheme.colors.text3,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            return@Row
-        }
-        TagChip(name = meta.tagName, color = meta.tagColor)
-        if (meta.extraTags > 0) {
-            Text(
-                text = "+${meta.extraTags}",
-                style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
-                color = PocketTheme.colors.text3,
-            )
         }
         if (meta.payment.isNotBlank()) {
+            Text(text = "·", style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.text3)
             Text(
                 text = meta.payment,
                 style = PocketTheme.typography.bodyXs,

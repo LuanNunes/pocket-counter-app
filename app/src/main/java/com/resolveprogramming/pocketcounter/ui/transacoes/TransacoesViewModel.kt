@@ -7,7 +7,6 @@ import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
-import com.resolveprogramming.pocketcounter.domain.model.DayGroup
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
@@ -29,7 +28,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
-import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -71,7 +69,7 @@ data class TransacoesUiState(
     val monthKey: String,
     val monthLabel: String = "",
     val items: List<HistoryItem> = emptyList(),
-    val dayGroups: List<DayGroup> = emptyList(),
+    val listItems: List<HistoryItem> = emptyList(),
     val groupMode: GroupMode = GroupMode.LISTA,
     val ledgerGroups: List<LedgerGroup> = emptyList(),
     val collapsedGroupIds: Set<String> = emptySet(),
@@ -385,27 +383,23 @@ class TransacoesViewModel @Inject constructor(
      *  - [expenseCount]/[incomeCount] are full-month counts (stable label values).
      *  - [fixoCount] counts fixos within the active type (used for fixo-toggle label).
      *  - [typeTotal]/[typeCount] reflect the visible rows after all filters.
-     *  - [dayGroups] and [ledgerGroups] show only the visible rows.
+     *  - [listItems] and [ledgerGroups] show only the visible rows.
      *  - [totals] is never touched here — it is full-month and set by loadMonth().
      */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
         val byType = items.filter { it.type == typeFilter }
         val searched = filterItems(byType, query, tags)
         val filtered = searched.filter { it.isFixo }.takeIf { ledgerFilter == LedgerFilter.FIXOS } ?: searched
-        // Keep the backend's order (displayOrder) — same as the web client. Day buckets follow the order
-        // in which each date first appears (groupBy preserves encounter order), not a date sort, so a
-        // manual reorder is honored instead of being overridden by date.
+        // Keep the backend's order (displayOrder) — same as the web client. The LISTA view is a flat
+        // list in this order (each row shows its own date); only CONTEXTO/TAG bucket the rows.
         val canonical = filtered
-        val days = canonical
-            .groupBy { it.date }
-            .map { (date, dayItems) -> DayGroup(date = date, label = dayLabel(date), items = dayItems) }
         val ledger = run {
             if (groupMode == GroupMode.LISTA) return@run emptyList()
             groupLedger(canonical, groupMode, tags, contexts, CuratedPalette.argb)
         }
         val total = canonical.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount.abs() }
         return copy(
-            dayGroups = days,
+            listItems = canonical,
             ledgerGroups = ledger,
             fixoCount = byType.count { it.isFixo },
             expenseCount = items.count { it.type == TransactionType.EXPENSE },
@@ -432,16 +426,6 @@ class TransacoesViewModel @Inject constructor(
             title.contains(q) ||
                 shown.contains(q) || raw.contains(q) ||
                 tagNames.any { it.contains(q) }
-        }
-    }
-
-    private fun dayLabel(date: LocalDate): String {
-        val today = LocalDate.now()
-        return run {
-            if (date == today) return@run "Hoje"
-            if (date == today.minusDays(1)) return@run "Ontem"
-            val month = date.month.getDisplayName(TextStyle.SHORT, ptBr).trimEnd('.').lowercase(ptBr)
-            "%02d %s".format(date.dayOfMonth, month)
         }
     }
 
