@@ -1,5 +1,8 @@
 package com.resolveprogramming.pocketcounter.domain.model
 
+/** What a matched rule does: SUGGEST pre-fills type/payment/tags; IGNORE auto-ignores the notification. */
+enum class RuleAction { SUGGEST, IGNORE }
+
 data class ClassificationRule(
     val id: String?,
     val patterns: List<String>,
@@ -10,4 +13,5 @@ data class ClassificationRule(
     val paymentMethod: PaymentMethod?,
     val cardId: String?,
     val tags: List<Tag>,
+    val action: RuleAction = RuleAction.SUGGEST,
 )

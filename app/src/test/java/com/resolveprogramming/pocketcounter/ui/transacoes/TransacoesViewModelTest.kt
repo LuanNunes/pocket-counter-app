@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
@@ -52,8 +53,8 @@ import java.time.LocalDate
  *   fun setLedgerFilter(filter: LedgerFilter)
  *   fun toggleFixo(item: HistoryItem)
  *
- * Displayed list asserted against: state.dayGroups
- *   (default LISTA GroupMode; items are flattened from DayGroup.items across all day buckets)
+ * Displayed list asserted against: state.listItems
+ *   (default LISTA GroupMode; a flat list in the backend's order — no day grouping)
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TransacoesViewModelTest {
@@ -131,15 +132,16 @@ class TransacoesViewModelTest {
         cardRepository = cardRepository,
         tagRepository = tagRepository,
         seriesRepository = seriesRepository,
+        viewedMonth = ViewedMonthStore(),
     )
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    /** Flattens all DayGroup.items into a single list. */
+    /** The flat displayed list (LISTA mode). */
     private fun flatDisplayedItems(state: TransacoesUiState): List<HistoryItem> =
-        state.dayGroups.flatMap { it.items }
+        state.listItems
 
     // -------------------------------------------------------------------------
     // setLedgerFilter: FIXOS shows only series-linked rows; TODOS shows all
@@ -420,11 +422,12 @@ class TransacoesViewModelTest {
     }
 
     // -------------------------------------------------------------------------
-    // Stable ordering: status toggle must not reorder tied items
+    // Order is the backend's (ORDER BY displayOrder) — the client never re-sorts, and a status
+    // toggle must not reorder rows. (Mirrors the web client, which renders the response as-is.)
     // -------------------------------------------------------------------------
 
     @Test
-    fun `markPaid preserves canonical id order when getMonth returns different sequence on reload`() = runTest {
+    fun `markPaid keeps the backend order and just flips status`() = runTest {
         val tiedA = HistoryItem(
             id = "tied-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
             type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PENDING,
@@ -435,10 +438,11 @@ class TransacoesViewModelTest {
             type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PENDING,
             displayOrder = 0,
         )
-        // First load: raw order [B, A] (reverse of canonical); second load: raw [A_paid, B]
+        // Backend returns its stable order [B, A] on every load (it ORDERs BY displayOrder); the client
+        // must show exactly that, not re-sort to [A, B]. The post-toggle reload keeps that order.
         coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
             Result.success(listOf(tiedB, tiedA)),
-            Result.success(listOf(tiedA.copy(statusPayment = PaymentStatus.PAID), tiedB)),
+            Result.success(listOf(tiedB, tiedA.copy(statusPayment = PaymentStatus.PAID))),
         )
         coEvery { transactionRepository.markPaid("tied-a") } returns Result.success(Unit)
 
@@ -446,19 +450,18 @@ class TransacoesViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         val beforeIds = flatDisplayedItems(vm.state.value).map { it.id }
+        assertEquals(listOf("tied-b", "tied-a"), beforeIds)
 
         vm.markPaid("tied-a")
         testDispatcher.scheduler.advanceUntilIdle()
 
         val afterItems = flatDisplayedItems(vm.state.value)
-        val afterIds = afterItems.map { it.id }
-
-        assertEquals(beforeIds, afterIds)
+        assertEquals(beforeIds, afterItems.map { it.id })
         assertEquals(PaymentStatus.PAID, afterItems.first { it.id == "tied-a" }.statusPayment)
     }
 
     @Test
-    fun `markPending preserves canonical id order when getMonth returns different sequence on reload`() = runTest {
+    fun `markPending keeps the backend order and just flips status`() = runTest {
         val tiedA = HistoryItem(
             id = "tied-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
             type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PAID,
@@ -469,10 +472,10 @@ class TransacoesViewModelTest {
             type = TransactionType.EXPENSE, tagIds = null, statusPayment = PaymentStatus.PAID,
             displayOrder = 0,
         )
-        // First load: raw order [B, A]; second load: raw [A, B_pending] (different raw order)
+        // Backend returns its stable order [B, A] on every load; the client must preserve it.
         coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
             Result.success(listOf(tiedB, tiedA)),
-            Result.success(listOf(tiedA, tiedB.copy(statusPayment = PaymentStatus.PENDING))),
+            Result.success(listOf(tiedB.copy(statusPayment = PaymentStatus.PENDING), tiedA)),
         )
         coEvery { transactionRepository.markPending("tied-b") } returns Result.success(Unit)
 
@@ -480,32 +483,32 @@ class TransacoesViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         val beforeIds = flatDisplayedItems(vm.state.value).map { it.id }
+        assertEquals(listOf("tied-b", "tied-a"), beforeIds)
 
         vm.markPending("tied-b")
         testDispatcher.scheduler.advanceUntilIdle()
 
         val afterItems = flatDisplayedItems(vm.state.value)
-        val afterIds = afterItems.map { it.id }
-
-        assertEquals(beforeIds, afterIds)
+        assertEquals(beforeIds, afterItems.map { it.id })
         assertEquals(PaymentStatus.PENDING, afterItems.first { it.id == "tied-b" }.statusPayment)
     }
 
     @Test
-    fun `dayGroups within-day order follows LEDGER_ORDER even when repository returns unsorted items`() = runTest {
+    fun `the list preserves the backend order and never re-sorts`() = runTest {
+        // Same day, distinct displayOrder. The backend already returns rows in displayOrder order; the
+        // client must render that order verbatim — here [C, A, B] — not re-sort by date/amount/id.
         val itemA = HistoryItem(
             id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
-            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 1,
         )
         val itemB = HistoryItem(
             id = "ord-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
-            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 2,
         )
         val itemC = HistoryItem(
             id = "ord-c", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("30.00"),
             type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
         )
-        // Repository returns items in non-canonical order [C, A, B]
         coEvery { transactionRepository.getMonth(any()) } returns Result.success(listOf(itemC, itemA, itemB))
 
         val vm = makeViewModel()
@@ -513,7 +516,7 @@ class TransacoesViewModelTest {
 
         val displayedIds = flatDisplayedItems(vm.state.value).map { it.id }
 
-        assertEquals(listOf("ord-a", "ord-b", "ord-c"), displayedIds)
+        assertEquals(listOf("ord-c", "ord-a", "ord-b"), displayedIds)
     }
 
     // -------------------------------------------------------------------------
@@ -560,7 +563,7 @@ class TransacoesViewModelTest {
     }
 
     @Test
-    fun `optimistic status toggle preserves canonical order and day grouping`() = runTest {
+    fun `optimistic status toggle preserves backend order and the flat list`() = runTest {
         val ordA = HistoryItem(
             id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
             type = TransactionType.EXPENSE, tagIds = null,
@@ -576,7 +579,7 @@ class TransacoesViewModelTest {
             type = TransactionType.EXPENSE, tagIds = null,
             statusPayment = PaymentStatus.PENDING, displayOrder = 0,
         )
-        // Repository returns non-canonical [C, A, B]; canonical order is [A, B, C].
+        // Backend order is [C, A, B]; the client renders it verbatim, so a status toggle must keep it.
         coEvery { transactionRepository.getMonth(any()) } returns Result.success(listOf(ordC, ordA, ordB))
         coEvery { transactionRepository.markPaid("ord-b") } returns Result.success(Unit)
 
@@ -590,9 +593,44 @@ class TransacoesViewModelTest {
         // Inspect the optimistic state before the backend confirm/reload runs.
         val afterItems = flatDisplayedItems(vm.state.value)
         assertEquals(beforeIds, afterItems.map { it.id })
-        assertEquals(1, vm.state.value.dayGroups.size)
-        assertEquals(3, vm.state.value.dayGroups.first().items.size)
+        assertEquals(3, vm.state.value.listItems.size)
         assertEquals(PaymentStatus.PAID, afterItems.first { it.id == "ord-b" }.statusPayment)
+    }
+
+    @Test
+    fun `moveItemTo optimistically reflects the new order before any backend reload`() = runTest {
+        // Three same-day EXPENSE rows in canonical order [A, B, C] (displayOrder 0,1,2).
+        val ordA = HistoryItem(
+            id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+        )
+        val ordB = HistoryItem(
+            id = "ord-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 1,
+        )
+        val ordC = HistoryItem(
+            id = "ord-c", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("30.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 2,
+        )
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(listOf(ordA, ordB, ordC))
+        coEvery { transactionRepository.reorder(any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Grouped mode so there's a LedgerGroup to drag within (all rows share "Sem categoria").
+        vm.setGroupMode(GroupMode.CONTEXTO)
+        val group = vm.state.value.ledgerGroups.first()
+        assertEquals(listOf("ord-a", "ord-b", "ord-c"), group.items.map { it.id })
+
+        // Drag A to the end of its group.
+        vm.moveItemTo(group, ordA, targetIndex = 2)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The reorder succeeds (no reload reverts it), so the moved list order is visible immediately
+        // (recomputed() preserves the new order instead of re-sorting it away).
+        val newOrder = vm.state.value.ledgerGroups.first().items.map { it.id }
+        assertEquals(listOf("ord-b", "ord-c", "ord-a"), newOrder)
     }
 
     // =========================================================================
@@ -616,7 +654,7 @@ class TransacoesViewModelTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `setTypeFilter INCOME shows only INCOME rows in dayGroups`() = runTest {
+    fun `setTypeFilter INCOME shows only INCOME rows in the list`() = runTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 

@@ -16,6 +16,7 @@ import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
@@ -909,7 +910,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.ignore(onDone = { doneCalled = true })
+        vm.ignore(learn = false, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
@@ -929,11 +930,53 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.ignore(onDone = { doneCalled = true })
+        vm.ignore(learn = false, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
         assertTrue(doneCalled)
+    }
+
+    @Test
+    fun `ignore with learn creates an IGNORE rule from the merchant and marks ignored`() = runTest {
+        // Merchant "IFOOD" appears in the text, so it becomes the CONTAINS pattern.
+        val notification = makeNotification(id = "notif-1").copy(text = "Compra IFOOD aprovada R$ 49,90")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(learn = true, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { it.action == RuleAction.IGNORE && it.patterns == listOf("IFOOD") && it.tags.isEmpty() },
+            )
+        }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    @Test
+    fun `ignore with learn but no derivable pattern still ignores without a rule`() = runTest {
+        // Default text "Compra aprovada R$ 49,90" does NOT contain the merchant "IFOOD" → no pattern.
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(learn = true, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
     }
 
     // -------------------------------------------------------------------------

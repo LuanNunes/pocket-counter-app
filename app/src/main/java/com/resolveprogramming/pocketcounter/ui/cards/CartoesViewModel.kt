@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.cards
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -17,9 +18,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.util.Locale
 import javax.inject.Inject
 
 data class CartoesUiState(
+    val monthKey: String = YearMonth.now().toString(),
+    val monthLabel: String = "",
     val grandTotal: BigDecimal = BigDecimal.ZERO,
     val invoices: List<OpenInvoice> = emptyList(),
     val allTags: List<Tag> = emptyList(),
@@ -34,30 +40,56 @@ data class CartoesUiState(
 class CartoesViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
+    private val viewedMonth: ViewedMonthStore,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(CartoesUiState())
+    private val ptBr = Locale("pt", "BR")
+    private val _state = MutableStateFlow(
+        CartoesUiState(
+            monthKey = viewedMonth.month.value,
+            monthLabel = monthLabel(YearMonth.parse(viewedMonth.month.value)),
+        ),
+    )
     val state: StateFlow<CartoesUiState> = _state.asStateFlow()
 
     init {
-        loadData()
         loadTags()
+        // Follow the app-wide viewed month: reload whenever it changes (incl. the initial value).
+        viewModelScope.launch {
+            viewedMonth.month.collect { key ->
+                _state.update {
+                    it.copy(monthKey = key, monthLabel = monthLabel(YearMonth.parse(key)), isLoading = true)
+                }
+                loadData()
+            }
+        }
     }
 
     fun loadData() {
+        val key = _state.value.monthKey
         viewModelScope.launch {
-            cardRepository.getOpenInvoices()
+            cardRepository.getOpenInvoices(refOf(key))
                 .onSuccess { invoices ->
                     val grand = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
                     _state.update {
+                        // A newer month step supersedes this result.
+                        if (it.monthKey != key) return@update it
                         it.copy(grandTotal = grand, invoices = invoices, isLoading = false)
                     }
                 }
                 .onFailure {
-                    _state.update { it.copy(isLoading = false) }
+                    _state.update { if (it.monthKey != key) it else it.copy(isLoading = false) }
                 }
         }
     }
+
+    fun stepMonth(delta: Int) = viewedMonth.step(delta)
+
+    private fun refOf(monthKey: String): Int =
+        YearMonth.parse(monthKey).let { it.year * 100 + it.monthValue }
+
+    private fun monthLabel(ym: YearMonth): String =
+        "${ym.month.getDisplayName(TextStyle.FULL, ptBr)} ${ym.year}"
 
     private fun loadTags() {
         viewModelScope.launch {

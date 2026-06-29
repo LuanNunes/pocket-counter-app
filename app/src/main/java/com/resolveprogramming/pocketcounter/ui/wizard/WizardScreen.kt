@@ -33,12 +33,19 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -67,6 +74,8 @@ fun WizardScreen(
     viewModel: WizardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showIgnoreConfirm by remember { mutableStateOf(false) }
+    var ignoreLearn by remember { mutableStateOf(true) }
 
     // Full-screen spinner only on the very first open, when there's nothing to keep on screen.
     // Switching between queued items keeps the current item visible (see isSwitching below).
@@ -111,7 +120,7 @@ fun WizardScreen(
         WizardTopBar(
             step = state.step,
             onBack = onDismiss,
-            onIgnore = { viewModel.ignore(onDone = onBackToApp) },
+            onIgnore = { showIgnoreConfirm = true },
         )
 
         // Slim, unobtrusive loading hint while the next queued item resolves in place.
@@ -284,6 +293,62 @@ fun WizardScreen(
             },
         )
     }
+
+    if (showIgnoreConfirm) {
+        IgnoreConfirmDialog(
+            learn = ignoreLearn,
+            onLearnChange = { ignoreLearn = it },
+            onConfirm = {
+                showIgnoreConfirm = false
+                viewModel.ignore(learn = ignoreLearn, onDone = onBackToApp)
+            },
+            onDismiss = { showIgnoreConfirm = false },
+        )
+    }
+}
+
+@Composable
+private fun IgnoreConfirmDialog(
+    learn: Boolean,
+    onLearnChange: (Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Ignorar notificação?", color = PocketTheme.colors.text) },
+        text = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onLearnChange(!learn) },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Checkbox(
+                    checked = learn,
+                    onCheckedChange = onLearnChange,
+                    colors = CheckboxDefaults.colors(checkedColor = PocketTheme.colors.accent),
+                )
+                Text(
+                    "Ignorar notificações similares no futuro",
+                    style = PocketTheme.typography.body,
+                    color = PocketTheme.colors.text2,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Ignorar", color = PocketTheme.colors.accent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = PocketTheme.colors.text2)
+            }
+        },
+        containerColor = PocketTheme.colors.surface,
+    )
 }
 
 @Composable

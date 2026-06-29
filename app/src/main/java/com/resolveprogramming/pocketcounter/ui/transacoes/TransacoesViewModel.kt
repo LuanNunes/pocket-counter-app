@@ -2,12 +2,12 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
-import com.resolveprogramming.pocketcounter.domain.model.DayGroup
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
@@ -29,7 +29,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
-import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
@@ -71,7 +70,7 @@ data class TransacoesUiState(
     val monthKey: String,
     val monthLabel: String = "",
     val items: List<HistoryItem> = emptyList(),
-    val dayGroups: List<DayGroup> = emptyList(),
+    val listItems: List<HistoryItem> = emptyList(),
     val groupMode: GroupMode = GroupMode.LISTA,
     val ledgerGroups: List<LedgerGroup> = emptyList(),
     val collapsedGroupIds: Set<String> = emptySet(),
@@ -103,21 +102,28 @@ class TransacoesViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val seriesRepository: SeriesRepository,
+    private val viewedMonth: ViewedMonthStore,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
     private val currencyFormat = NumberFormat.getCurrencyInstance(ptBr)
     private val _state = MutableStateFlow(
         TransacoesUiState(
-            monthKey = YearMonth.now().toString(),
-            monthLabel = monthLabel(YearMonth.now()),
+            monthKey = viewedMonth.month.value,
+            monthLabel = monthLabel(YearMonth.parse(viewedMonth.month.value)),
         ),
     )
     val state: StateFlow<TransacoesUiState> = _state.asStateFlow()
 
     init {
         loadLookups()
-        loadMonth()
+        // Follow the app-wide viewed month: reload whenever it changes (incl. the initial value).
+        viewModelScope.launch {
+            viewedMonth.month.collect { key ->
+                _state.update { it.copy(monthKey = key, monthLabel = monthLabel(YearMonth.parse(key))) }
+                loadMonth()
+            }
+        }
     }
 
     private fun loadLookups() {
@@ -158,13 +164,7 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun stepMonth(delta: Int) {
-        val next = YearMonth.parse(_state.value.monthKey).plusMonths(delta.toLong())
-        _state.update {
-            it.copy(monthKey = next.toString(), monthLabel = monthLabel(next))
-        }
-        loadMonth()
-    }
+    fun stepMonth(delta: Int) = viewedMonth.step(delta)
 
     fun setQuery(query: String) {
         _state.update { it.copy(query = query).recomputed() }
@@ -243,8 +243,12 @@ class TransacoesViewModel @Inject constructor(
 
     /** Applies a full-month reordering (optimistic) and persists it. Always called with every id. */
     private fun reorderItem(orderedIds: List<String>) {
-        // Optimistic local reorder so the UI doesn't flicker; revert via reload on failure.
-        val reordered = orderedIds.mapNotNull { id -> _state.value.items.firstOrNull { it.id == id } }
+        // Optimistic local reorder so the UI doesn't flicker; revert via reload on failure. The new
+        // list order is shown directly (recomputed() preserves it); displayOrder is stamped to index
+        // too so the local model matches what the backend persists (ReorderItemDto) until the reload.
+        val reordered = orderedIds.mapIndexedNotNull { index, id ->
+            _state.value.items.firstOrNull { it.id == id }?.copy(displayOrder = index)
+        }
         _state.update { it.copy(items = reordered).recomputed() }
         viewModelScope.launch {
             transactionRepository.reorder(orderedIds)
@@ -381,25 +385,23 @@ class TransacoesViewModel @Inject constructor(
      *  - [expenseCount]/[incomeCount] are full-month counts (stable label values).
      *  - [fixoCount] counts fixos within the active type (used for fixo-toggle label).
      *  - [typeTotal]/[typeCount] reflect the visible rows after all filters.
-     *  - [dayGroups] and [ledgerGroups] show only the visible rows.
+     *  - [listItems] and [ledgerGroups] show only the visible rows.
      *  - [totals] is never touched here — it is full-month and set by loadMonth().
      */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
         val byType = items.filter { it.type == typeFilter }
         val searched = filterItems(byType, query, tags)
         val filtered = searched.filter { it.isFixo }.takeIf { ledgerFilter == LedgerFilter.FIXOS } ?: searched
-        val canonical = filtered.sortedWith(HistoryItem.LEDGER_ORDER)
-        val days = canonical
-            .groupBy { it.date }
-            .toSortedMap(reverseOrder())
-            .map { (date, dayItems) -> DayGroup(date = date, label = dayLabel(date), items = dayItems) }
+        // Keep the backend's order (displayOrder) — same as the web client. The LISTA view is a flat
+        // list in this order (each row shows its own date); only CONTEXTO/TAG bucket the rows.
+        val canonical = filtered
         val ledger = run {
             if (groupMode == GroupMode.LISTA) return@run emptyList()
             groupLedger(canonical, groupMode, tags, contexts, CuratedPalette.argb)
         }
         val total = canonical.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount.abs() }
         return copy(
-            dayGroups = days,
+            listItems = canonical,
             ledgerGroups = ledger,
             fixoCount = byType.count { it.isFixo },
             expenseCount = items.count { it.type == TransactionType.EXPENSE },
@@ -426,16 +428,6 @@ class TransacoesViewModel @Inject constructor(
             title.contains(q) ||
                 shown.contains(q) || raw.contains(q) ||
                 tagNames.any { it.contains(q) }
-        }
-    }
-
-    private fun dayLabel(date: LocalDate): String {
-        val today = LocalDate.now()
-        return run {
-            if (date == today) return@run "Hoje"
-            if (date == today.minusDays(1)) return@run "Ontem"
-            val month = date.month.getDisplayName(TextStyle.SHORT, ptBr).trimEnd('.').lowercase(ptBr)
-            "%02d %s".format(date.dayOfMonth, month)
         }
     }
 

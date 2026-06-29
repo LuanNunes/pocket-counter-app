@@ -83,6 +83,9 @@ data class ClassificationRuleDto(
     val paymentMethod: String? = null,          // PaymentMethodEnum name (UPPERCASE)
     val cardId: String? = null,                 // UUID of the credit card
     val tagIds: List<ClassificationRuleTagDto> = emptyList(),
+    // "SUGGEST" (default) assigns type/payment/tags; "IGNORE" auto-ignores matching notifications.
+    // null is omitted on write (encodeDefaults=false) so SUGGEST rules stay wire-compatible.
+    val action: String? = null,
 )
 
 @Serializable
