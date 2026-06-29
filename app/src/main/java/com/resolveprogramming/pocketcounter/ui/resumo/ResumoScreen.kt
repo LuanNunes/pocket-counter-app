@@ -101,13 +101,13 @@ fun ResumoScreen(
                 Column {
                     Text(
                         text = "Resumo do mês",
-                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Bold),
-                        color = PocketTheme.colors.text,
+                        style = PocketTheme.typography.sectionHeader,
+                        color = PocketTheme.colors.text3,
                     )
                     Text(
-                        text = state.monthLabel,
-                        style = PocketTheme.typography.bodyXs,
-                        color = PocketTheme.colors.text3,
+                        text = state.monthLabel.replaceFirstChar { it.uppercase() },
+                        style = PocketTheme.typography.screenH1,
+                        color = PocketTheme.colors.text,
                     )
                 }
             }

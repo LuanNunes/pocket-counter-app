@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.horizontalScroll
@@ -44,6 +45,7 @@ import com.resolveprogramming.pocketcounter.domain.model.ReportSeries
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.reportToCsv
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
+import com.resolveprogramming.pocketcounter.ui.components.AutoSizeText
 import com.resolveprogramming.pocketcounter.ui.components.ManageTopBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
@@ -65,26 +67,27 @@ fun RelatorioScreen(
     val isExpense = state.kind == TransactionType.EXPENSE
     val context = LocalContext.current
 
-    Column(modifier = Modifier.fillMaxSize().background(PocketTheme.colors.bg)) {
-        ManageTopBar(
-            title = "Relatório",
-            onBack = onBack,
-            actions = {
-                val report = state.report
-                SquareIconButton(
-                    icon = Icons.Filled.FileUpload,
-                    enabled = report != null,
-                    contentDescription = "Exportar",
-                    onClick = {
-                        if (report != null) exportReportCsv(context, report, state.kind)
-                    },
-                )
-            },
-        )
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    Scaffold(containerColor = PocketTheme.colors.bg) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            ManageTopBar(
+                title = "Relatório",
+                onBack = onBack,
+                actions = {
+                    val report = state.report
+                    SquareIconButton(
+                        icon = Icons.Filled.FileUpload,
+                        enabled = report != null,
+                        contentDescription = "Exportar",
+                        onClick = {
+                            if (report != null) exportReportCsv(context, report, state.kind)
+                        },
+                    )
+                },
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
             item {
                 PocketSegmented(
                     options = listOf(SegmentOption("Mês"), SegmentOption("Trimestre"), SegmentOption("Ano")),
@@ -153,6 +156,7 @@ fun RelatorioScreen(
                     item { Spacer(Modifier.height(24.dp)) }
                 }
             }
+            }
         }
     }
 }
@@ -182,8 +186,8 @@ private fun KpiTile(
     rawValue: String? = null,
     showSign: Boolean = false,
 ) {
-    // Half-width tiles can't fit 26sp currency values without wrapping; render the
-    // headline a touch smaller and force a single line so large amounts never break.
+    // Half-width tiles can't fit 26sp currency values; start at 20sp and let the headline
+    // auto-shrink to a single line so large amounts (e.g. 217.958,77) never clip or wrap.
     val valueStyle = PocketTheme.typography.monoTotal.copy(fontSize = 20.sp)
     PocketCard(modifier = modifier.heightIn(min = 84.dp)) {
         Column {
@@ -195,12 +199,11 @@ private fun KpiTile(
                     color = color,
                     showSign = showSign,
                     style = valueStyle,
-                    maxLines = 1,
-                    softWrap = false,
+                    autoSize = true,
                 )
             }
             if (amount == null) {
-                Text(rawValue.orEmpty(), style = valueStyle, color = color, maxLines = 1, softWrap = false)
+                AutoSizeText(rawValue.orEmpty(), style = valueStyle, color = color)
             }
             if (sub != null) {
                 Spacer(Modifier.height(2.dp))

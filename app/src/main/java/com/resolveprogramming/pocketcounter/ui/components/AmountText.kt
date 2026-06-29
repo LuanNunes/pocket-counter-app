@@ -21,6 +21,7 @@ fun AmountText(
     color: Color? = null,
     maxLines: Int = Int.MAX_VALUE,
     softWrap: Boolean = true,
+    autoSize: Boolean = false,
 ) {
     val resolvedColor = color ?: when (type) {
         TransactionType.INCOME -> PocketTheme.colors.income
@@ -34,6 +35,16 @@ fun AmountText(
         if (showSign && amount < BigDecimal.ZERO) return@run "−  "
         if (showSign && amount > BigDecimal.ZERO) return@run "+  "
         ""
+    }
+
+    if (autoSize) {
+        AutoSizeText(
+            text = "$prefix$formatted",
+            style = style,
+            color = resolvedColor,
+            modifier = modifier,
+        )
+        return
     }
 
     Text(
