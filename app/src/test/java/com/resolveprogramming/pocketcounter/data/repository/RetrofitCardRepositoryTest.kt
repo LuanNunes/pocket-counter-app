@@ -383,37 +383,28 @@ class RetrofitCardRepositoryTest {
     }
 
     @Test
-    fun `getOpenInvoices falls back to card credit expenses when isInvoice tx has empty items`() = runTest {
+    fun `getOpenInvoices uses the invoice amount when the invoice has no line items`() = runTest {
+        // A manual/projected fatura (e.g. a future month): the invoice header carries a total but has
+        // no line items yet. The total must come from the invoice amount, not collapse to zero.
         val invoiceTx = TransactionDto(
             id = invoiceId,
             transactionType = "EXPENSE",
             paymentMethod = "CREDIT",
             cardId = cardId,
             isInvoice = true,
-            amount = BigDecimal("0.00"),
-        )
-        val creditExpense = TransactionDto(
-            id = "exp-1",
-            transactionType = "EXPENSE",
-            paymentMethod = "CREDIT",
-            cardId = cardId,
-            isInvoice = false,
-            name = "Streaming",
-            amount = BigDecimal("40.00"),
+            amount = BigDecimal("935.63"),
         )
 
         coEvery { creditCardApi.getCards() } returns listOf(cardDto)
-        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoiceTx, creditExpense)
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoiceTx)
         coEvery { invoiceItemApi.getItems(invoiceId) } returns emptyList()
 
         val result = repo.getOpenInvoices()
 
         assertTrue(result.isSuccess)
         val invoice = result.getOrThrow().single()
-        // Fell back: derives items from the non-isInvoice credit expenses
-        assertEquals(1, invoice.items.size)
-        assertEquals("Streaming", invoice.items.single().name)
-        assertNull(invoice.items.single().itemId)
+        assertEquals(0, BigDecimal("935.63").compareTo(invoice.total))
+        assertTrue(invoice.items.isEmpty())
     }
 
     // -------------------------------------------------------------------------
