@@ -243,10 +243,9 @@ class TransacoesViewModel @Inject constructor(
 
     /** Applies a full-month reordering (optimistic) and persists it. Always called with every id. */
     private fun reorderItem(orderedIds: List<String>) {
-        // Optimistic local reorder so the UI doesn't flicker; revert via reload on failure.
-        // Stamp displayOrder = index to mirror what the backend persists (ReorderItemDto), otherwise
-        // recomputed()'s LEDGER_ORDER sort (displayOrder-first) would discard the new order on the
-        // spot and the move would only "stick" after the backend reload.
+        // Optimistic local reorder so the UI doesn't flicker; revert via reload on failure. The new
+        // list order is shown directly (recomputed() preserves it); displayOrder is stamped to index
+        // too so the local model matches what the backend persists (ReorderItemDto) until the reload.
         val reordered = orderedIds.mapIndexedNotNull { index, id ->
             _state.value.items.firstOrNull { it.id == id }?.copy(displayOrder = index)
         }
@@ -393,10 +392,12 @@ class TransacoesViewModel @Inject constructor(
         val byType = items.filter { it.type == typeFilter }
         val searched = filterItems(byType, query, tags)
         val filtered = searched.filter { it.isFixo }.takeIf { ledgerFilter == LedgerFilter.FIXOS } ?: searched
-        val canonical = filtered.sortedWith(HistoryItem.LEDGER_ORDER)
+        // Keep the backend's order (displayOrder) — same as the web client. Day buckets follow the order
+        // in which each date first appears (groupBy preserves encounter order), not a date sort, so a
+        // manual reorder is honored instead of being overridden by date.
+        val canonical = filtered
         val days = canonical
             .groupBy { it.date }
-            .toSortedMap(reverseOrder())
             .map { (date, dayItems) -> DayGroup(date = date, label = dayLabel(date), items = dayItems) }
         val ledger = run {
             if (groupMode == GroupMode.LISTA) return@run emptyList()

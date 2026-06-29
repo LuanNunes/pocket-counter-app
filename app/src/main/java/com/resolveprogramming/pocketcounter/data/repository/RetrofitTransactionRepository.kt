@@ -26,11 +26,9 @@ class RetrofitTransactionRepository @Inject constructor(
         val ref = RemoteMappers.monthKeyToRef(monthKey)
         val incomes = api.getIncomes(ref)
         val expenses = api.getExpenses(ref)
-        // Honor the backend manual order (displayOrder) so reorders persist; fall back to
-        // newest-first when nothing has been reordered (all displayOrder == 0).
-        (incomes + expenses)
-            .map { it.toHistoryItem() }
-            .sortedWith(HistoryItem.LEDGER_ORDER)
+        // Preserve the order the backend returns (its queries already ORDER BY displayOrder), exactly
+        // like the web client does — never re-sort here, or a row's manual position is lost.
+        (incomes + expenses).map { it.toHistoryItem() }
     }
 
     override suspend fun save(draft: WizardDraft): Result<String> = runCatching {
