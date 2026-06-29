@@ -595,6 +595,43 @@ class TransacoesViewModelTest {
         assertEquals(PaymentStatus.PAID, afterItems.first { it.id == "ord-b" }.statusPayment)
     }
 
+    @Test
+    fun `moveItemTo optimistically reflects the new order before any backend reload`() = runTest {
+        // Three same-day EXPENSE rows in canonical order [A, B, C] (displayOrder 0,1,2).
+        val ordA = HistoryItem(
+            id = "ord-a", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("10.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 0,
+        )
+        val ordB = HistoryItem(
+            id = "ord-b", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("20.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 1,
+        )
+        val ordC = HistoryItem(
+            id = "ord-c", date = LocalDate.of(2026, 6, 4), amount = BigDecimal("30.00"),
+            type = TransactionType.EXPENSE, tagIds = null, displayOrder = 2,
+        )
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(listOf(ordA, ordB, ordC))
+        coEvery { transactionRepository.reorder(any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Grouped mode so there's a LedgerGroup to drag within (all rows share "Sem categoria").
+        vm.setGroupMode(GroupMode.CONTEXTO)
+        val group = vm.state.value.ledgerGroups.first()
+        assertEquals(listOf("ord-a", "ord-b", "ord-c"), group.items.map { it.id })
+
+        // Drag A to the end of its group.
+        vm.moveItemTo(group, ordA, targetIndex = 2)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The reorder succeeds (no reload reverts it), so the new order must be visible immediately.
+        // Regression guard: before the displayOrder stamp, recomputed()'s LEDGER_ORDER sort discarded
+        // the move and the rows stayed [A, B, C].
+        val newOrder = vm.state.value.ledgerGroups.first().items.map { it.id }
+        assertEquals(listOf("ord-b", "ord-c", "ord-a"), newOrder)
+    }
+
     // =========================================================================
     // typeFilter — active-type filter (A from architect plan)
     // =========================================================================

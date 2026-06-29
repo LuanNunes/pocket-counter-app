@@ -244,7 +244,12 @@ class TransacoesViewModel @Inject constructor(
     /** Applies a full-month reordering (optimistic) and persists it. Always called with every id. */
     private fun reorderItem(orderedIds: List<String>) {
         // Optimistic local reorder so the UI doesn't flicker; revert via reload on failure.
-        val reordered = orderedIds.mapNotNull { id -> _state.value.items.firstOrNull { it.id == id } }
+        // Stamp displayOrder = index to mirror what the backend persists (ReorderItemDto), otherwise
+        // recomputed()'s LEDGER_ORDER sort (displayOrder-first) would discard the new order on the
+        // spot and the move would only "stick" after the backend reload.
+        val reordered = orderedIds.mapIndexedNotNull { index, id ->
+            _state.value.items.firstOrNull { it.id == id }?.copy(displayOrder = index)
+        }
         _state.update { it.copy(items = reordered).recomputed() }
         viewModelScope.launch {
             transactionRepository.reorder(orderedIds)
