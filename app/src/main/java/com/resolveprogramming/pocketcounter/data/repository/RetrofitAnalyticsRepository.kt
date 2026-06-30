@@ -212,12 +212,14 @@ class RetrofitAnalyticsRepository @Inject constructor(
     /**
      * A credit-card fatura arrives as a single invoice container (isInvoice=true, amount=total)
      * whose individual purchases live in the items sub-resource — each carrying its OWN amount and
-     * tags. Replace each invoice with its line items so totals and per-context breakdown attribute
-     * every purchase correctly. An invoice with no items keeps its container so nothing is lost.
+     * tags. Replace each invoice with its line items so the per-context breakdown attributes every
+     * purchase correctly. An invoice with no items keeps its container so nothing is lost.
      *
-     * The container's own amount is treated as a red herring: totals come from the items, never both
-     * (see RetrofitAnalyticsRepositoryTest). The backend itemizes the full fatura, so there is no
-     * un-itemized remainder to add back.
+     * Expansion is **total-preserving**: when the items don't sum to the container's total (a
+     * partially-itemized fatura), the un-itemized remainder is appended as an untagged "Sem categoria"
+     * row. This keeps the expanded set's total equal to the container's face value — the same number
+     * Home counts (it never expands invoices) — so Resumo's despesas headline matches Home and the
+     * breakdown bars still reconcile to it.
      */
     private suspend fun expandInvoices(txs: List<TransactionDto>): List<TransactionDto> =
         coroutineScope {
@@ -227,7 +229,8 @@ class RetrofitAnalyticsRepository @Inject constructor(
                     if (!tx.isInvoice || invoiceId == null) return@async listOf(tx)
                     val items = invoiceItemApi.getItems(invoiceId)
                     if (items.isEmpty()) return@async listOf(tx)
-                    items.map { it.toExpenseTransaction(tx) }
+                    val expanded = items.map { it.toExpenseTransaction(tx) }
+                    expanded + listOfNotNull(invoiceRemainder(tx, expanded))
                 }
             }.awaitAll().flatten()
         }
@@ -239,6 +242,25 @@ class RetrofitAnalyticsRepository @Inject constructor(
             tags = tags,
             isInvoice = false,
         )
+
+    /**
+     * The un-itemized part of a fatura: container total minus the items' total, as an untagged row so
+     * [classify] buckets it under "Sem categoria". Returns null when the items already meet or exceed
+     * the container (full itemization, or a refunded fatura whose items net above it) — only a positive
+     * remainder is added back, never a negative one that [sumAmount]'s abs would turn into over-counting.
+     */
+    private fun invoiceRemainder(invoice: TransactionDto, items: List<TransactionDto>): TransactionDto? {
+        val containerTotal = invoice.amount?.abs() ?: return null
+        val itemsTotal = items.fold(BigDecimal.ZERO) { acc, it -> acc + (it.amount ?: BigDecimal.ZERO).abs() }
+        val remainder = containerTotal - itemsTotal
+        if (remainder <= BigDecimal.ZERO) return null
+        return invoice.copy(
+            id = "${invoice.id}-remainder",
+            amount = remainder,
+            tags = emptyList(),
+            isInvoice = false,
+        )
+    }
 
     private suspend fun baselineFor(
         compareKey: String?,
