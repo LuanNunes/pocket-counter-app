@@ -15,6 +15,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.math.BigDecimal
 
@@ -204,18 +205,54 @@ class RetrofitAnalyticsRepositoryTest {
     }
 
     @Test
-    fun `invoice container amount is replaced not added to the items`() = runTest {
-        // Container amount (999) is a red herring — totals must come from the items (30), never both.
+    fun `partially-itemized invoice adds the un-itemized remainder as Sem categoria`() = runTest {
+        // Container is 100; only 30 is itemized. The 70 remainder must be added back (as Sem categoria)
+        // so the total equals the container — the same value Home counts (Home never expands items).
         stubTwoContextCatalog()
-        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "999.00"))
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "100.00"))
         coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
             item(amount = "30.00", tagId = "t1", tagName = "supermercado"),
         )
 
         val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
 
-        assertEquals(BigDecimal("30.00"), summary.total)
-        assertEquals(BigDecimal("30.00"), summary.groups.single().total)
+        assertEquals(BigDecimal("100.00"), summary.total)
+        val byId = summary.groups.associateBy { it.id }
+        assertEquals(BigDecimal("30.00"), byId.getValue("c1").total)
+        // The 70 un-itemized remainder lands in the uncategorized bucket.
+        assertEquals(BigDecimal("70.00"), summary.groups.first { it.name == "Sem categoria" }.total)
+    }
+
+    @Test
+    fun `fully-itemized invoice adds no remainder`() = runTest {
+        stubTwoContextCatalog()
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "150.00"))
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            item(amount = "100.00", tagId = "t1", tagName = "supermercado"),
+            item(amount = "50.00", tagId = "t2", tagName = "farmácia"),
+        )
+
+        val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
+
+        assertEquals(BigDecimal("150.00"), summary.total)
+        // No "Sem categoria" bucket — items already meet the container.
+        assertNull(summary.groups.firstOrNull { it.name == "Sem categoria" })
+    }
+
+    @Test
+    fun `invoice whose items exceed the container adds no negative remainder`() = runTest {
+        // Refund/overflow guard: items net above the container; we must not add a negative remainder
+        // (sumAmount's abs would otherwise inflate the total).
+        stubTwoContextCatalog()
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "100.00"))
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            item(amount = "120.00", tagId = "t1", tagName = "supermercado"),
+        )
+
+        val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
+
+        assertEquals(BigDecimal("120.00"), summary.total)
+        assertNull(summary.groups.firstOrNull { it.name == "Sem categoria" })
     }
 
     @Test
