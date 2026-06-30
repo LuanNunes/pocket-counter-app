@@ -24,7 +24,9 @@ fun buildFaturaBreakdown(
 ): List<SummaryGroup> {
     if (faturaTotal <= BigDecimal.ZERO) return emptyList()
 
-    data class Bucket(val name: String, val color: Long, var total: BigDecimal)
+    class Bucket(val name: String, val color: Long, var total: BigDecimal) {
+        val tagTotals: LinkedHashMap<String, BigDecimal> = LinkedHashMap()
+    }
 
     val buckets = LinkedHashMap<String, Bucket>()
 
@@ -43,8 +45,12 @@ fun buildFaturaBreakdown(
             buckets.getOrPut(ctx.id) { Bucket(ctx.name, ctx.color, BigDecimal.ZERO) }
         }
         bucket.total += item.amount
+        val tagName = item.tags.firstOrNull()?.name ?: "sem etiqueta"
+        bucket.tagTotals[tagName] = (bucket.tagTotals[tagName] ?: BigDecimal.ZERO) + item.amount
     }
 
+    // The synthetic remainder (faturaTotal − itemized) folds into "Sem categoria" total only —
+    // it is not attributed to any tag because it has no tag context.
     val remainder = faturaTotal - itemized
     if (remainder.signum() != 0) {
         uncategorized().let { it.total += remainder }
@@ -59,7 +65,8 @@ fun buildFaturaBreakdown(
             pct = bucket.total.divide(faturaTotal, 4, RoundingMode.HALF_UP).toFloat(),
             delta = null,
             prevTotal = null,
-            tags = emptyList(),
+            tags = bucket.tagTotals.map { (name, total) -> SummaryTag(name, total) }
+                .sortedByDescending { it.total },
         )
     }.sortedWith(
         compareBy<SummaryGroup> { it.id in UNCATEGORIZED_GROUP_IDS }.thenByDescending { it.total },

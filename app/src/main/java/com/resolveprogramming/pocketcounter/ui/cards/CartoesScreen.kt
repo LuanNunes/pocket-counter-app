@@ -1,7 +1,15 @@
 package com.resolveprogramming.pocketcounter.ui.cards
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -16,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -28,6 +37,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -343,6 +354,7 @@ private fun FaturaCategoriasBody(
     // Show only real (positive) shares in the list, matching the donut: an over-itemized fatura's
     // signed "Sem categoria" remainder is negative and must not render as a "-20%" row.
     val rankGroups = groups.filter { it.pct > 0f }
+    val expandedCategories = remember { mutableStateMapOf<String, Boolean>() }
 
     LazyColumn(
         modifier = Modifier
@@ -398,7 +410,12 @@ private fun FaturaCategoriasBody(
         item { Spacer(Modifier.height(4.dp)) }
 
         items(rankGroups, key = { it.id }) { group ->
-            CategoryRankRow(group = group, formatter = formatter)
+            CategoryRankRow(
+                group = group,
+                expanded = expandedCategories[group.id] == true,
+                onToggle = { expandedCategories[group.id] = expandedCategories[group.id] != true },
+                formatter = formatter,
+            )
         }
 
         item { Spacer(Modifier.height(8.dp)) }
@@ -408,10 +425,30 @@ private fun FaturaCategoriasBody(
 @Composable
 private fun CategoryRankRow(
     group: SummaryGroup,
+    expanded: Boolean,
+    onToggle: () -> Unit,
     formatter: NumberFormat,
 ) {
+    val expandable = group.tags.isNotEmpty()
+    val reducedMotion = LocalReducedMotion.current
+    val chevronRotation by animateFloatAsState(
+        targetValue = 180f.takeIf { expanded } ?: 0f,
+        animationSpec = tween(durationMillis = if (reducedMotion) 0 else 180),
+        label = "categoryChevron",
+    )
+
     Column(modifier = Modifier.padding(vertical = 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .let { base ->
+                    if (!expandable) return@let base
+                    val action = if (expanded) "Recolher" else "Expandir"
+                    base.clickable(onClickLabel = "$action ${group.name}", onClick = onToggle)
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
                 modifier = Modifier
                     .size(10.dp)
@@ -441,9 +478,61 @@ private fun CategoryRankRow(
                 maxLines = 1,
                 softWrap = false,
             )
+            if (expandable) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = PocketTheme.colors.text3,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .rotate(chevronRotation),
+                )
+            }
         }
         Spacer(Modifier.height(6.dp))
         ProportionBar(fraction = group.pct, color = Color(group.color))
+
+        AnimatedVisibility(
+            visible = expanded && expandable,
+            enter = EnterTransition.None.takeIf { reducedMotion } ?: (expandVertically() + fadeIn()),
+            exit = ExitTransition.None.takeIf { reducedMotion } ?: (shrinkVertically() + fadeOut()),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                group.tags.forEach { tag ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(PocketTheme.shapes.pill)
+                                .background(Color(group.color)),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = tag.name,
+                            style = PocketTheme.typography.bodySm,
+                            color = PocketTheme.colors.text2,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = formatter.format(tag.total),
+                            style = PocketTheme.typography.monoSm,
+                            color = PocketTheme.colors.text2,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

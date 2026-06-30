@@ -9,6 +9,7 @@ import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_COLOR
 import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_CONTEXT_ID
 import com.resolveprogramming.pocketcounter.domain.model.buildFaturaBreakdown
 import com.resolveprogramming.pocketcounter.domain.model.faturaDonutSlices
+import com.resolveprogramming.pocketcounter.domain.model.SummaryTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -335,6 +336,95 @@ class FaturaBreakdownTest {
 
         val sem = result.single { it.id == UNCATEGORIZED_CONTEXT_ID }
         assertEquals(UNCATEGORIZED_COLOR, sem.color)
+    }
+
+    @Test
+    fun `buildFaturaBreakdown synthetic remainder inflates sem categoria total but is not reflected in any SummaryTag`() {
+        // Item i1 (no tags, 30.00) → tagTotals["sem etiqueta"] = 30.00
+        // faturaTotal = 100.00, itemized = 30.00, remainder = 70.00
+        // Remainder added only to uncategorized.total (not to tagTotals)
+        // → group.total == 100.00, but tags sum == 30.00 < 100.00
+        val inv = item("i1", BigDecimal("30.00"), tags = emptyList())
+
+        val result = buildFaturaBreakdown(
+            items = listOf(inv),
+            faturaTotal = BigDecimal("100.00"),
+            tagToContext = emptyMap(),
+            contextById = emptyMap(),
+        )
+
+        val sem = result.single { it.id == UNCATEGORIZED_CONTEXT_ID }
+        assertEquals(0, sem.total.compareTo(BigDecimal("100.00")))
+        val tagsSum = sem.tags.fold(BigDecimal.ZERO) { acc, t -> acc + t.total }
+        assertEquals(0, tagsSum.compareTo(BigDecimal("30.00")))
+        // The two values must differ — remainder is not in tags
+        assertTrue(sem.total.compareTo(tagsSum) != 0)
+    }
+
+    @Test
+    fun `buildFaturaBreakdown creates sem etiqueta SummaryTag inside uncategorized group for item with no tags`() {
+        val inv = item("i1", BigDecimal("45.00"), tags = emptyList())
+
+        val result = buildFaturaBreakdown(
+            items = listOf(inv),
+            faturaTotal = BigDecimal("45.00"),
+            tagToContext = emptyMap(),
+            contextById = emptyMap(),
+        )
+
+        val sem = result.single { it.id == UNCATEGORIZED_CONTEXT_ID }
+        assertEquals(1, sem.tags.size)
+        val summaryTag = sem.tags.single()
+        assertEquals("sem etiqueta", summaryTag.name)
+        assertEquals(0, summaryTag.total.compareTo(BigDecimal("45.00")))
+    }
+
+    @Test
+    fun `buildFaturaBreakdown produces two SummaryTags sorted by total desc when items carry two different tags in same context`() {
+        val ctx = context("ctx-leisure", "Lazer")
+        val t1 = tag("t1") // name = "Tag t1", total will be 30
+        val t2 = tag("t2") // name = "Tag t2", total will be 50
+        val items = listOf(
+            item("i1", BigDecimal("30.00"), tags = listOf(t1)),
+            item("i2", BigDecimal("50.00"), tags = listOf(t2)),
+        )
+
+        val result = buildFaturaBreakdown(
+            items = items,
+            faturaTotal = BigDecimal("80.00"),
+            tagToContext = mapOf("t1" to "ctx-leisure", "t2" to "ctx-leisure"),
+            contextById = mapOf("ctx-leisure" to ctx),
+        )
+
+        val group = result.first { it.id == "ctx-leisure" }
+        assertEquals(2, group.tags.size)
+        assertEquals("Tag t2", group.tags[0].name)
+        assertEquals(0, group.tags[0].total.compareTo(BigDecimal("50.00")))
+        assertEquals("Tag t1", group.tags[1].name)
+        assertEquals(0, group.tags[1].total.compareTo(BigDecimal("30.00")))
+    }
+
+    @Test
+    fun `buildFaturaBreakdown populates group tags with one SummaryTag when two items share the same tag`() {
+        val ctx = context("ctx-food", "Alimentação")
+        val t1 = tag("t1") // name = "Tag t1"
+        val items = listOf(
+            item("i1", BigDecimal("30.00"), tags = listOf(t1)),
+            item("i2", BigDecimal("40.00"), tags = listOf(t1)),
+        )
+
+        val result = buildFaturaBreakdown(
+            items = items,
+            faturaTotal = BigDecimal("70.00"),
+            tagToContext = mapOf("t1" to "ctx-food"),
+            contextById = mapOf("ctx-food" to ctx),
+        )
+
+        val group = result.first { it.id == "ctx-food" }
+        assertEquals(1, group.tags.size)
+        val summaryTag = group.tags.single()
+        assertEquals("Tag t1", summaryTag.name)
+        assertEquals(0, summaryTag.total.compareTo(BigDecimal("70.00")))
     }
 
     // ── faturaDonutSlices ─────────────────────────────────────────────────────
