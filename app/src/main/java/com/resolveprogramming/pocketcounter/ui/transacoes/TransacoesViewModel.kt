@@ -332,9 +332,23 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun openAdd(type: TransactionType? = null) = _state.update { it.copy(formMode = FormMode.Add(type)) }
+    fun openAdd(type: TransactionType? = null) {
+        _state.update { it.copy(formMode = FormMode.Add(type)) }
+        refreshCards()
+    }
 
-    fun openEdit(item: HistoryItem) = _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
+    fun openEdit(item: HistoryItem) {
+        _state.update { it.copy(formMode = FormMode.Edit(item.id)) }
+        refreshCards()
+    }
+
+    /** Pull the current card list before the form opens so a card added since init still appears. */
+    private fun refreshCards() {
+        viewModelScope.launch {
+            val cards = cardRepository.getCards().getOrNull() ?: return@launch
+            _state.update { it.copy(cards = cards) }
+        }
+    }
 
     fun closeForm() = _state.update { it.copy(formMode = null) }
 

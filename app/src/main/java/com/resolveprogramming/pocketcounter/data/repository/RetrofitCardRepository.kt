@@ -1,6 +1,5 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
-import com.resolveprogramming.pocketcounter.data.cache.SuspendCache
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
@@ -37,10 +36,11 @@ class RetrofitCardRepository @Inject constructor(
     private val invoiceItemApi: InvoiceItemApi,
 ) : CardRepository {
 
-    private val cardsCache = SuspendCache<List<CreditCard>>()
-
+    // Cards are read fresh every time (like getOpenInvoices): the list is small and rarely fetched, and
+    // a process-lifetime cache went stale whenever a card was added/edited outside the app — leaving the
+    // add-transaction picker showing fewer cards than the Cartões screen.
     override suspend fun getCards(): Result<List<CreditCard>> = runCatching {
-        cardsCache.get { creditCards() }
+        creditCards()
     }
 
     override suspend fun getOpenInvoices(refYearMonth: Int): Result<List<OpenInvoice>> = runCatching {
@@ -157,7 +157,7 @@ class RetrofitCardRepository @Inject constructor(
         val created = creditCardApi.getCards().firstOrNull { it.id == id }
             ?: CreditCardDto(id = id, name = name, brand = brand, closingDay = closingDay, color = color)
         created.toCreditCard()
-    }.onSuccess { cardsCache.invalidate() }
+    }
 
     private fun TransactionItemDto.toInvoiceItem(invoiceId: String, fallbackDate: LocalDate): InvoiceItem {
         val (cleanName, parsedDate) = splitTrailingDate(name)

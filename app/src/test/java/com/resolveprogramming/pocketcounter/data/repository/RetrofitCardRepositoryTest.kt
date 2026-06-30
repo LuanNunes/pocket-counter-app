@@ -614,30 +614,18 @@ class RetrofitCardRepositoryTest {
     }
 
     // -------------------------------------------------------------------------
-    // getCards caching
+    // getCards freshness — read live every time (no stale process-lifetime cache)
     // -------------------------------------------------------------------------
 
     @Test
-    fun `getCards caches the card list so a second read hits the api once`() = runTest {
+    fun `getCards reads fresh on every call so a card added elsewhere shows up`() = runTest {
         coEvery { creditCardApi.getCards() } returns listOf(cardDto)
 
         repo.getCards()
         repo.getCards()
 
-        coVerify(exactly = 1) { creditCardApi.getCards() }
-    }
-
-    @Test
-    fun `addCard invalidates the cards cache so the next read refetches`() = runTest {
-        coEvery { creditCardApi.getCards() } returns listOf(cardDto)
-        coEvery { creditCardApi.create(any()) } returns "new-card-id"
-
-        repo.getCards()
-        repo.addCard(name = "Inter", brand = null, closingDay = null, color = null)
-        repo.getCards()
-
-        // First read (1) + addCard's lookup of the created card (1) + post-invalidation read (1).
-        coVerify(exactly = 3) { creditCardApi.getCards() }
+        // No caching: each read hits the api, so a card created on the web/another device is reflected.
+        coVerify(exactly = 2) { creditCardApi.getCards() }
     }
 
     @Test
