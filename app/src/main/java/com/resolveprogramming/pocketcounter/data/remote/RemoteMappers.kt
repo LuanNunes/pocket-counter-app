@@ -281,6 +281,7 @@ internal object RemoteMappers {
                 tagIds = suggestions.tagIds,
                 paymentMethod = parsePaymentMethod(suggestions.paymentMethod),
                 cardId = suggestions.cardId,
+                transactionType = parseType(suggestions.transactionType),
             ),
             tokens = NotificationTokenizer.tokenize(base.text, parsedDomain),
         )

@@ -445,4 +445,66 @@ class WizardDraftTest {
         assertNull(draft.paymentMethod)
         assertNull(draft.cardId)
     }
+
+    @Test
+    fun `fromNotification falls back to suggested type when parsed type is null`() {
+        val notification = NotificationItem(
+            id = "n8",
+            app = "App",
+            channel = NotificationChannel.SMS,
+            time = "agora",
+            received = "10:00",
+            text = "Compra aprovada",
+            status = NotificationStatus.AUTO,
+            parsed = ParsedNotification(
+                type = null,
+                amount = BigDecimal("42.00"),
+                date = LocalDate.of(2026, 6, 30),
+                merchantRaw = "DL*UberRides",
+                paymentHint = null,
+            ),
+            suggestions = ClassificationSuggestion(
+                tagIds = listOf("tag-1"),
+                paymentMethod = PaymentMethod.PIX,
+                cardId = null,
+                transactionType = TransactionType.EXPENSE,
+            ),
+            tokens = emptyList(),
+        )
+
+        val draft = WizardDraft.fromNotification(notification)
+
+        assertEquals(TransactionType.EXPENSE, draft.type)
+    }
+
+    @Test
+    fun `fromNotification keeps parsed type over the suggested type`() {
+        val notification = NotificationItem(
+            id = "n9",
+            app = "App",
+            channel = NotificationChannel.SMS,
+            time = "agora",
+            received = "10:00",
+            text = "Pix recebido",
+            status = NotificationStatus.AUTO,
+            parsed = ParsedNotification(
+                type = TransactionType.INCOME,
+                amount = BigDecimal("42.00"),
+                date = LocalDate.of(2026, 6, 30),
+                merchantRaw = null,
+                paymentHint = null,
+            ),
+            suggestions = ClassificationSuggestion(
+                tagIds = emptyList(),
+                paymentMethod = null,
+                cardId = null,
+                transactionType = TransactionType.EXPENSE,
+            ),
+            tokens = emptyList(),
+        )
+
+        val draft = WizardDraft.fromNotification(notification)
+
+        assertEquals(TransactionType.INCOME, draft.type)
+    }
 }

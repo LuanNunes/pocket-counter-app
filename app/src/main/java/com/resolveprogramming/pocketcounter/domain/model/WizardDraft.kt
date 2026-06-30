@@ -58,7 +58,10 @@ data class WizardDraft(
             notification: NotificationItem,
         ): WizardDraft {
             val base = WizardDraft(
-                type = notification.parsed.type,
+                // Prefer the per-notification parse; fall back to the matched rule's suggested type
+                // so a confidently-classified notification whose text didn't reveal income/expense
+                // still opens with a valid type.
+                type = notification.parsed.type ?: notification.suggestions.transactionType,
                 amount = notification.parsed.amount,
                 date = notification.parsed.date ?: LocalDate.now(),
                 // isFixo is a user toggle ("Repete todo mês"); the classify suggestion

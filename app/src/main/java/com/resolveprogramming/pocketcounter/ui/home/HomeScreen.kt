@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -45,6 +46,7 @@ import com.resolveprogramming.pocketcounter.navigation.Routes
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
+import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadyCard
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
 import com.resolveprogramming.pocketcounter.ui.home.components.MonthNavBar
@@ -123,6 +125,19 @@ fun HomeContent(
                     balance = state.balance,
                     automationPct = state.automationPct,
                 )
+            }
+
+            if (state.isCurrentMonth && state.confirmReady.isNotEmpty()) {
+                items(state.confirmReady, key = { it.notificationId }) { item ->
+                    ConfirmReadyCard(
+                        item = item,
+                        isConfirming = item.notificationId in state.confirmingIds,
+                        tagName = { id -> state.tags[id]?.name },
+                        cardName = { id -> state.cards[id]?.name },
+                        onConfirm = { viewModel.confirm(item) },
+                        onReview = { onNavigate(Routes.wizard(item.notificationId)) },
+                    )
+                }
             }
 
             if (state.isCurrentMonth && state.pendingReviewCount > 0) {

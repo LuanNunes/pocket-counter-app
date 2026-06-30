@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.data.repository.NotificationReposito
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -140,9 +141,12 @@ class WizardViewModelTest {
             notificationRepository = notificationRepository,
             cardRepository = cardRepository,
             tagRepository = tagRepository,
-            transactionRepository = transactionRepository,
             seriesRepository = seriesRepository,
             classificationRuleRepository = classificationRuleRepository,
+            confirmClassifiedNotification = ConfirmClassifiedNotificationUseCase(
+                transactionRepository,
+                notificationRepository,
+            ),
         )
     }
 

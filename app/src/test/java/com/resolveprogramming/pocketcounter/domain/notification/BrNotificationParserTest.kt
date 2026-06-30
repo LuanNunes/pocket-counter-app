@@ -419,6 +419,62 @@ class BrNotificationParserTest {
     }
 
     // -------------------------------------------------------------------------
+    // Merchant parsing — real credit-card formats ("final NNNN - <merchant> valor")
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parse merchant from card final-dash-valor format keeps mixed case descriptor`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - DL*UberRides valor RS 26,74 em 29/06, as 13h25.",
+            NOW,
+        )
+
+        assertEquals("DL*UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from card format spans multi-word merchant`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - IFD*IFOOD CLUB valor RS 12,90 em 29/06, as 07h11.",
+            NOW,
+        )
+
+        assertEquals("IFD*IFOOD CLUB", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from card format never returns the date day digits`() {
+        // Regression: the old "em <X>" heuristic captured "29" (the day of "29/06") as the merchant.
+        val result = BrNotificationParser.parse(
+            "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - DL*UberRides valor RS 21,96 em 27/06, as 18h06.",
+            NOW,
+        )
+
+        assertEquals("DL*UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from aprovada-em-para format keeps mixed case`() {
+        val result = BrNotificationParser.parse(
+            "Compra no crédito aprovada Compra de R\$ 26,90 APROVADA em DL*GOOGLE YouTub para o cartão com final 1523.",
+            NOW,
+        )
+
+        assertEquals("DL*GOOGLE YouTub", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant is never a pure number`() {
+        // A bare "em <date>" must not yield a numeric merchant.
+        val result = BrNotificationParser.parse("Compra RS 10,00 em 29/06", NOW)
+
+        val merchant = result.parsed.merchantRaw
+        if (merchant != null) {
+            assertFalse("Merchant must not be all digits", merchant.all { it.isDigit() })
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Date parsing
     // -------------------------------------------------------------------------
 

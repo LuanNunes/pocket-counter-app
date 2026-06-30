@@ -8,7 +8,6 @@ import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRe
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
-import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -24,6 +23,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
+import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,9 +77,9 @@ class WizardViewModel @Inject constructor(
     private val notificationRepository: NotificationRepository,
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
-    private val transactionRepository: TransactionRepository,
     private val seriesRepository: SeriesRepository,
     private val classificationRuleRepository: ClassificationRuleRepository,
+    private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
 ) : ViewModel() {
 
     private var notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -416,17 +416,15 @@ class WizardViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
             val draft = _state.value.draft
-            transactionRepository.save(draft)
+            // Shared save core (create the transaction + best-effort markClassified). The transaction
+            // is the source of truth and is never rolled back; the wizard-only side-effects below are
+            // likewise best-effort and can't block advancing.
+            confirmClassifiedNotification(notificationId, draft, pendingTransactionId = null)
                 .onSuccess { transactionId ->
-                    // The transaction is the source of truth and is never rolled back. The
-                    // recurring-series steps below are best-effort: a series create/link failure
-                    // is swallowed so it can't block advancing. Carry-forward later seeds each
-                    // instance's amount from the source month — the backend has no series
-                    // defaultAmount (handoff §3.3 divergence).
+                    // Recurring-series link: carry-forward later seeds each instance's amount from the
+                    // source month — the backend has no series defaultAmount (handoff §3.3 divergence).
                     linkSeries(draft, transactionId)
-                    runCatching { notificationRepository.markClassified(notificationId, transactionId) }
-                    // Best-effort: persist a learned rule so future matching notifications
-                    // pre-fill these tags. Never blocks advancing.
+                    // Persist a learned rule so future matching notifications pre-fill these tags.
                     learnRuleIfRequested(draft)
                     // Process the review queue in place: load the next pending item, or return to
                     // the app when none remain.
@@ -564,9 +562,8 @@ class WizardViewModel @Inject constructor(
         val pendingId = _state.value.pendingTransactionId ?: return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
-            transactionRepository.markPaid(pendingId)
+            confirmClassifiedNotification(notificationId, _state.value.draft, pendingTransactionId = pendingId)
                 .onSuccess {
-                    runCatching { notificationRepository.markClassified(notificationId, pendingId) }
                     _state.update {
                         it.copy(isSaving = false, isConfirmingPending = false, pendingConfirmed = true)
                     }

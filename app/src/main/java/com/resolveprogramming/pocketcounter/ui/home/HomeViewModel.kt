@@ -7,12 +7,14 @@ import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.GroupSort
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
+import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -20,9 +22,13 @@ import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.model.automationPercent
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
+import com.resolveprogramming.pocketcounter.domain.notification.confirmReadyItemOf
+import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +53,10 @@ data class HomeUiState(
     val automationPct: Int? = null,
     val pendingReviewCount: Int = 0,
     val pendingReviewFirstId: String? = null,
+    /** Pending notifications the classifier recognized — confirmable in one tap, newest cap-limited. */
+    val confirmReady: List<ConfirmReadyItem> = emptyList(),
+    /** Notification ids whose one-tap confirm is in flight (drives the per-card spinner + double-tap guard). */
+    val confirmingIds: Set<String> = emptySet(),
     val openBillsTotal: BigDecimal = BigDecimal.ZERO,
     val openBillsCount: Int = 0,
     val shownItems: List<HistoryItem> = emptyList(),
@@ -71,12 +81,17 @@ class HomeViewModel @Inject constructor(
     private val tagRepository: TagRepository,
     private val cardRepository: CardRepository,
     private val tokenStore: TokenStore,
+    private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
 
     // The full month's rows, before listType/groupBy filtering — the source for recomputed().
     private var monthItems: List<HistoryItem> = emptyList()
+
+    // Bumped on each confirm-ready classify pass so only the latest pass commits (see
+    // classifyPendingForConfirmReady). Confined to the Main dispatcher, so a plain Int is safe.
+    private var classifyGeneration = 0
 
     private val _state = MutableStateFlow(
         HomeUiState(
@@ -137,6 +152,84 @@ class HomeViewModel @Inject constructor(
                     pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
                 ).recomputed()
             }
+            // Recognize confirm-ready items off the critical path: the ledger above is already rendered.
+            if (current) {
+                classifyPendingForConfirmReady(pending, month)
+            } else {
+                classifyGeneration++ // invalidate any in-flight pass; off-month shows no confirm-ready cards
+                _state.update { if (it.month == month) it.copy(confirmReady = emptyList()) else it }
+            }
+        }
+    }
+
+    /**
+     * Classifies up to [CONFIRM_READY_CLASSIFY_CAP] pending notifications concurrently and surfaces the
+     * recognized ones as [HomeUiState.confirmReady]. Runs after the ledger render so the month list is
+     * never blocked on N `/classify` round-trips, then narrows the "para revisar" banner to the items
+     * that still need the wizard.
+     *
+     * [classifyGeneration] guards against overlapping passes: a month switch OR a same-month reload
+     * (e.g. back-to-back [confirm] calls, each triggering [loadMonth]) starts a newer pass, and only the
+     * latest one is allowed to commit — so a slow older pass can't overwrite fresh state or transiently
+     * re-show an already-confirmed card.
+     */
+    private fun classifyPendingForConfirmReady(pending: List<NotificationItem>, month: YearMonth) {
+        val generation = ++classifyGeneration
+        viewModelScope.launch {
+            val ready = pending.take(CONFIRM_READY_CLASSIFY_CAP)
+                .map { base ->
+                    async { notificationRepository.classify(base.id, base).getOrNull()?.let(::confirmReadyItemOf) }
+                }
+                .awaitAll()
+                .filterNotNull()
+            _state.update { s ->
+                if (s.month != month || generation != classifyGeneration) return@update s
+                val readyIds = ready.mapTo(mutableSetOf()) { it.notificationId }
+                s.copy(
+                    confirmReady = ready,
+                    pendingReviewCount = (pending.size - ready.size).coerceAtLeast(0),
+                    pendingReviewFirstId = pending.firstOrNull { it.id !in readyIds }?.id,
+                )
+            }
+        }
+    }
+
+    /**
+     * One-tap confirm of a recognized notification: optimistically drops the card, runs the shared
+     * confirm core (create the transaction or mark the matched pending one paid), then reloads the
+     * month. On failure the card is restored and a toast is shown. Guards against double-taps via
+     * [HomeUiState.confirmingIds].
+     */
+    fun confirm(item: ConfirmReadyItem) {
+        if (item.notificationId in _state.value.confirmingIds) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    confirmingIds = it.confirmingIds + item.notificationId,
+                    confirmReady = it.confirmReady.filterNot { c -> c.notificationId == item.notificationId },
+                )
+            }
+            confirmClassifiedNotification(item.notificationId, item.draft, item.pendingTransactionId)
+                .onSuccess { transactionId ->
+                    _state.update {
+                        it.copy(
+                            confirmingIds = it.confirmingIds - item.notificationId,
+                            flashId = transactionId,
+                            flashNonce = it.flashNonce + 1,
+                            toastMessage = "Transação confirmada",
+                        )
+                    }
+                    loadMonth()
+                }
+                .onFailure {
+                    _state.update {
+                        it.copy(
+                            confirmingIds = it.confirmingIds - item.notificationId,
+                            confirmReady = it.confirmReady + item,
+                            toastMessage = "Não foi possível confirmar",
+                        )
+                    }
+                }
         }
     }
 
@@ -242,5 +335,11 @@ class HomeViewModel @Inject constructor(
     private fun monthLabel(ym: YearMonth): String {
         val month = ym.month.getDisplayName(TextStyle.FULL, ptBr).replaceFirstChar { it.uppercase(ptBr) }
         return "$month ${ym.year}"
+    }
+
+    private companion object {
+        // Per-Home-load classify round-trips are bounded: only the freshest pending items are offered
+        // as one-tap confirms; the rest stay in the wizard-path "para revisar" banner.
+        const val CONFIRM_READY_CLASSIFY_CAP = 10
     }
 }

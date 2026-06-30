@@ -85,10 +85,28 @@ object BrNotificationParser {
     private fun hasExplicitParcelValue(text: String): Boolean =
         PARCEL_VALUE_REGEX.containsMatchIn(text.lowercase())
 
-    private fun parseMerchant(text: String): String? {
-        val match = MERCHANT_REGEX.find(text) ?: return null
-        val candidate = match.groupValues[1].trim().trimEnd('.', ',', ';', ':')
+    /**
+     * Merchant extraction, tried most-specific first:
+     *  1. Card format "... final NNNN - <merchant> valor ..." (the dominant credit-card push). The
+     *     merchant is the delimited descriptor (e.g. "DL*UberRides", "IFD*IFOOD CLUB") and may carry
+     *     lowercase, so it can't be captured by the uppercase-run heuristic below.
+     *  2. Card format "... aprovada em <merchant> para o cartão ...".
+     *  3. Fallback heuristic: an UPPERCASE-led run after "compra em"/"em".
+     *
+     * The numeric-mask guard in [cleanMerchant] stops the fallback from capturing a date's day digits
+     * (e.g. "em 29/06" → "29"), which would normalize to nothing and make a learned rule un-matchable.
+     */
+    private fun parseMerchant(text: String): String? =
+        (CARD_FINAL_MERCHANT_REGEX.find(text)?.groupValues?.get(1)
+            ?: APROVADA_EM_MERCHANT_REGEX.find(text)?.groupValues?.get(1)
+            ?: MERCHANT_REGEX.find(text)?.groupValues?.get(1))
+            ?.let(::cleanMerchant)
+
+    private fun cleanMerchant(raw: String): String? {
+        val candidate = raw.trim().trimEnd('.', ',', ';', ':', '-').trim()
         if (candidate.length !in 2..40) return null
+        // A capture with no letters is a date/amount fragment ("29", "27/06"), never a merchant.
+        if (candidate.none { it.isLetter() }) return null
         return candidate
     }
 
@@ -136,6 +154,20 @@ object BrNotificationParser {
     private val FRACTION_REGEX = Regex("""\b(\d+)/(\d+)\b""")
     private val VEZES_REGEX = Regex("""em\s+(\d+)\s+vezes""")
     private val PARCEL_VALUE_REGEX = Regex("""(parcela|parcelas|cada|de)\s+(de\s+)?r\$""")
+
+    // Credit-card push: "... final 3685 - DL*UberRides valor RS 26,74 ...". The merchant is the run
+    // between the "final NNNN -" delimiter and " valor"; non-greedy so it stops at the first " valor".
+    private val CARD_FINAL_MERCHANT_REGEX = Regex(
+        """final\s+\d+\s*[-–]\s*(.+?)\s+valor\b""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    // Credit-card push: "... APROVADA em DL*GOOGLE YouTub para o cartão ...". Merchant sits between
+    // "aprovad(a/o) em" and " para"; non-greedy so a trailing "para o cartão ..." is excluded.
+    private val APROVADA_EM_MERCHANT_REGEX = Regex(
+        """aprovad[ao]\s+em\s+(.+?)\s+para\b""",
+        RegexOption.IGNORE_CASE,
+    )
 
     // Prefix is case-insensitive ((?i:...)); the merchant capture stays case-sensitive so it only
     // grabs an UPPERCASE-led run and stops at the first lowercase-led context word ("aprovada", "em").
