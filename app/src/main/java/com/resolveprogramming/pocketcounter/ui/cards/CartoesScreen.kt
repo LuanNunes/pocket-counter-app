@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.cards
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
@@ -226,6 +227,8 @@ private fun CartoesCarousel(
     val multi = invoices.size > 1
     // View mode is ephemeral, per-card; ITENS keeps today's behaviour as the default.
     val viewModes = remember { mutableStateMapOf<String, FaturaViewMode>() }
+    // The card tile starts expanded; collapsing it frees vertical space for the breakdown below.
+    var cardCollapsed by remember { mutableStateOf(false) }
     val reducedMotion = LocalReducedMotion.current
 
     Column(modifier) {
@@ -250,7 +253,12 @@ private fun CartoesCarousel(
                 .fillMaxWidth()
                 .padding(top = 4.dp),
         ) { page ->
-            FaturaCard(invoice = invoices[page], formatter = formatter)
+            FaturaCard(
+                invoice = invoices[page],
+                formatter = formatter,
+                collapsed = cardCollapsed,
+                onToggleCollapsed = { cardCollapsed = !cardCollapsed },
+            )
         }
 
         val current = invoices[pagerState.currentPage]
@@ -653,6 +661,8 @@ private fun CartoesHeader(
 private fun FaturaCard(
     invoice: OpenInvoice,
     formatter: NumberFormat,
+    collapsed: Boolean,
+    onToggleCollapsed: () -> Unit,
 ) {
     val card = invoice.card
     val usagePct = (invoice.usage * 100).toInt()
@@ -660,16 +670,62 @@ private fun FaturaCard(
         Color(card.gradientStart),
         Color(card.gradientEnd),
     )
+    val reducedMotion = LocalReducedMotion.current
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (collapsed) 0f else 180f,
+        animationSpec = tween(durationMillis = if (reducedMotion) 0 else 180),
+        label = "cardCollapseChevron",
+    )
 
-    Column {
-        // Gradient card tile
+    Column(
+        modifier = Modifier.animateContentSize(
+            animationSpec = tween(durationMillis = if (reducedMotion) 0 else 200),
+        ),
+    ) {
+        // Gradient card tile — tap anywhere to collapse/expand it (frees room for the breakdown).
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(PocketTheme.shapes.card)
                 .background(Brush.linearGradient(gradientColors))
-                .padding(18.dp),
+                .clickable(
+                    onClickLabel = if (collapsed) "Expandir cartão" else "Recolher cartão",
+                    onClick = onToggleCollapsed,
+                )
+                .padding(if (collapsed) 14.dp else 18.dp),
         ) {
+            if (collapsed) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = card.name,
+                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = formatter.format(invoice.total),
+                        style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp).rotate(chevronRotation),
+                    )
+                }
+                return@Box
+            }
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -680,11 +736,20 @@ private fun FaturaCard(
                         style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White,
                     )
-                    if (card.brand.isNotBlank()) {
-                        Text(
-                            text = card.brand,
-                            style = PocketTheme.typography.bodySm,
-                            color = Color.White.copy(alpha = 0.75f),
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (card.brand.isNotBlank()) {
+                            Text(
+                                text = card.brand,
+                                style = PocketTheme.typography.bodySm,
+                                color = Color.White.copy(alpha = 0.75f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp).rotate(chevronRotation),
                         )
                     }
                 }
@@ -735,60 +800,63 @@ private fun FaturaCard(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        // Meta row + limit bar are hidden while the card is collapsed.
+        if (!collapsed) {
+            Spacer(Modifier.height(8.dp))
 
-        // Meta row: closes in N days + usage badge
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Fecha em ",
-                style = PocketTheme.typography.bodySm,
-                color = PocketTheme.colors.text3,
-            )
-            Text(
-                text = "${invoice.closesInDays} dias",
-                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.SemiBold),
-                color = PocketTheme.colors.text,
-            )
-            Spacer(Modifier.weight(1f))
-            // Limit usage is only shown when the card limit is known (the backend
-            // doesn't store it yet); otherwise the badge + bar are hidden.
-            if (card.limit.signum() > 0) {
-                Box(
-                    modifier = Modifier
-                        .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = "$usagePct% do limite",
-                        style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.Medium),
-                        color = PocketTheme.colors.text2,
-                    )
-                }
-            }
-        }
-
-        if (card.limit.signum() > 0) {
-            Spacer(Modifier.height(6.dp))
-
-            // Limit bar
-            Box(
+            // Meta row: closes in N days + usage badge
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(PocketTheme.shapes.pill)
-                    .background(PocketTheme.colors.line),
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = "Fecha em ",
+                    style = PocketTheme.typography.bodySm,
+                    color = PocketTheme.colors.text3,
+                )
+                Text(
+                    text = "${invoice.closesInDays} dias",
+                    style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.SemiBold),
+                    color = PocketTheme.colors.text,
+                )
+                Spacer(Modifier.weight(1f))
+                // Limit usage is only shown when the card limit is known (the backend
+                // doesn't store it yet); otherwise the badge + bar are hidden.
+                if (card.limit.signum() > 0) {
+                    Box(
+                        modifier = Modifier
+                            .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = "$usagePct% do limite",
+                            style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.Medium),
+                            color = PocketTheme.colors.text2,
+                        )
+                    }
+                }
+            }
+
+            if (card.limit.signum() > 0) {
+                Spacer(Modifier.height(6.dp))
+
+                // Limit bar
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(invoice.usage.coerceIn(0f, 1f))
+                        .fillMaxWidth()
                         .height(4.dp)
-                        .background(PocketTheme.colors.text.copy(alpha = 0.55f)),
-                )
+                        .clip(PocketTheme.shapes.pill)
+                        .background(PocketTheme.colors.line),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(invoice.usage.coerceIn(0f, 1f))
+                            .height(4.dp)
+                            .background(PocketTheme.colors.text.copy(alpha = 0.55f)),
+                    )
+                }
             }
         }
     }
