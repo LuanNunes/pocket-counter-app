@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -38,12 +36,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
@@ -54,6 +50,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
+import com.resolveprogramming.pocketcounter.ui.components.MoneyTextField
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
@@ -331,9 +328,6 @@ private fun MoneyField(
     onAmountChange: (BigDecimal?) -> Unit,
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    var textValue by remember(amount) {
-        mutableStateOf(amount?.let { formatAmountInput(it) } ?: "")
-    }
     val valueColor = when (type) {
         TransactionType.INCOME -> PocketTheme.colors.income
         TransactionType.EXPENSE -> PocketTheme.colors.expense
@@ -353,34 +347,14 @@ private fun MoneyField(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "R$",
-            style = PocketTheme.typography.monoBody,
-            color = PocketTheme.colors.text3,
+        MoneyTextField(
+            amount = amount,
+            onAmountChange = onAmountChange,
+            textStyle = PocketTheme.typography.monoBalance,
+            valueColor = valueColor,
+            onFocusChanged = { isFocused = it },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Box(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-            if (textValue.isEmpty()) {
-                Text(
-                    text = "0,00",
-                    style = PocketTheme.typography.monoBalance,
-                    color = PocketTheme.colors.text3,
-                )
-            }
-            BasicTextField(
-                value = textValue,
-                onValueChange = { newValue ->
-                    val cleaned = newValue.filter { it.isDigit() || it == ',' }
-                    textValue = cleaned
-                    onAmountChange(cleaned.replace(",", ".").toBigDecimalOrNull())
-                },
-                textStyle = PocketTheme.typography.monoBalance.copy(color = valueColor),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onFocusChanged { isFocused = it.isFocused },
-            )
-        }
     }
 }
 
@@ -491,9 +465,6 @@ private fun PaymentMethod.icon(): ImageVector = when (this) {
     PaymentMethod.CASH -> Icons.Filled.Payments
     PaymentMethod.CRYPTO -> Icons.Filled.CurrencyBitcoin
 }
-
-private fun formatAmountInput(value: BigDecimal): String =
-    value.stripTrailingZeros().toPlainString().replace(".", ",")
 
 private fun seedDraft(
     item: HistoryItem?,
