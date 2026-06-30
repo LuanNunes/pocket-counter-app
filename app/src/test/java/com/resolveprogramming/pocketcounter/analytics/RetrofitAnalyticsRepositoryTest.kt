@@ -240,9 +240,10 @@ class RetrofitAnalyticsRepositoryTest {
     }
 
     @Test
-    fun `invoice whose items exceed the container adds no negative remainder`() = runTest {
-        // Refund/overflow guard: items net above the container; we must not add a negative remainder
-        // (sumAmount's abs would otherwise inflate the total).
+    fun `invoice whose items exceed the container subtracts the overflow so the total matches Home`() = runTest {
+        // Items net ABOVE the container (an itemization that double-counts, or includes a refund). The
+        // signed remainder is negative, so the total stays equal to the container face value Home counts
+        // — never inflated. Mirrors the web's signed expandInvoiceExpenses.
         stubTwoContextCatalog()
         coEvery { transactionApi.getExpenses(any()) } returns listOf(invoice(amount = "100.00"))
         coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
@@ -251,8 +252,9 @@ class RetrofitAnalyticsRepositoryTest {
 
         val summary = repo.summary("2026-06", TransactionType.EXPENSE, compareKey = null).getOrThrow()
 
-        assertEquals(BigDecimal("120.00"), summary.total)
-        assertNull(summary.groups.firstOrNull { it.name == "Sem categoria" })
+        assertEquals(BigDecimal("100.00"), summary.total)
+        // The -20 overflow lands in the uncategorized bucket so groups still reconcile to the total.
+        assertEquals(BigDecimal("-20.00"), summary.groups.first { it.name == "Sem categoria" }.total)
     }
 
     @Test

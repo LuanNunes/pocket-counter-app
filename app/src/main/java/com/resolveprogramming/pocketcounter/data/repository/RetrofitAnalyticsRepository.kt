@@ -244,16 +244,17 @@ class RetrofitAnalyticsRepository @Inject constructor(
         )
 
     /**
-     * The un-itemized part of a fatura: container total minus the items' total, as an untagged row so
-     * [classify] buckets it under "Sem categoria". Returns null when the items already meet or exceed
-     * the container (full itemization, or a refunded fatura whose items net above it) — only a positive
-     * remainder is added back, never a negative one that [sumAmount]'s abs would turn into over-counting.
+     * The reconciling remainder for a fatura: container total minus the items' total, as an untagged row
+     * so [classify] buckets it under "Sem categoria". The remainder is **signed** — when the items sum
+     * *above* the container it is negative, so the (signed) totals subtract it back down to the container
+     * face value Home counts. Mirrors the web's `expandInvoiceExpenses`. Null only when it nets to zero
+     * (fully itemized), so no empty row is added.
      */
     private fun invoiceRemainder(invoice: TransactionDto, items: List<TransactionDto>): TransactionDto? {
-        val containerTotal = invoice.amount?.abs() ?: return null
-        val itemsTotal = items.fold(BigDecimal.ZERO) { acc, it -> acc + (it.amount ?: BigDecimal.ZERO).abs() }
+        val containerTotal = invoice.amount ?: return null
+        val itemsTotal = items.fold(BigDecimal.ZERO) { acc, it -> acc + (it.amount ?: BigDecimal.ZERO) }
         val remainder = containerTotal - itemsTotal
-        if (remainder <= BigDecimal.ZERO) return null
+        if (remainder.signum() == 0) return null
         return invoice.copy(
             id = "${invoice.id}-remainder",
             amount = remainder,
@@ -293,7 +294,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
         val totals = LinkedHashMap<String, BigDecimal>()
         for (tx in fetch(kind, ym)) {
             val (gid, _, _) = classify(tx, kind, tagToContext, contextById, incomeTagById)
-            totals[gid] = (totals[gid] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
+            totals[gid] = (totals[gid] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO)
         }
         return totals
     }
@@ -343,7 +344,7 @@ class RetrofitAnalyticsRepository @Inject constructor(
                     .firstOrNull()
                 val name = tagId?.let { tagNameById[it] ?: tx.tags?.firstOrNull { t -> t.id == it }?.name }
                     ?: "sem etiqueta"
-                byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
+                byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO)
             }
             return byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
         }
@@ -352,13 +353,13 @@ class RetrofitAnalyticsRepository @Inject constructor(
             // Drill by the effective income category tag, mirroring the bucket grouping.
             val ids = effectiveTagIds(tx.tags?.mapNotNull { it.id }, emptyList())
             val name = ids.firstNotNullOfOrNull { incomeTagById[it]?.name } ?: "Sem categoria"
-            byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO).abs()
+            byTag[name] = (byTag[name] ?: BigDecimal.ZERO) + (tx.amount ?: BigDecimal.ZERO)
         }
         return byTag.map { SummaryTag(it.key, it.value) }.sortedByDescending { it.total }
     }
 
     private fun List<TransactionDto>.sumAmount(): BigDecimal =
-        fold(BigDecimal.ZERO) { acc, tx -> acc + (tx.amount ?: BigDecimal.ZERO).abs() }
+        fold(BigDecimal.ZERO) { acc, tx -> acc + (tx.amount ?: BigDecimal.ZERO) }
 
     private fun ratio(part: BigDecimal, whole: BigDecimal): Float {
         if (whole > BigDecimal.ZERO) return part.divide(whole, 4, RoundingMode.HALF_UP).toFloat()
