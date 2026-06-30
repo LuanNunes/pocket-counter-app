@@ -6,12 +6,19 @@ import com.resolveprogramming.pocketcounter.data.repository.NotificationReposito
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.AutomationStat
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
+import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
+import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
+import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
+import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -87,6 +94,10 @@ class HomeViewModelTest {
         coEvery { notificationRepository.getAutomationStat() } returns
             Result.success(AutomationStat(monthTotal = 10, autoDone = 7))
         coEvery { transactionRepository.getMonth(any()) } returns Result.success(monthItems)
+        // Default: a pending item classifies to "not recognized" so confirmReady stays empty unless a
+        // test opts in. getOrNull() on failure → null → filtered out.
+        coEvery { notificationRepository.classify(any(), any()) } returns
+            Result.failure(RuntimeException("not classified"))
     }
 
     @After
@@ -100,6 +111,10 @@ class HomeViewModelTest {
         tagRepository = tagRepository,
         cardRepository = cardRepository,
         tokenStore = tokenStore,
+        confirmClassifiedNotification = ConfirmClassifiedNotificationUseCase(
+            transactionRepository,
+            notificationRepository,
+        ),
     )
 
     @Test
@@ -344,5 +359,122 @@ class HomeViewModelTest {
 
         assertEquals(0, vm.state.value.pendingReviewCount)
         assertNull(vm.state.value.pendingReviewFirstId)
+    }
+
+    // -------------------------------------------------------------------------
+    // Confirm-ready: per-item classification + one-tap confirm
+    // -------------------------------------------------------------------------
+
+    private fun recognizedNotification(id: String): NotificationItem = NotificationItem(
+        id = id,
+        app = "App",
+        channel = NotificationChannel.PUSH,
+        time = "agora",
+        received = "2026-06-30T13:25:00Z",
+        text = "Compra aprovada DL*UberRides",
+        status = NotificationStatus.AUTO,
+        parsed = ParsedNotification(
+            type = TransactionType.EXPENSE,
+            amount = BigDecimal("26.74"),
+            date = currentDay,
+            merchantRaw = "DL*UberRides",
+            paymentHint = null,
+        ),
+        suggestions = ClassificationSuggestion(
+            tagIds = listOf("t1"),
+            paymentMethod = PaymentMethod.PIX,
+            cardId = null,
+        ),
+        tokens = emptyList(),
+    )
+
+    @Test
+    fun `classify surfaces a recognized notification as confirm-ready`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val ready = vm.state.value.confirmReady
+        assertEquals(1, ready.size)
+        assertEquals("pend-1", ready.single().notificationId)
+        // The banner counts only items still needing the wizard.
+        assertEquals(0, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `confirm-ready classify is capped at ten per load`() = runTest {
+        val many = (1..12).map { recognizedNotification("p$it") }
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(many)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 10) { notificationRepository.classify(any(), any()) }
+    }
+
+    @Test
+    fun `confirm saves the transaction, toasts, and removes the card`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        // After confirming, the notification leaves the pending queue.
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        coVerify { notificationRepository.markClassified("pend-1", "tx-new") }
+        assertEquals("Transação confirmada", vm.state.value.toastMessage)
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+    }
+
+    @Test
+    fun `confirm of a pending-transaction match marks it paid instead of creating`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = "tx-99"))
+        coEvery { transactionRepository.markPaid("tx-99") } returns Result.success(Unit)
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { transactionRepository.markPaid("tx-99") }
+        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        assertEquals("Transação confirmada", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `confirm failure restores the card and toasts`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.confirmReady.size)
+        assertEquals("pend-1", vm.state.value.confirmReady.single().notificationId)
+        assertTrue(vm.state.value.confirmingIds.isEmpty())
+        assertEquals("Não foi possível confirmar", vm.state.value.toastMessage)
     }
 }

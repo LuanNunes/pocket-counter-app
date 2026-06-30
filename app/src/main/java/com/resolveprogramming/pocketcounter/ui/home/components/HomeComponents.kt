@@ -18,10 +18,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -41,10 +43,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
+import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.AutoSizeText
+import com.resolveprogramming.pocketcounter.ui.components.PocketButton
+import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
+import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+import com.resolveprogramming.pocketcounter.ui.wizard.label
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Locale
@@ -512,5 +520,105 @@ fun FlashEffect(flashId: String?, flashNonce: Int, reducedMotion: Boolean, onCon
             kotlinx.coroutines.delay(1400)
         }
         onConsume()
+    }
+}
+
+/**
+ * A pending notification the classifier recognized confidently enough to confirm in one tap. Shows the
+ * pre-filled title/amount + a payment/tag preview, a primary "Confirmar" (per-card spinner while its
+ * confirm is in flight) and a "Revisar" fallback that opens the wizard.
+ */
+@Composable
+fun ConfirmReadyCard(
+    item: ConfirmReadyItem,
+    isConfirming: Boolean,
+    tagName: (String) -> String?,
+    cardName: (String) -> String?,
+    onConfirm: () -> Unit,
+    onReview: () -> Unit,
+) {
+    val colors = PocketTheme.colors
+    val draft = item.draft
+    val title = draft.name?.takeIf { it.isNotBlank() }
+        ?: item.notification.parsed.merchantRaw?.takeIf { it.isNotBlank() }
+        ?: "Lançamento"
+    val meta = buildList {
+        draft.paymentMethod?.let { method ->
+            val card = draft.cardId?.let(cardName)
+            add(if (card != null) "${method.label()} · $card" else method.label())
+        }
+        draft.tagIds.mapNotNull(tagName).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(", ")) }
+    }.joinToString("  ·  ")
+
+    PocketCard {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = colors.accent,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Reconhecido automaticamente",
+                    style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.accent,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = title,
+                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.text,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                draft.amount?.let { amount ->
+                    Spacer(Modifier.width(12.dp))
+                    AmountText(
+                        amount = amount,
+                        type = draft.type,
+                        showSign = true,
+                        style = PocketTheme.typography.monoBody,
+                    )
+                }
+            }
+            if (meta.isNotEmpty()) {
+                Text(text = meta, style = PocketTheme.typography.bodyXs, color = colors.text3)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PocketButton(
+                    text = "Confirmar".takeUnless { isConfirming } ?: "Confirmando…",
+                    onClick = onConfirm,
+                    variant = PocketButtonVariant.PRIMARY,
+                    size = PocketButtonSize.SMALL,
+                    enabled = !isConfirming,
+                    modifier = Modifier.weight(1f),
+                    leading = if (isConfirming) {
+                        {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = colors.accentInk,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                )
+                PocketButton(
+                    text = "Revisar",
+                    onClick = onReview,
+                    variant = PocketButtonVariant.SOFT,
+                    size = PocketButtonSize.SMALL,
+                    enabled = !isConfirming,
+                )
+            }
+        }
     }
 }
