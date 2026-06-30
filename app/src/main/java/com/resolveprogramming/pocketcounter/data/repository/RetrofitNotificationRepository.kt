@@ -7,14 +7,10 @@ import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toRequestD
 import com.resolveprogramming.pocketcounter.data.remote.api.NotificationApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifiedRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyRequestDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
-import com.resolveprogramming.pocketcounter.domain.model.AutomationStat
 import com.resolveprogramming.pocketcounter.domain.model.CapturedMessage
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
-import java.time.Instant
-import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -61,23 +57,4 @@ class RetrofitNotificationRepository @Inject constructor(
         api.markClassified(notificationId, ClassifiedRequestDto(transactionId))
     }
 
-    /**
-     * Real automation stat for the current month: total detected notifications vs. those
-     * the backend already classified. The live "pending" count is computed separately in
-     * the Home ViewModel from [getPendingReview].
-     */
-    override suspend fun getAutomationStat(): Result<AutomationStat> = runCatching {
-        val ref = RemoteMappers.currentRefYearMonth()
-        val thisMonth = api.getNotifications().filter { it.receivedRef() == ref }
-        AutomationStat(
-            monthTotal = thisMonth.size,
-            autoDone = thisMonth.count { it.status.equals("CLASSIFIED", ignoreCase = true) },
-        )
-    }
-
-    private fun NotificationDto.receivedRef(): Int? {
-        val instant = receivedAt?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
-        val date = instant.atZone(ZoneId.systemDefault()).toLocalDate()
-        return date.year * 100 + date.monthValue
-    }
 }
