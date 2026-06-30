@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
@@ -863,5 +864,25 @@ class TransacoesViewModelTest {
         assertNull(vm.state.value.formMode)
         // getMonth called at least twice: init + after save
         coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }
+    }
+
+    @Test
+    fun `openAdd refreshes the card list so a newly-added card appears in the form`() = runTest {
+        // VM initialised with no cards; a card is added on the backend afterwards.
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.cards.isEmpty())
+
+        val card = CreditCard(
+            id = "c1", name = "Nubank", brand = "", last4 = "",
+            gradientStart = 0L, gradientEnd = 0L, limit = BigDecimal.ZERO, billDay = 10,
+        )
+        coEvery { cardRepository.getCards() } returns Result.success(listOf(card))
+
+        vm.openAdd()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(card), vm.state.value.cards)
+        assertTrue(vm.state.value.formMode is FormMode.Add)
     }
 }
