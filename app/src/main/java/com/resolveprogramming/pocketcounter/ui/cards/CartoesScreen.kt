@@ -155,6 +155,8 @@ fun CartoesScreen(
                         contexts = state.allContexts,
                         categoriesByCardId = state.categoriesByCardId,
                         categoryA11yByCardId = state.categoryA11yByCardId,
+                        cardCollapsed = state.cardCollapsed,
+                        onToggleCardCollapsed = { viewModel.setCardCollapsed(!state.cardCollapsed) },
                         formatter = formatter,
                         onItemClick = { invoice, item ->
                             classifyTarget = ClassifyTarget(invoice.card, item)
@@ -207,6 +209,8 @@ private fun CartoesCarousel(
     contexts: List<TagContext>,
     categoriesByCardId: Map<String, List<SummaryGroup>>,
     categoryA11yByCardId: Map<String, String>,
+    cardCollapsed: Boolean,
+    onToggleCardCollapsed: () -> Unit,
     formatter: NumberFormat,
     onItemClick: (OpenInvoice, InvoiceItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -227,8 +231,6 @@ private fun CartoesCarousel(
     val multi = invoices.size > 1
     // View mode is ephemeral, per-card; ITENS keeps today's behaviour as the default.
     val viewModes = remember { mutableStateMapOf<String, FaturaViewMode>() }
-    // The card tile starts expanded; collapsing it frees vertical space for the breakdown below.
-    var cardCollapsed by remember { mutableStateOf(false) }
     val reducedMotion = LocalReducedMotion.current
 
     Column(modifier) {
@@ -257,7 +259,7 @@ private fun CartoesCarousel(
                 invoice = invoices[page],
                 formatter = formatter,
                 collapsed = cardCollapsed,
-                onToggleCollapsed = { cardCollapsed = !cardCollapsed },
+                onToggleCollapsed = onToggleCardCollapsed,
             )
         }
 

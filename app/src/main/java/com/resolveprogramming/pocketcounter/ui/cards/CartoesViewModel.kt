@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.cards
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.CardPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -39,6 +40,8 @@ data class CartoesUiState(
     val showAddCard: Boolean = false,
     val isSavingCard: Boolean = false,
     val toastMessage: String? = null,
+    /** Persisted: whether the gradient fatura card tile is collapsed to a slim line. */
+    val cardCollapsed: Boolean = false,
 )
 
 @HiltViewModel
@@ -46,6 +49,7 @@ class CartoesViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val viewedMonth: ViewedMonthStore,
+    private val cardPrefs: CardPrefsStore,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
@@ -68,6 +72,17 @@ class CartoesViewModel @Inject constructor(
                 loadData()
             }
         }
+        // Restore the persisted card-tile collapsed preference and keep it in sync.
+        viewModelScope.launch {
+            cardPrefs.tileCollapsed.collect { collapsed ->
+                _state.update { it.copy(cardCollapsed = collapsed) }
+            }
+        }
+    }
+
+    /** Persist the card-tile collapsed preference; the collector above reflects it into state. */
+    fun setCardCollapsed(collapsed: Boolean) {
+        viewModelScope.launch { cardPrefs.setTileCollapsed(collapsed) }
     }
 
     fun loadData() {

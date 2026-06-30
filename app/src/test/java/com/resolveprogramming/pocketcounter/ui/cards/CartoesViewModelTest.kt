@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.ui.cards
 
+import com.resolveprogramming.pocketcounter.data.local.CardPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -11,9 +12,11 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_CONTEXT_ID
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -34,6 +37,13 @@ class CartoesViewModelTest {
 
     private val cardRepository: CardRepository = mockk()
     private val tagRepository: TagRepository = mockk()
+
+    // Fake the persisted card-tile pref with an in-memory flow that setTileCollapsed updates.
+    private val collapsedFlow = MutableStateFlow(false)
+    private val cardPrefs: CardPrefsStore = mockk {
+        every { tileCollapsed } returns collapsedFlow
+        coEvery { setTileCollapsed(any()) } answers { collapsedFlow.value = firstArg() }
+    }
 
     // ── fixture data ──────────────────────────────────────────────────────────
 
@@ -95,6 +105,7 @@ class CartoesViewModelTest {
             cardRepository = cardRepository,
             tagRepository = tagRepository,
             viewedMonth = viewedMonth,
+            cardPrefs = cardPrefs,
         )
 
     private fun invoiceItem(
@@ -235,5 +246,28 @@ class CartoesViewModelTest {
 
         // card-1's breakdown does not bleed into card-2's
         assertTrue(byId["card-2"]!!.none { it.id == "ctx-food" })
+    }
+
+    @Test
+    fun `setCardCollapsed persists and is reflected in state`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(false, vm.state.value.cardCollapsed)
+
+        vm.setCardCollapsed(true)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, vm.state.value.cardCollapsed)
+    }
+
+    @Test
+    fun `card collapsed preference is restored on a new ViewModel`() = runTest {
+        // Simulate a prior session having collapsed the tile (persisted in the store).
+        collapsedFlow.value = true
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(true, vm.state.value.cardCollapsed)
     }
 }
