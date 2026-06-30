@@ -123,7 +123,6 @@ fun HomeContent(
                     monthLabel = state.monthLabel,
                     kpis = state.kpis,
                     balance = state.balance,
-                    automationPct = state.automationPct,
                 )
             }
 

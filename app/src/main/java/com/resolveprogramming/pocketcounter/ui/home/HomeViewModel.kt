@@ -21,7 +21,6 @@ import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
-import com.resolveprogramming.pocketcounter.domain.model.automationPercent
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.domain.notification.confirmReadyItemOf
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
@@ -50,8 +49,6 @@ data class HomeUiState(
     val groupBy: GroupMode = GroupMode.CONTEXTO,
     val kpis: HomeKpis = HomeKpis.from(emptyList()),
     val balance: BigDecimal = BigDecimal.ZERO,
-    /** null off the current month — automation is the current-month inbox statistic. */
-    val automationPct: Int? = null,
     val pendingReviewCount: Int = 0,
     val pendingReviewFirstId: String? = null,
     /** Pending notifications the classifier recognized — confirmable in one tap, newest cap-limited. */
@@ -148,18 +145,13 @@ class HomeViewModel @Inject constructor(
             _state.update { it.copy(isLoading = true) }
             val items = transactionRepository.getMonth(key).getOrDefault(emptyList())
             val pending = notificationRepository.getPendingReview().getOrDefault(emptyList())
-            val automation = notificationRepository.getAutomationStat().getOrNull()
             _state.update { s ->
                 // A newer month navigation supersedes this in-flight result.
                 if (s.month != month) return@update s
                 monthItems = items
-                val automationPct = automation
-                    ?.takeIf { current }
-                    ?.let { automationPercent(it.autoDone, it.monthTotal) }
                 s.copy(
                     isLoading = false,
                     isCurrentMonth = current,
-                    automationPct = automationPct,
                     pendingReviewCount = pending.size.takeIf { current } ?: 0,
                     pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
                 ).recomputed()

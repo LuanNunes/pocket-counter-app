@@ -144,7 +144,6 @@ fun BalanceHero(
     monthLabel: String,
     kpis: HomeKpis,
     balance: BigDecimal,
-    automationPct: Int?,
 ) {
     // The hero stays dark in both themes; KPI dot/value colors read from the always-dark palette.
     val dark = PocketTheme.darkColors
@@ -229,10 +228,6 @@ fun BalanceHero(
                     showDivider = true,
                 )
             }
-            if (automationPct != null) {
-                Spacer(Modifier.height(16.dp))
-                AutomationBar(pct = automationPct, ink = ink, accent = dark.accent, track = dark.surface2)
-            }
         }
     }
 }
@@ -288,42 +283,6 @@ private fun KpiStackRow(
                     color = ink.copy(alpha = 0.55f),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun AutomationBar(pct: Int, ink: Color, accent: Color, track: Color) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Classificado por mim",
-                style = PocketTheme.typography.bodyXs,
-                color = ink.copy(alpha = 0.65f),
-            )
-            Text(
-                text = "$pct%",
-                style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.Bold),
-                color = accent,
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .background(track, PocketTheme.shapes.pill),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(pct / 100f)
-                    .height(6.dp)
-                    .background(accent, PocketTheme.shapes.pill),
-            )
         }
     }
 }

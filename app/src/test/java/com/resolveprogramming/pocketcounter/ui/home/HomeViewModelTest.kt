@@ -6,7 +6,6 @@ import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
-import com.resolveprogramming.pocketcounter.domain.model.AutomationStat
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
@@ -92,8 +91,6 @@ class HomeViewModelTest {
         coEvery { cardRepository.getOpenInvoices() } returns Result.success(emptyList())
         coEvery { tokenStore.getUserName() } returns "Guilherme"
         coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
-        coEvery { notificationRepository.getAutomationStat() } returns
-            Result.success(AutomationStat(monthTotal = 10, autoDone = 7))
         coEvery { transactionRepository.getMonth(any()) } returns Result.success(monthItems)
         // Default: a pending item classifies to "not recognized" so confirmReady stays empty unless a
         // test opts in. getOrNull() on failure → null → filtered out.
@@ -121,7 +118,7 @@ class HomeViewModelTest {
     )
 
     @Test
-    fun `init loads current month KPIs and automation`() = runTest {
+    fun `init loads current month KPIs`() = runTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -131,12 +128,11 @@ class HomeViewModelTest {
         assertEquals(1, s.kpis.incomeCount)
         assertEquals(BigDecimal("40.00"), s.kpis.pendingTotal)
         assertEquals(1, s.kpis.pendingCount)
-        assertEquals(70, s.automationPct)
         assertTrue(s.isCurrentMonth)
     }
 
     @Test
-    fun `selectMonth off current month gates banner and automation`() = runTest {
+    fun `selectMonth off current month gates the pending banner`() = runTest {
         coEvery { notificationRepository.getPendingReview() } returns
             Result.success(listOf(mockk(relaxed = true), mockk(relaxed = true)))
         val vm = makeViewModel()
@@ -147,7 +143,6 @@ class HomeViewModelTest {
 
         val s = vm.state.value
         assertFalse(s.isCurrentMonth)
-        assertNull(s.automationPct)
         assertEquals(0, s.pendingReviewCount)
     }
 
