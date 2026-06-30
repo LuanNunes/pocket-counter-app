@@ -1,6 +1,5 @@
 package com.resolveprogramming.pocketcounter.ui.wizard
 
-import android.app.DatePickerDialog
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.slideInHorizontally
@@ -51,7 +50,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -65,7 +63,6 @@ import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepAmount
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepPayment
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepTags
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepType
-import java.time.LocalDate
 
 @Composable
 fun WizardScreen(
@@ -203,40 +200,26 @@ fun WizardScreen(
                                 onSelect = viewModel::selectType,
                             )
 
-                            WizardStep.AMOUNT -> {
-                                val context = LocalContext.current
-                                StepAmount(
-                                    amount = state.draft.amount,
-                                    date = state.draft.date,
-                                    statusPayment = state.draft.statusPayment,
-                                    hasInstallments = notification.parsed.installments != null,
-                                    installmentsEnabled = state.draft.installments != null,
-                                    installmentCount = notification.parsed.installments,
-                                    installmentValue = notification.parsed.installmentValue,
-                                    isFixo = state.draft.isFixo,
-                                    recurrenceDay = state.draft.recurrenceDay,
-                                    name = state.draft.name,
-                                    type = state.draft.type,
-                                    onNameChange = viewModel::updateName,
-                                    onAmountChange = viewModel::updateAmount,
-                                    onDateTap = {
-                                        val current = state.draft.date ?: LocalDate.now()
-                                        DatePickerDialog(
-                                            context,
-                                            { _, year, month, day ->
-                                                viewModel.updateDate(LocalDate.of(year, month + 1, day))
-                                            },
-                                            current.year,
-                                            current.monthValue - 1,
-                                            current.dayOfMonth,
-                                        ).show()
-                                    },
-                                    onStatusChange = viewModel::updateStatusPayment,
-                                    onToggleInstallments = viewModel::toggleInstallments,
-                                    onToggleFixo = viewModel::toggleFixo,
-                                    onRecurrenceDayChange = viewModel::updateRecurrenceDay,
-                                )
-                            }
+                            WizardStep.AMOUNT -> StepAmount(
+                                amount = state.draft.amount,
+                                date = state.draft.date,
+                                statusPayment = state.draft.statusPayment,
+                                hasInstallments = notification.parsed.installments != null,
+                                installmentsEnabled = state.draft.installments != null,
+                                installmentCount = notification.parsed.installments,
+                                installmentValue = notification.parsed.installmentValue,
+                                isFixo = state.draft.isFixo,
+                                recurrenceDay = state.draft.recurrenceDay,
+                                name = state.draft.name,
+                                type = state.draft.type,
+                                onNameChange = viewModel::updateName,
+                                onAmountChange = viewModel::updateAmount,
+                                onDateChange = viewModel::updateDate,
+                                onStatusChange = viewModel::updateStatusPayment,
+                                onToggleInstallments = viewModel::toggleInstallments,
+                                onToggleFixo = viewModel::toggleFixo,
+                                onRecurrenceDayChange = viewModel::updateRecurrenceDay,
+                            )
 
                             WizardStep.PAYMENT -> StepPayment(
                                 type = state.draft.type,

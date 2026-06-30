@@ -15,9 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -39,10 +36,10 @@ import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
+import com.resolveprogramming.pocketcounter.ui.components.PocketDateField
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.math.BigDecimal
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun StepAmount(
@@ -59,14 +56,13 @@ fun StepAmount(
     type: TransactionType?,
     onNameChange: (String) -> Unit,
     onAmountChange: (BigDecimal?) -> Unit,
-    onDateTap: () -> Unit,
+    onDateChange: (LocalDate) -> Unit,
     onStatusChange: (PaymentStatus) -> Unit,
     onToggleInstallments: (Boolean) -> Unit,
     onToggleFixo: (Boolean) -> Unit,
     onRecurrenceDayChange: (Int?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
     var isFocused by remember { mutableStateOf(false) }
     var textValue by remember(amount) {
         mutableStateOf(amount?.let { formatAmountInput(it) } ?: "")
@@ -198,41 +194,9 @@ fun StepAmount(
 
         Spacer(Modifier.height(12.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
-                .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.card)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Data",
-                style = PocketTheme.typography.body,
-                color = PocketTheme.colors.text2,
-            )
-            Row(
-                modifier = Modifier
-                    .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
-                    .clickable(onClick = onDateTap)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    text = (date ?: LocalDate.now()).format(dateFormatter),
-                    style = PocketTheme.typography.monoSm,
-                    color = PocketTheme.colors.text,
-                )
-                Icon(
-                    imageVector = Icons.Filled.ExpandMore,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = PocketTheme.colors.text,
-                )
-            }
-        }
+        FormLabel("Data")
+        Spacer(Modifier.height(8.dp))
+        PocketDateField(date = date, onDateChange = onDateChange)
 
         Spacer(Modifier.height(12.dp))
 
