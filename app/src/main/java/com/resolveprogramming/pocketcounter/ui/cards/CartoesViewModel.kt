@@ -8,9 +8,11 @@ import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
+import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.model.buildFaturaBreakdown
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +24,7 @@ import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 data class CartoesUiState(
     val monthKey: String = YearMonth.now().toString(),
@@ -30,6 +33,8 @@ data class CartoesUiState(
     val invoices: List<OpenInvoice> = emptyList(),
     val allTags: List<Tag> = emptyList(),
     val allContexts: List<TagContext> = emptyList(),
+    val categoriesByCardId: Map<String, List<SummaryGroup>> = emptyMap(),
+    val categoryA11yByCardId: Map<String, String> = emptyMap(),
     val isLoading: Boolean = true,
     val showAddCard: Boolean = false,
     val isSavingCard: Boolean = false,
@@ -74,7 +79,7 @@ class CartoesViewModel @Inject constructor(
                     _state.update {
                         // A newer month step supersedes this result.
                         if (it.monthKey != key) return@update it
-                        it.copy(grandTotal = grand, invoices = invoices, isLoading = false)
+                        it.copy(grandTotal = grand, invoices = invoices, isLoading = false).withCategories()
                     }
                 }
                 .onFailure {
@@ -96,13 +101,29 @@ class CartoesViewModel @Inject constructor(
             tagRepository.getAllTags().onSuccess { tags ->
                 // Invoice items (and the rules learned from them) are expense-only; never offer
                 // income categories in the fatura classify sheet.
-                _state.update { it.copy(allTags = tags.filter { t -> t.kind == TransactionType.EXPENSE }) }
+                _state.update {
+                    it.copy(allTags = tags.filter { t -> t.kind == TransactionType.EXPENSE }).withCategories()
+                }
             }
             tagRepository.getAllContexts().onSuccess { contexts ->
-                _state.update { it.copy(allContexts = contexts) }
+                _state.update { it.copy(allContexts = contexts).withCategories() }
             }
         }
     }
+
+    private fun CartoesUiState.withCategories(): CartoesUiState {
+        val tagToContext = allTags.associate { it.id to it.idContext }
+        val contextById = allContexts.associateBy { it.id }
+        val byCard = invoices.associate { invoice ->
+            invoice.card.id to buildFaturaBreakdown(invoice.items, invoice.total, tagToContext, contextById)
+        }
+        val a11y = byCard.mapValues { (_, groups) -> categoriesA11y(groups) }
+        return copy(categoriesByCardId = byCard, categoryA11yByCardId = a11y)
+    }
+
+    // Mirror the chart/list: announce only positive shares, never an over-itemized fatura's negative remainder.
+    private fun categoriesA11y(groups: List<SummaryGroup>): String =
+        groups.filter { it.pct > 0f }.joinToString(", ") { "${it.name} ${(it.pct * 100).roundToInt()}%" }
 
     fun classifyPurchase(
         item: InvoiceItem,

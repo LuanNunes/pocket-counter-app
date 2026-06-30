@@ -37,12 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +49,7 @@ import com.resolveprogramming.pocketcounter.domain.model.MonthlySummary
 import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
+import com.resolveprogramming.pocketcounter.ui.components.PocketDonutChart
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.math.BigDecimal
 import java.text.NumberFormat
@@ -303,56 +299,12 @@ private fun DonutChart(
     kind: TransactionType,
     formatter: NumberFormat,
 ) {
-    val trackColor = PocketTheme.colors.surface2
     val totalColor = PocketTheme.colors.income.takeIf { kind == TransactionType.INCOME } ?: PocketTheme.colors.expense
 
-    Box(
+    PocketDonutChart(
+        segments = groups.map { it.color to it.pct },
         modifier = Modifier.size(168.dp),
-        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(168.dp)
-                .drawWithContent {
-                    val strokeWidth = 20.dp.toPx()
-                    val diameter = size.minDimension - strokeWidth
-                    val radius = diameter / 2f
-                    val topLeft = Offset(
-                        (size.width - diameter) / 2f,
-                        (size.height - diameter) / 2f,
-                    )
-                    val arcSize = Size(diameter, diameter)
-
-                    // Track circle
-                    drawArc(
-                        color = trackColor,
-                        startAngle = 0f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        topLeft = topLeft,
-                        size = arcSize,
-                        style = Stroke(strokeWidth),
-                    )
-
-                    // Segments
-                    var startAngle = -90f
-                    groups.forEach { g ->
-                        val sweep = g.pct * 360f
-                        drawArc(
-                            color = Color(g.color),
-                            startAngle = startAngle,
-                            sweepAngle = sweep,
-                            useCenter = false,
-                            topLeft = topLeft,
-                            size = arcSize,
-                            style = Stroke(strokeWidth, cap = StrokeCap.Butt),
-                        )
-                        startAngle += sweep
-                    }
-                    drawContent()
-                },
-        ) {}
-
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "Receitas".takeIf { kind == TransactionType.INCOME } ?: "Despesas",

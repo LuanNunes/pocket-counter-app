@@ -1,5 +1,7 @@
 package com.resolveprogramming.pocketcounter.ui.cards
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -36,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,8 +48,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,22 +61,32 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
+import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_GROUP_IDS
+import com.resolveprogramming.pocketcounter.domain.model.faturaDonutSlices
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
+import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.PocketChip
 import com.resolveprogramming.pocketcounter.ui.components.PocketChipVariant
+import com.resolveprogramming.pocketcounter.ui.components.PocketDonutChart
+import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
+import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
 import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.components.TabId
+import com.resolveprogramming.pocketcounter.ui.relatorio.ProportionBar
+import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -125,6 +141,8 @@ fun CartoesScreen(
                     CartoesCarousel(
                         invoices = state.invoices,
                         contexts = state.allContexts,
+                        categoriesByCardId = state.categoriesByCardId,
+                        categoryA11yByCardId = state.categoryA11yByCardId,
                         formatter = formatter,
                         onItemClick = { invoice, item ->
                             classifyTarget = ClassifyTarget(invoice.card, item)
@@ -169,10 +187,14 @@ private data class ClassifyTarget(
     val item: InvoiceItem,
 )
 
+private enum class FaturaViewMode { ITENS, CATEGORIAS }
+
 @Composable
 private fun CartoesCarousel(
     invoices: List<OpenInvoice>,
     contexts: List<TagContext>,
+    categoriesByCardId: Map<String, List<SummaryGroup>>,
+    categoryA11yByCardId: Map<String, String>,
     formatter: NumberFormat,
     onItemClick: (OpenInvoice, InvoiceItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -191,6 +213,9 @@ private fun CartoesCarousel(
     val pagerState = rememberPagerState(pageCount = { invoices.size })
     val scope = rememberCoroutineScope()
     val multi = invoices.size > 1
+    // View mode is ephemeral, per-card; ITENS keeps today's behaviour as the default.
+    val viewModes = remember { mutableStateMapOf<String, FaturaViewMode>() }
+    val reducedMotion = LocalReducedMotion.current
 
     Column(modifier) {
         // Tappable card-name pills double as the page indicator — far more discoverable
@@ -217,36 +242,208 @@ private fun CartoesCarousel(
             FaturaCard(invoice = invoices[page], formatter = formatter)
         }
 
-        // Invoice list for the currently-visible card.
         val current = invoices[pagerState.currentPage]
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            item { Spacer(Modifier.height(12.dp)) }
+        val mode = viewModes[current.card.id] ?: FaturaViewMode.ITENS
 
-            items(current.items, key = { it.itemId ?: it.transactionId }) { item ->
-                InvoiceItemRow(
-                    item = item,
+        PocketSegmented(
+            options = listOf(SegmentOption("Itens"), SegmentOption("Categorias")),
+            selectedIndex = mode.ordinal,
+            onSelect = { viewModes[current.card.id] = FaturaViewMode.entries[it] },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        )
+
+        Crossfade(
+            targetState = mode,
+            animationSpec = tween(durationMillis = if (reducedMotion) 0 else 180),
+            label = "faturaBody",
+            modifier = Modifier.fillMaxSize(),
+        ) { activeMode ->
+            when (activeMode) {
+                FaturaViewMode.ITENS -> FaturaItensBody(
+                    invoice = current,
                     contexts = contexts,
                     formatter = formatter,
-                    onClick = { onItemClick(current, item) },
+                    onItemClick = onItemClick,
+                )
+
+                FaturaViewMode.CATEGORIAS -> FaturaCategoriasBody(
+                    invoice = current,
+                    groups = categoriesByCardId[current.card.id].orEmpty(),
+                    a11y = categoryA11yByCardId[current.card.id].orEmpty(),
+                    formatter = formatter,
                 )
             }
+        }
+    }
+}
 
+@Composable
+private fun FaturaItensBody(
+    invoice: OpenInvoice,
+    contexts: List<TagContext>,
+    formatter: NumberFormat,
+    onItemClick: (OpenInvoice, InvoiceItem) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(invoice.items, key = { it.itemId ?: it.transactionId }) { item ->
+            InvoiceItemRow(
+                item = item,
+                contexts = contexts,
+                formatter = formatter,
+                onClick = { onItemClick(invoice, item) },
+            )
+        }
+
+        item {
+            Text(
+                text = "As compras chegam como notificações soltas e o PocketCounter junta tudo na fatura do cartão certo.",
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun FaturaCategoriasBody(
+    invoice: OpenInvoice,
+    groups: List<SummaryGroup>,
+    a11y: String,
+    formatter: NumberFormat,
+) {
+    if (groups.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Sem compras para categorizar.",
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text3,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
+    val allUncategorized = groups.all { it.id in UNCATEGORIZED_GROUP_IDS }
+    val slices = faturaDonutSlices(groups)
+    // Show only real (positive) shares in the list, matching the donut: an over-itemized fatura's
+    // signed "Sem categoria" remainder is negative and must not render as a "-20%" row.
+    val rankGroups = groups.filter { it.pct > 0f }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item {
+            PocketCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    PocketDonutChart(
+                        segments = slices.map { it.color to it.pct },
+                        modifier = Modifier
+                            .size(168.dp)
+                            .semantics { contentDescription = a11y },
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "FATURA",
+                                style = PocketTheme.typography.sectionHeader,
+                                color = PocketTheme.colors.text3,
+                            )
+                            Text(
+                                text = formatter.format(invoice.total),
+                                style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.Bold),
+                                color = PocketTheme.colors.expense,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (allUncategorized) {
             item {
                 Text(
-                    text = "As compras chegam como notificações soltas e o PocketCounter junta tudo na fatura do cartão certo.",
+                    text = "Classifique as compras para ver a divisão por categoria.",
                     style = PocketTheme.typography.bodyXs,
                     color = PocketTheme.colors.text3,
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
                 )
             }
-
-            item { Spacer(Modifier.height(8.dp)) }
         }
+
+        item { Spacer(Modifier.height(4.dp)) }
+
+        items(rankGroups, key = { it.id }) { group ->
+            CategoryRankRow(group = group, formatter = formatter)
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun CategoryRankRow(
+    group: SummaryGroup,
+    formatter: NumberFormat,
+) {
+    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(PocketTheme.shapes.pill)
+                    .background(Color(group.color)),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = group.name,
+                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
+                color = PocketTheme.colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "${(group.pct * 100).roundToInt()}%",
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text3,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = formatter.format(group.total),
+                style = PocketTheme.typography.monoSm,
+                color = PocketTheme.colors.text,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        ProportionBar(fraction = group.pct, color = Color(group.color))
     }
 }
 
