@@ -366,11 +366,11 @@ class BrNotificationParserTest {
     }
 
     @Test
-    fun `parse merchant handles star-joined acquirer token`() {
-        // "IFD*IFOOD" is a single uppercase-led token and must be captured whole.
+    fun `parse merchant strips the acquirer prefix from a star-joined token`() {
+        // "IFD*IFOOD" → the "IFD*" acquirer prefix is dropped, leaving the recognizable name.
         val result = BrNotificationParser.parse("compra em IFD*IFOOD em 12/06/2026 R$ 89,90", NOW)
 
-        assertEquals("IFD*IFOOD", result.parsed.merchantRaw)
+        assertEquals("IFOOD", result.parsed.merchantRaw)
     }
 
     @Test
@@ -423,13 +423,13 @@ class BrNotificationParserTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `parse merchant from card final-dash-valor format keeps mixed case descriptor`() {
+    fun `parse merchant from card final-dash-valor format strips prefix and keeps mixed case`() {
         val result = BrNotificationParser.parse(
             "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - DL*UberRides valor RS 26,74 em 29/06, as 13h25.",
             NOW,
         )
 
-        assertEquals("DL*UberRides", result.parsed.merchantRaw)
+        assertEquals("UberRides", result.parsed.merchantRaw)
     }
 
     @Test
@@ -439,7 +439,7 @@ class BrNotificationParserTest {
             NOW,
         )
 
-        assertEquals("IFD*IFOOD CLUB", result.parsed.merchantRaw)
+        assertEquals("IFOOD CLUB", result.parsed.merchantRaw)
     }
 
     @Test
@@ -450,17 +450,17 @@ class BrNotificationParserTest {
             NOW,
         )
 
-        assertEquals("DL*UberRides", result.parsed.merchantRaw)
+        assertEquals("UberRides", result.parsed.merchantRaw)
     }
 
     @Test
-    fun `parse merchant from aprovada-em-para format keeps mixed case`() {
+    fun `parse merchant from aprovada-em-para format strips prefix and keeps mixed case`() {
         val result = BrNotificationParser.parse(
             "Compra no crédito aprovada Compra de R\$ 26,90 APROVADA em DL*GOOGLE YouTub para o cartão com final 1523.",
             NOW,
         )
 
-        assertEquals("DL*GOOGLE YouTub", result.parsed.merchantRaw)
+        assertEquals("GOOGLE YouTub", result.parsed.merchantRaw)
     }
 
     @Test

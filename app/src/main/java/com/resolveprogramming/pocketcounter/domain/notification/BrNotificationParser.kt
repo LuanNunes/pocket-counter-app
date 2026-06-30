@@ -103,7 +103,10 @@ object BrNotificationParser {
             ?.let(::cleanMerchant)
 
     private fun cleanMerchant(raw: String): String? {
-        val candidate = raw.trim().trimEnd('.', ',', ';', ':', '-').trim()
+        // Drop the card-acquirer prefix ("DL*UberRides" → "UberRides", "IFD*IFOOD CLUB" → "IFOOD CLUB")
+        // so the merchant is the name the user actually recognizes, both on screen and in learned rules.
+        val stripped = ACQUIRER_PREFIX_REGEX.replaceFirst(raw.trim(), "")
+        val candidate = stripped.trim().trimEnd('.', ',', ';', ':', '-').trim()
         if (candidate.length !in 2..40) return null
         // A capture with no letters is a date/amount fragment ("29", "27/06"), never a merchant.
         if (candidate.none { it.isLetter() }) return null
@@ -154,6 +157,10 @@ object BrNotificationParser {
     private val FRACTION_REGEX = Regex("""\b(\d+)/(\d+)\b""")
     private val VEZES_REGEX = Regex("""em\s+(\d+)\s+vezes""")
     private val PARCEL_VALUE_REGEX = Regex("""(parcela|parcelas|cada|de)\s+(de\s+)?r\$""")
+
+    // A short acquirer/aggregator code glued to the merchant by a star ("DL*", "IFD*"). Stripped from
+    // the front of a captured merchant so only the recognizable name remains.
+    private val ACQUIRER_PREFIX_REGEX = Regex("""^[\p{L}\p{N}]{1,6}\*""")
 
     // Credit-card push: "... final 3685 - DL*UberRides valor RS 26,74 ...". The merchant is the run
     // between the "final NNNN -" delimiter and " valor"; non-greedy so it stops at the first " valor".
