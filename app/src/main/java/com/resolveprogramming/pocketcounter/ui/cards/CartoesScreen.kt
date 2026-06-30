@@ -1,5 +1,16 @@
 package com.resolveprogramming.pocketcounter.ui.cards
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -14,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -26,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,10 +57,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,22 +73,32 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
+import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_GROUP_IDS
+import com.resolveprogramming.pocketcounter.domain.model.faturaDonutSlices
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
+import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.PocketChip
 import com.resolveprogramming.pocketcounter.ui.components.PocketChipVariant
+import com.resolveprogramming.pocketcounter.ui.components.PocketDonutChart
+import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
+import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
 import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.components.TabId
+import com.resolveprogramming.pocketcounter.ui.relatorio.ProportionBar
+import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -125,6 +153,10 @@ fun CartoesScreen(
                     CartoesCarousel(
                         invoices = state.invoices,
                         contexts = state.allContexts,
+                        categoriesByCardId = state.categoriesByCardId,
+                        categoryA11yByCardId = state.categoryA11yByCardId,
+                        cardCollapsed = state.cardCollapsed,
+                        onToggleCardCollapsed = { viewModel.setCardCollapsed(!state.cardCollapsed) },
                         formatter = formatter,
                         onItemClick = { invoice, item ->
                             classifyTarget = ClassifyTarget(invoice.card, item)
@@ -169,10 +201,16 @@ private data class ClassifyTarget(
     val item: InvoiceItem,
 )
 
+private enum class FaturaViewMode { ITENS, CATEGORIAS }
+
 @Composable
 private fun CartoesCarousel(
     invoices: List<OpenInvoice>,
     contexts: List<TagContext>,
+    categoriesByCardId: Map<String, List<SummaryGroup>>,
+    categoryA11yByCardId: Map<String, String>,
+    cardCollapsed: Boolean,
+    onToggleCardCollapsed: () -> Unit,
     formatter: NumberFormat,
     onItemClick: (OpenInvoice, InvoiceItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -191,6 +229,9 @@ private fun CartoesCarousel(
     val pagerState = rememberPagerState(pageCount = { invoices.size })
     val scope = rememberCoroutineScope()
     val multi = invoices.size > 1
+    // View mode is ephemeral, per-card; ITENS keeps today's behaviour as the default.
+    val viewModes = remember { mutableStateMapOf<String, FaturaViewMode>() }
+    val reducedMotion = LocalReducedMotion.current
 
     Column(modifier) {
         // Tappable card-name pills double as the page indicator — far more discoverable
@@ -214,38 +255,293 @@ private fun CartoesCarousel(
                 .fillMaxWidth()
                 .padding(top = 4.dp),
         ) { page ->
-            FaturaCard(invoice = invoices[page], formatter = formatter)
+            FaturaCard(
+                invoice = invoices[page],
+                formatter = formatter,
+                collapsed = cardCollapsed,
+                onToggleCollapsed = onToggleCardCollapsed,
+            )
         }
 
-        // Invoice list for the currently-visible card.
         val current = invoices[pagerState.currentPage]
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            item { Spacer(Modifier.height(12.dp)) }
+        val mode = viewModes[current.card.id] ?: FaturaViewMode.ITENS
 
-            items(current.items, key = { it.itemId ?: it.transactionId }) { item ->
-                InvoiceItemRow(
-                    item = item,
+        PocketSegmented(
+            options = listOf(SegmentOption("Itens"), SegmentOption("Categorias")),
+            selectedIndex = mode.ordinal,
+            onSelect = { viewModes[current.card.id] = FaturaViewMode.entries[it] },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        )
+
+        Crossfade(
+            targetState = mode,
+            animationSpec = tween(durationMillis = if (reducedMotion) 0 else 180),
+            label = "faturaBody",
+            modifier = Modifier.fillMaxSize(),
+        ) { activeMode ->
+            when (activeMode) {
+                FaturaViewMode.ITENS -> FaturaItensBody(
+                    invoice = current,
                     contexts = contexts,
                     formatter = formatter,
-                    onClick = { onItemClick(current, item) },
+                    onItemClick = onItemClick,
+                )
+
+                FaturaViewMode.CATEGORIAS -> FaturaCategoriasBody(
+                    invoice = current,
+                    groups = categoriesByCardId[current.card.id].orEmpty(),
+                    a11y = categoryA11yByCardId[current.card.id].orEmpty(),
+                    formatter = formatter,
                 )
             }
+        }
+    }
+}
 
+@Composable
+private fun FaturaItensBody(
+    invoice: OpenInvoice,
+    contexts: List<TagContext>,
+    formatter: NumberFormat,
+    onItemClick: (OpenInvoice, InvoiceItem) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(invoice.items, key = { it.itemId ?: it.transactionId }) { item ->
+            InvoiceItemRow(
+                item = item,
+                contexts = contexts,
+                formatter = formatter,
+                onClick = { onItemClick(invoice, item) },
+            )
+        }
+
+        item {
+            Text(
+                text = "As compras chegam como notificações soltas e o PocketCounter junta tudo na fatura do cartão certo.",
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun FaturaCategoriasBody(
+    invoice: OpenInvoice,
+    groups: List<SummaryGroup>,
+    a11y: String,
+    formatter: NumberFormat,
+) {
+    if (groups.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Sem compras para categorizar.",
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text3,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
+    val allUncategorized = groups.all { it.id in UNCATEGORIZED_GROUP_IDS }
+    val slices = faturaDonutSlices(groups)
+    // Show only real (positive) shares in the list, matching the donut: an over-itemized fatura's
+    // signed "Sem categoria" remainder is negative and must not render as a "-20%" row.
+    val rankGroups = groups.filter { it.pct > 0f }
+    val expandedCategories = remember { mutableStateMapOf<String, Boolean>() }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item {
+            PocketCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    PocketDonutChart(
+                        segments = slices.map { it.color to it.pct },
+                        modifier = Modifier
+                            .size(168.dp)
+                            .semantics { contentDescription = a11y },
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "FATURA",
+                                style = PocketTheme.typography.sectionHeader,
+                                color = PocketTheme.colors.text3,
+                            )
+                            Text(
+                                text = formatter.format(invoice.total),
+                                style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.Bold),
+                                color = PocketTheme.colors.expense,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (allUncategorized) {
             item {
                 Text(
-                    text = "As compras chegam como notificações soltas e o PocketCounter junta tudo na fatura do cartão certo.",
+                    text = "Classifique as compras para ver a divisão por categoria.",
                     style = PocketTheme.typography.bodyXs,
                     color = PocketTheme.colors.text3,
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
                 )
             }
+        }
 
-            item { Spacer(Modifier.height(8.dp)) }
+        item { Spacer(Modifier.height(4.dp)) }
+
+        items(rankGroups, key = { it.id }) { group ->
+            CategoryRankRow(
+                group = group,
+                expanded = expandedCategories[group.id] == true,
+                onToggle = { expandedCategories[group.id] = expandedCategories[group.id] != true },
+                formatter = formatter,
+            )
+        }
+
+        item { Spacer(Modifier.height(8.dp)) }
+    }
+}
+
+@Composable
+private fun CategoryRankRow(
+    group: SummaryGroup,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    formatter: NumberFormat,
+) {
+    val expandable = group.tags.isNotEmpty()
+    val reducedMotion = LocalReducedMotion.current
+    val chevronRotation by animateFloatAsState(
+        targetValue = 180f.takeIf { expanded } ?: 0f,
+        animationSpec = tween(durationMillis = if (reducedMotion) 0 else 180),
+        label = "categoryChevron",
+    )
+
+    Column(modifier = Modifier.padding(vertical = 6.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .let { base ->
+                    if (!expandable) return@let base
+                    val action = if (expanded) "Recolher" else "Expandir"
+                    base.clickable(onClickLabel = "$action ${group.name}", onClick = onToggle)
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(PocketTheme.shapes.pill)
+                    .background(Color(group.color)),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = group.name,
+                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.Medium),
+                color = PocketTheme.colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "${(group.pct * 100).roundToInt()}%",
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text3,
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = formatter.format(group.total),
+                style = PocketTheme.typography.monoSm,
+                color = PocketTheme.colors.text,
+                maxLines = 1,
+                softWrap = false,
+            )
+            if (expandable) {
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = PocketTheme.colors.text3,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .rotate(chevronRotation),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        ProportionBar(fraction = group.pct, color = Color(group.color))
+
+        AnimatedVisibility(
+            visible = expanded && expandable,
+            enter = EnterTransition.None.takeIf { reducedMotion } ?: (expandVertically() + fadeIn()),
+            exit = ExitTransition.None.takeIf { reducedMotion } ?: (shrinkVertically() + fadeOut()),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                group.tags.forEach { tag ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(PocketTheme.shapes.pill)
+                                .background(Color(group.color)),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = tag.name,
+                            style = PocketTheme.typography.bodySm,
+                            color = PocketTheme.colors.text2,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = formatter.format(tag.total),
+                            style = PocketTheme.typography.monoSm,
+                            color = PocketTheme.colors.text2,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -367,6 +663,8 @@ private fun CartoesHeader(
 private fun FaturaCard(
     invoice: OpenInvoice,
     formatter: NumberFormat,
+    collapsed: Boolean,
+    onToggleCollapsed: () -> Unit,
 ) {
     val card = invoice.card
     val usagePct = (invoice.usage * 100).toInt()
@@ -374,16 +672,62 @@ private fun FaturaCard(
         Color(card.gradientStart),
         Color(card.gradientEnd),
     )
+    val reducedMotion = LocalReducedMotion.current
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (collapsed) 0f else 180f,
+        animationSpec = tween(durationMillis = if (reducedMotion) 0 else 180),
+        label = "cardCollapseChevron",
+    )
 
-    Column {
-        // Gradient card tile
+    Column(
+        modifier = Modifier.animateContentSize(
+            animationSpec = tween(durationMillis = if (reducedMotion) 0 else 200),
+        ),
+    ) {
+        // Gradient card tile — tap anywhere to collapse/expand it (frees room for the breakdown).
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(PocketTheme.shapes.card)
                 .background(Brush.linearGradient(gradientColors))
-                .padding(18.dp),
+                .clickable(
+                    onClickLabel = if (collapsed) "Expandir cartão" else "Recolher cartão",
+                    onClick = onToggleCollapsed,
+                )
+                .padding(if (collapsed) 14.dp else 18.dp),
         ) {
+            if (collapsed) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = card.name,
+                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = formatter.format(invoice.total),
+                        style = PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.Bold),
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp).rotate(chevronRotation),
+                    )
+                }
+                return@Box
+            }
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -394,11 +738,20 @@ private fun FaturaCard(
                         style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White,
                     )
-                    if (card.brand.isNotBlank()) {
-                        Text(
-                            text = card.brand,
-                            style = PocketTheme.typography.bodySm,
-                            color = Color.White.copy(alpha = 0.75f),
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (card.brand.isNotBlank()) {
+                            Text(
+                                text = card.brand,
+                                style = PocketTheme.typography.bodySm,
+                                color = Color.White.copy(alpha = 0.75f),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp).rotate(chevronRotation),
                         )
                     }
                 }
@@ -449,60 +802,63 @@ private fun FaturaCard(
             }
         }
 
-        Spacer(Modifier.height(8.dp))
+        // Meta row + limit bar are hidden while the card is collapsed.
+        if (!collapsed) {
+            Spacer(Modifier.height(8.dp))
 
-        // Meta row: closes in N days + usage badge
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Fecha em ",
-                style = PocketTheme.typography.bodySm,
-                color = PocketTheme.colors.text3,
-            )
-            Text(
-                text = "${invoice.closesInDays} dias",
-                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.SemiBold),
-                color = PocketTheme.colors.text,
-            )
-            Spacer(Modifier.weight(1f))
-            // Limit usage is only shown when the card limit is known (the backend
-            // doesn't store it yet); otherwise the badge + bar are hidden.
-            if (card.limit.signum() > 0) {
-                Box(
-                    modifier = Modifier
-                        .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = "$usagePct% do limite",
-                        style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.Medium),
-                        color = PocketTheme.colors.text2,
-                    )
-                }
-            }
-        }
-
-        if (card.limit.signum() > 0) {
-            Spacer(Modifier.height(6.dp))
-
-            // Limit bar
-            Box(
+            // Meta row: closes in N days + usage badge
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(PocketTheme.shapes.pill)
-                    .background(PocketTheme.colors.line),
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Text(
+                    text = "Fecha em ",
+                    style = PocketTheme.typography.bodySm,
+                    color = PocketTheme.colors.text3,
+                )
+                Text(
+                    text = "${invoice.closesInDays} dias",
+                    style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.SemiBold),
+                    color = PocketTheme.colors.text,
+                )
+                Spacer(Modifier.weight(1f))
+                // Limit usage is only shown when the card limit is known (the backend
+                // doesn't store it yet); otherwise the badge + bar are hidden.
+                if (card.limit.signum() > 0) {
+                    Box(
+                        modifier = Modifier
+                            .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
+                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = "$usagePct% do limite",
+                            style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.Medium),
+                            color = PocketTheme.colors.text2,
+                        )
+                    }
+                }
+            }
+
+            if (card.limit.signum() > 0) {
+                Spacer(Modifier.height(6.dp))
+
+                // Limit bar
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(invoice.usage.coerceIn(0f, 1f))
+                        .fillMaxWidth()
                         .height(4.dp)
-                        .background(PocketTheme.colors.text.copy(alpha = 0.55f)),
-                )
+                        .clip(PocketTheme.shapes.pill)
+                        .background(PocketTheme.colors.line),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(invoice.usage.coerceIn(0f, 1f))
+                            .height(4.dp)
+                            .background(PocketTheme.colors.text.copy(alpha = 0.55f)),
+                    )
+                }
             }
         }
     }
