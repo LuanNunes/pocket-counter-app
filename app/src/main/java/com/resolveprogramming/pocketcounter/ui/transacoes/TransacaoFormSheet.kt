@@ -1,6 +1,5 @@
 package com.resolveprogramming.pocketcounter.ui.transacoes
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +22,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
@@ -43,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -60,6 +57,7 @@ import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
+import com.resolveprogramming.pocketcounter.ui.components.PocketDateField
 import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
 import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
 import com.resolveprogramming.pocketcounter.ui.components.SegmentTone
@@ -89,7 +87,6 @@ fun TransacaoFormSheet(
     defaultDate: LocalDate? = null,
 ) {
     var draft by remember { mutableStateOf(seedDraft(initialItem, initialType, defaultDate)) }
-    val context = LocalContext.current
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxHeight(0.92f)) {
@@ -206,24 +203,14 @@ fun TransacaoFormSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         FormLabel("Data")
                         Spacer(Modifier.height(8.dp))
-                        DateField(
+                        PocketDateField(
                             date = draft.date,
-                            onClick = {
-                                val current = draft.date ?: LocalDate.now()
-                                DatePickerDialog(
-                                    context,
-                                    { _, year, month, day ->
-                                        val picked = LocalDate.of(year, month + 1, day)
-                                        draft = draft.copy(
-                                            date = picked,
-                                            recurrenceDay = picked.dayOfMonth.takeIf { draft.isFixo }
-                                                ?: draft.recurrenceDay,
-                                        )
-                                    },
-                                    current.year,
-                                    current.monthValue - 1,
-                                    current.dayOfMonth,
-                                ).show()
+                            onDateChange = { picked ->
+                                draft = draft.copy(
+                                    date = picked,
+                                    recurrenceDay = picked.dayOfMonth.takeIf { draft.isFixo }
+                                        ?: draft.recurrenceDay,
+                                )
                             },
                         )
                     }
@@ -496,38 +483,6 @@ private fun CardPicker(
         }
     }
 }
-
-@Composable
-private fun DateField(
-    date: LocalDate?,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .border(1.dp, PocketTheme.colors.line2, PocketTheme.shapes.labelPicker)
-            .background(PocketTheme.colors.surface, PocketTheme.shapes.labelPicker)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = (date ?: LocalDate.now()).format(DATE_FORMATTER),
-            style = PocketTheme.typography.monoSm,
-            color = PocketTheme.colors.text,
-        )
-        Icon(
-            imageVector = Icons.Filled.CalendarMonth,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = PocketTheme.colors.text3,
-        )
-    }
-}
-
-private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
 private fun PaymentMethod.icon(): ImageVector = when (this) {
     PaymentMethod.CREDIT -> Icons.Filled.CreditCard
