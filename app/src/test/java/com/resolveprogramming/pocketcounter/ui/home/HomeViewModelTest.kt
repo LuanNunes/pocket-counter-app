@@ -1,6 +1,7 @@
 package com.resolveprogramming.pocketcounter.ui.home
 
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -105,7 +106,8 @@ class HomeViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun makeViewModel(): HomeViewModel = HomeViewModel(
+    // Fresh per VM so the process-scoped viewed month never leaks between tests.
+    private fun makeViewModel(viewedMonth: ViewedMonthStore = ViewedMonthStore()): HomeViewModel = HomeViewModel(
         notificationRepository = notificationRepository,
         transactionRepository = transactionRepository,
         tagRepository = tagRepository,
@@ -115,6 +117,7 @@ class HomeViewModelTest {
             transactionRepository,
             notificationRepository,
         ),
+        viewedMonth = viewedMonth,
     )
 
     @Test
@@ -476,5 +479,47 @@ class HomeViewModelTest {
         assertEquals("pend-1", vm.state.value.confirmReady.single().notificationId)
         assertTrue(vm.state.value.confirmingIds.isEmpty())
         assertEquals("Não foi possível confirmar", vm.state.value.toastMessage)
+    }
+
+    // -------------------------------------------------------------------------
+    // App-wide viewed month — Home shares it with Transações/Cartões/Resumo
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `Home adopts the shared viewed month on start`() = runTest {
+        val store = ViewedMonthStore()
+        store.set(currentMonth.minusMonths(2).toString())
+        val vm = makeViewModel(store)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(currentMonth.minusMonths(2), vm.state.value.month)
+        assertFalse(vm.state.value.isCurrentMonth)
+    }
+
+    @Test
+    fun `Home reacts when another screen steps the shared month`() = runTest {
+        val store = ViewedMonthStore()
+        val vm = makeViewModel(store)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(currentMonth, vm.state.value.month)
+
+        // Simulate Transações/Cartões stepping forward.
+        store.step(1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(currentMonth.plusMonths(1), vm.state.value.month)
+    }
+
+    @Test
+    fun `selectMonth writes through to the shared store`() = runTest {
+        val store = ViewedMonthStore()
+        val vm = makeViewModel(store)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(currentMonth.minusMonths(1).toString(), store.month.value)
+        assertEquals(currentMonth.minusMonths(1), vm.state.value.month)
     }
 }

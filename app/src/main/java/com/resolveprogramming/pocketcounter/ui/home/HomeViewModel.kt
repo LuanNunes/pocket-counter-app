@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -82,6 +83,7 @@ class HomeViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tokenStore: TokenStore,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
+    private val viewedMonth: ViewedMonthStore,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
@@ -94,17 +96,27 @@ class HomeViewModel @Inject constructor(
     private var classifyGeneration = 0
 
     private val _state = MutableStateFlow(
-        HomeUiState(
-            month = YearMonth.now(),
-            monthLabel = monthLabel(YearMonth.now()),
-            isCurrentMonth = true,
-        ),
+        YearMonth.parse(viewedMonth.month.value).let { ym ->
+            HomeUiState(
+                month = ym,
+                monthLabel = monthLabel(ym),
+                isCurrentMonth = ym == YearMonth.now(),
+            )
+        },
     )
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
     init {
         loadLookups()
-        loadMonth()
+        // Follow the app-wide viewed month so Home, Transações, Cartões and Resumo always agree;
+        // emits the current value immediately, then on every cross-screen change.
+        viewModelScope.launch {
+            viewedMonth.month.collect { key ->
+                val ym = YearMonth.parse(key)
+                _state.update { it.copy(month = ym, monthLabel = monthLabel(ym)) }
+                loadMonth()
+            }
+        }
     }
 
     private fun loadLookups() {
@@ -238,18 +250,11 @@ class HomeViewModel @Inject constructor(
         loadMonth()
     }
 
-    fun selectMonth(delta: Int) = setMonth(_state.value.month.plusMonths(delta.toLong()))
+    // Month navigation writes to the shared store; the collector in init reloads in response, so the
+    // change propagates to every month-scoped screen at once.
+    fun selectMonth(delta: Int) = viewedMonth.step(delta)
 
-    fun setMonth(month: YearMonth) {
-        _state.update {
-            it.copy(
-                month = month,
-                monthLabel = monthLabel(month),
-                isCurrentMonth = month == YearMonth.now(),
-            )
-        }
-        loadMonth()
-    }
+    fun setMonth(month: YearMonth) = viewedMonth.set(month.toString())
 
     fun setListType(type: TransactionType) {
         _state.update { it.copy(listType = type).recomputed() }
