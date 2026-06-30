@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +35,7 @@ import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
+import com.resolveprogramming.pocketcounter.ui.components.MoneyTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketDateField
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.math.BigDecimal
@@ -64,9 +64,6 @@ fun StepAmount(
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    var textValue by remember(amount) {
-        mutableStateOf(amount?.let { formatAmountInput(it) } ?: "")
-    }
 
     Column(modifier = modifier) {
         val question = run {
@@ -120,28 +117,13 @@ fun StepAmount(
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "R$",
-                    style = PocketTheme.typography.monoBody,
-                    color = PocketTheme.colors.text3,
-                )
-                BasicTextField(
-                    value = textValue,
-                    onValueChange = { newValue ->
-                        val cleaned = newValue.filter { it.isDigit() || it == ',' }
-                        textValue = cleaned
-                        val parsed = cleaned.replace(",", ".").toBigDecimalOrNull()
-                        onAmountChange(parsed)
-                    },
-                    textStyle = PocketTheme.typography.monoAmountInput.copy(
-                        color = PocketTheme.colors.text,
-                    ),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 8.dp)
-                        .onFocusChanged { isFocused = it.isFocused },
+                MoneyTextField(
+                    amount = amount,
+                    onAmountChange = onAmountChange,
+                    textStyle = PocketTheme.typography.monoAmountInput,
+                    autoFocus = true,
+                    onFocusChanged = { isFocused = it },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
