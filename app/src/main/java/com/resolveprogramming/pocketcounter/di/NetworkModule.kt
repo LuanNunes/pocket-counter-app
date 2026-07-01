@@ -17,6 +17,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -50,6 +51,11 @@ object NetworkModule {
             },
         )
         .authenticator(tokenAuthenticator)
+        // TokenAuthenticator refreshes on THIS client. When a burst of requests all 401 at once
+        // (expired token), each holds a per-host slot while blocking on /auth/refresh — which then
+        // can't get a slot and deadlocks, hanging the app on the loading spinner. The default cap is
+        // 5; the Home cold-load alone fans out ~6 concurrent calls, so give the refresh ample headroom.
+        .dispatcher(Dispatcher().apply { maxRequestsPerHost = 20 })
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
