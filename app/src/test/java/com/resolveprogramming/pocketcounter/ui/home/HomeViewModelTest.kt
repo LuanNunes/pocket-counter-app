@@ -595,6 +595,22 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `onManualRefresh holds isRefreshing for a minimum duration on an instant reload`() = runTest {
+        // getMonth resolves instantly (default success stub). Without a minimum hold, isRefreshing
+        // would flip true->false within a frame and strand PullToRefreshBox in a re-trigger loop.
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onManualRefresh()
+        testDispatcher.scheduler.runCurrent()          // commit isRefreshing=true, run the instant reload
+        testDispatcher.scheduler.advanceTimeBy(200)     // well under the 600ms floor
+        assertTrue(vm.state.value.isRefreshing)         // still up despite the reload already finishing
+
+        testDispatcher.scheduler.advanceUntilIdle()     // let the floor elapse
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
     fun `onManualRefresh failure toasts and keeps content`() = runTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
