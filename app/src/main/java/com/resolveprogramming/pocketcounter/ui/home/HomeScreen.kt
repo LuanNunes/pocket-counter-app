@@ -55,6 +55,7 @@ import com.resolveprogramming.pocketcounter.platform.capture.CapturePermissions
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
+import com.resolveprogramming.pocketcounter.ui.home.components.ClassifyingSkeleton
 import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadyCard
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
@@ -180,6 +181,10 @@ fun HomeContent(
                     )
                 }
 
+                if (state.isCurrentMonth && state.classifying && state.confirmReady.isEmpty()) {
+                    item { ClassifyingSkeleton() }
+                }
+
                 if (state.isCurrentMonth && state.confirmReady.isNotEmpty()) {
                     items(state.confirmReady, key = { it.notificationId }) { item ->
                         ConfirmReadyCard(
@@ -189,11 +194,12 @@ fun HomeContent(
                             cardName = { id -> state.cards[id]?.name },
                             onConfirm = { viewModel.confirm(item) },
                             onReview = { onNavigate(Routes.wizard(item.notificationId)) },
+                            onIgnore = { viewModel.ignore(item) },
                         )
                     }
                 }
 
-                if (state.isCurrentMonth && state.pendingReviewCount > 0) {
+                if (state.isCurrentMonth && !state.classifying && state.pendingReviewCount > 0) {
                     item {
                         RevisarBanner(
                             count = state.pendingReviewCount,
@@ -208,6 +214,7 @@ fun HomeContent(
                     HomeQuickTiles(
                         openBillsTotal = state.openBillsTotal,
                         openBillsCount = state.openBillsCount,
+                        openBillsLoading = state.openBillsLoading,
                         onResumo = { onNavigate("resumo") },
                         onFaturas = { onNavigate("cartoes") },
                     )

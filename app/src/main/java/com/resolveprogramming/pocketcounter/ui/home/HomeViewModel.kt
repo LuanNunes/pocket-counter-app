@@ -58,8 +58,12 @@ data class HomeUiState(
     val confirmReady: List<ConfirmReadyItem> = emptyList(),
     /** Notification ids whose one-tap confirm is in flight (drives the per-card spinner + double-tap guard). */
     val confirmingIds: Set<String> = emptySet(),
+    /** True while the classifier's first pass for this month runs, so the UI shows a skeleton instead of a bare banner. */
+    val classifying: Boolean = false,
     val openBillsTotal: BigDecimal = BigDecimal.ZERO,
     val openBillsCount: Int = 0,
+    /** True only across a month flip, until loadOpenBills settles — keeps the fatura tile from flashing R$ 0. */
+    val openBillsLoading: Boolean = false,
     val shownItems: List<HistoryItem> = emptyList(),
     val groupedSections: List<LedgerGroup> = emptyList(),
     val periodTotal: BigDecimal = BigDecimal.ZERO,
@@ -95,6 +99,10 @@ class HomeViewModel @Inject constructor(
     // classifyPendingForConfirmReady). Confined to the Main dispatcher, so a plain Int is safe.
     private var classifyGeneration = 0
 
+    // The last month a classify pass fully committed for. Guards the `classifying` skeleton to the first
+    // pass of a month only, so background reloads (ledgerRefresh, confirm) don't re-flash it.
+    private var lastClassifiedMonth: YearMonth? = null
+
     private val _state = MutableStateFlow(
         YearMonth.parse(viewedMonth.month.value).let { ym ->
             HomeUiState(
@@ -121,6 +129,7 @@ class HomeViewModel @Inject constructor(
                         monthLabel = monthLabelPtBr(ym),
                         openBillsTotal = BigDecimal.ZERO,
                         openBillsCount = 0,
+                        openBillsLoading = true,
                     )
                 }
                 loadMonth()
@@ -186,8 +195,12 @@ class HomeViewModel @Inject constructor(
                         s.copy(
                             isLoading = false,
                             isCurrentMonth = current,
-                            pendingReviewCount = pending.size.takeIf { current } ?: 0,
-                            pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
+                            // On the current month the classify pass is the sole writer of these — its
+                            // terminal update settles the accurate pending/ready split even when nothing
+                            // is recognized. Keep the prior values here so the banner doesn't flicker in
+                            // and back out. Off-month there is no classify pass and no banner, so clear.
+                            pendingReviewCount = if (current) s.pendingReviewCount else 0,
+                            pendingReviewFirstId = if (current) s.pendingReviewFirstId else null,
                         ).recomputed()
                     },
                     onFailure = {
@@ -202,7 +215,7 @@ class HomeViewModel @Inject constructor(
                     classifyPendingForConfirmReady(pending, month)
                 } else {
                     classifyGeneration++ // invalidate any in-flight pass; off-month shows no confirm-ready cards
-                    _state.update { if (it.month == month) it.copy(confirmReady = emptyList()) else it }
+                    _state.update { if (it.month == month) it.copy(confirmReady = emptyList(), classifying = false) else it }
                 }
             }
             itemsResult
@@ -220,7 +233,7 @@ class HomeViewModel @Inject constructor(
             val openBillsTotal = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
             _state.update { s ->
                 if (s.month != month) return@update s
-                s.copy(openBillsTotal = openBillsTotal, openBillsCount = invoices.size)
+                s.copy(openBillsTotal = openBillsTotal, openBillsCount = invoices.size, openBillsLoading = false)
             }
         }
     }
@@ -238,6 +251,12 @@ class HomeViewModel @Inject constructor(
      */
     private fun classifyPendingForConfirmReady(pending: List<NotificationItem>, month: YearMonth) {
         val generation = ++classifyGeneration
+        // Only the first pass for a month shows the skeleton; later same-month passes (confirm reloads,
+        // ledgerRefresh) run silently so the recognized cards don't blink through a loading state.
+        val firstForMonth = lastClassifiedMonth != month
+        if (firstForMonth) {
+            _state.update { if (it.month == month) it.copy(classifying = true) else it }
+        }
         viewModelScope.launch {
             val ready = pending.take(CONFIRM_READY_CLASSIFY_CAP)
                 .map { base ->
@@ -248,7 +267,9 @@ class HomeViewModel @Inject constructor(
             _state.update { s ->
                 if (s.month != month || generation != classifyGeneration) return@update s
                 val readyIds = ready.mapTo(mutableSetOf()) { it.notificationId }
+                lastClassifiedMonth = month
                 s.copy(
+                    classifying = false,
                     confirmReady = ready,
                     pendingReviewCount = (pending.size - ready.size).coerceAtLeast(0),
                     pendingReviewFirstId = pending.firstOrNull { it.id !in readyIds }?.id,
@@ -289,8 +310,45 @@ class HomeViewModel @Inject constructor(
                     _state.update {
                         it.copy(
                             confirmingIds = it.confirmingIds - item.notificationId,
-                            confirmReady = it.confirmReady + item,
+                            confirmReady = it.confirmReady.filterNot { c -> c.notificationId == item.notificationId } + item,
                             toastMessage = "Não foi possível confirmar",
+                        )
+                    }
+                }
+        }
+    }
+
+    /**
+     * Dismisses a single recognized notification without confirming it: optimistically drops only that
+     * card, marks the notification ignored server-side, and leaves the ledger and the "para revisar"
+     * count untouched. On failure the card is restored. Guards double-taps via [HomeUiState.confirmingIds].
+     */
+    fun ignore(item: ConfirmReadyItem) {
+        if (item.notificationId in _state.value.confirmingIds) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    confirmingIds = it.confirmingIds + item.notificationId,
+                    confirmReady = it.confirmReady.filterNot { c -> c.notificationId == item.notificationId },
+                )
+            }
+            notificationRepository.markIgnored(item.notificationId)
+                .onSuccess {
+                    _state.update {
+                        it.copy(
+                            confirmingIds = it.confirmingIds - item.notificationId,
+                            toastMessage = "Notificação ignorada",
+                        )
+                    }
+                }
+                .onFailure {
+                    _state.update {
+                        it.copy(
+                            confirmingIds = it.confirmingIds - item.notificationId,
+                            // Dedup: a same-month re-classify could have re-added this id while the
+                            // ignore was in flight; appending blindly would dupe the LazyColumn key.
+                            confirmReady = it.confirmReady.filterNot { c -> c.notificationId == item.notificationId } + item,
+                            toastMessage = "Não foi possível ignorar",
                         )
                     }
                 }

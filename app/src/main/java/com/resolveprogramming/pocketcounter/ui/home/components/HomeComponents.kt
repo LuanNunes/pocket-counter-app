@@ -20,12 +20,14 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
@@ -398,10 +400,34 @@ fun RevisarBanner(count: Int, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Shown on the current month while the classifier's first pass runs, before any recognized card or the
+ * "para revisar" banner has settled — so the section reads as "working" instead of empty or wrong.
+ */
+@Composable
+fun ClassifyingSkeleton() {
+    PocketCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = PocketTheme.colors.accent,
+            )
+            Spacer(Modifier.width(11.dp))
+            Text(
+                text = "Analisando notificações…",
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text3,
+            )
+        }
+    }
+}
+
 @Composable
 fun HomeQuickTiles(
     openBillsTotal: BigDecimal,
     openBillsCount: Int,
+    openBillsLoading: Boolean,
     onResumo: () -> Unit,
     onFaturas: () -> Unit,
 ) {
@@ -423,9 +449,12 @@ fun HomeQuickTiles(
             icon = Icons.Filled.CreditCard,
             badgeBg = PocketTheme.colors.surface2,
             badgeTint = PocketTheme.colors.text2,
-            caption = "Faturas · $openBillsCount cartões",
-            value = currency().format(openBillsTotal),
+            // While the fatura reloads across a month flip, drop the "· N cartões" suffix so it never
+            // reads "0 cartões", and show an em-dash instead of a premature R$ 0.
+            caption = if (openBillsLoading) "Faturas" else "Faturas · $openBillsCount cartões",
+            value = if (openBillsLoading) "—" else currency().format(openBillsTotal),
             valueMono = true,
+            valueColor = if (openBillsLoading) PocketTheme.colors.text3 else PocketTheme.colors.text,
             onClick = onFaturas,
             modifier = Modifier.weight(1f),
         )
@@ -442,6 +471,7 @@ private fun QuickTile(
     valueMono: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    valueColor: Color = PocketTheme.colors.text,
 ) {
     val valueStyle = when {
         valueMono -> PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
@@ -477,7 +507,7 @@ private fun QuickTile(
                 AutoSizeText(
                     text = value,
                     style = valueStyle,
-                    color = PocketTheme.colors.text,
+                    color = valueColor,
                 )
             }
         }
@@ -554,6 +584,7 @@ fun ConfirmReadyCard(
     cardName: (String) -> String?,
     onConfirm: () -> Unit,
     onReview: () -> Unit,
+    onIgnore: () -> Unit,
 ) {
     val colors = PocketTheme.colors
     val draft = item.draft
@@ -573,19 +604,38 @@ fun ConfirmReadyCard(
 
     PocketCard {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    modifier = Modifier.size(13.dp),
-                    tint = colors.accent,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = "Reconhecido automaticamente",
-                    style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.accent,
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = colors.accent,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Reconhecido automaticamente",
+                        style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.accent,
+                    )
+                }
+                // Top-right dismiss: the learned "skip this suggestion" affordance. 48dp target
+                // (IconButton default), muted so it stays subordinate to Confirmar/Revisar.
+                IconButton(
+                    onClick = onIgnore,
+                    enabled = !isConfirming,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Ignorar sugestão",
+                        modifier = Modifier.size(18.dp),
+                        tint = colors.text3.copy(alpha = if (isConfirming) 0.4f else 1f),
+                    )
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),

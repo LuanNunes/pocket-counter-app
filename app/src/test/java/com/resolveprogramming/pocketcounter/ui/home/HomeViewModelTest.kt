@@ -28,6 +28,7 @@ import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -521,6 +522,82 @@ class HomeViewModelTest {
         assertEquals("pend-1", vm.state.value.confirmReady.single().notificationId)
         assertTrue(vm.state.value.confirmingIds.isEmpty())
         assertEquals("Não foi possível confirmar", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `ignore removes only that card, marks it ignored, keeps count, emits no ledger signal`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { notificationRepository.markIgnored("pend-1") } returns Result.success(Unit)
+        val refresh = LedgerRefreshSignal()
+        var signals = 0
+        backgroundScope.launch { refresh.events.collect { signals++ } }
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+        val countBefore = vm.state.value.pendingReviewCount
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("pend-1") }
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals("Notificação ignorada", vm.state.value.toastMessage)
+        // Ignore is a notification-state change, not a ledger mutation:
+        assertEquals(countBefore, vm.state.value.pendingReviewCount)
+        assertEquals(0, signals)
+    }
+
+    @Test
+    fun `ignore failure restores the card and toasts`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { notificationRepository.markIgnored("pend-1") } returns
+            Result.failure(RuntimeException("ignore failed"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.confirmReady.size)
+        assertEquals("pend-1", vm.state.value.confirmReady.single().notificationId)
+        assertTrue(vm.state.value.confirmingIds.isEmpty())
+        assertEquals("Não foi possível ignorar", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `classify pass is the sole writer of the pending count on the current month`() = runTest {
+        // p1 recognized -> card; p2 not recognized (default classify failure) -> stays in the banner.
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("p1"), recognizedNotification("p2")))
+        coEvery { notificationRepository.classify("p1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("p1"), pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.confirmReady.size)
+        assertEquals("p1", vm.state.value.confirmReady.single().notificationId)
+        // Count is set by the classify pass, not reloadMonth's fold: 2 pending − 1 recognized = 1.
+        assertEquals(1, vm.state.value.pendingReviewCount)
+        assertFalse(vm.state.value.classifying)
+    }
+
+    @Test
+    fun `classifying and openBillsLoading settle to false after a month flip`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.classifying)
+        assertFalse(vm.state.value.openBillsLoading)
     }
 
     // -------------------------------------------------------------------------
