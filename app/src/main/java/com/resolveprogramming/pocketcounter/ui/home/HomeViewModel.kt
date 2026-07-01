@@ -145,12 +145,17 @@ class HomeViewModel @Inject constructor(
         val current = month == YearMonth.now()
         viewModelScope.launch {
             if (showLoading) _state.update { it.copy(isLoading = true) }
-            val items = transactionRepository.getMonth(key).getOrDefault(emptyList())
-            val pending = notificationRepository.getPendingReview().getOrDefault(emptyList())
-            // The fatura tile is month-scoped: fetch the statement for the *viewed* month, not today's.
-            val invoices = cardRepository.getOpenInvoices(RemoteMappers.monthKeyToRef(key))
-                .getOrDefault(emptyList())
-            val openBillsTotal = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
+            // The fatura tile is secondary — load it concurrently in its own coroutine so its statement
+            // fetch never sits on the ledger's critical path (that was the month-switch delay).
+            loadOpenBills(month, key)
+            // Fetch the ledger and the pending queue in parallel, not one after the other. Off-months
+            // skip the pending call entirely — its banner is gated to the current month anyway.
+            val itemsDeferred = async { transactionRepository.getMonth(key).getOrDefault(emptyList()) }
+            val pendingDeferred = async {
+                if (current) notificationRepository.getPendingReview().getOrDefault(emptyList()) else emptyList()
+            }
+            val items = itemsDeferred.await()
+            val pending = pendingDeferred.await()
             _state.update { s ->
                 // A newer month navigation supersedes this in-flight result.
                 if (s.month != month) return@update s
@@ -160,8 +165,6 @@ class HomeViewModel @Inject constructor(
                     isCurrentMonth = current,
                     pendingReviewCount = pending.size.takeIf { current } ?: 0,
                     pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
-                    openBillsTotal = openBillsTotal,
-                    openBillsCount = invoices.size,
                 ).recomputed()
             }
             // Recognize confirm-ready items off the critical path: the ledger above is already rendered.
@@ -170,6 +173,22 @@ class HomeViewModel @Inject constructor(
             } else {
                 classifyGeneration++ // invalidate any in-flight pass; off-month shows no confirm-ready cards
                 _state.update { if (it.month == month) it.copy(confirmReady = emptyList()) else it }
+            }
+        }
+    }
+
+    /**
+     * Loads the [month]'s open-invoice total for the fatura tile and patches it in independently, so the
+     * tile updates a beat after the ledger without blocking it. A newer month navigation supersedes it.
+     */
+    private fun loadOpenBills(month: YearMonth, key: String) {
+        viewModelScope.launch {
+            val invoices = cardRepository.getOpenInvoices(RemoteMappers.monthKeyToRef(key))
+                .getOrDefault(emptyList())
+            val openBillsTotal = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
+            _state.update { s ->
+                if (s.month != month) return@update s
+                s.copy(openBillsTotal = openBillsTotal, openBillsCount = invoices.size)
             }
         }
     }
