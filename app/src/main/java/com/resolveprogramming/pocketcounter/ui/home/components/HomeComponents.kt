@@ -557,8 +557,11 @@ fun ConfirmReadyCard(
 ) {
     val colors = PocketTheme.colors
     val draft = item.draft
-    val title = draft.name?.takeIf { it.isNotBlank() }
-        ?: item.notification.parsed.merchantRaw?.takeIf { it.isNotBlank() }
+    // A title must read as a name. A stored merchant with no letters ("29" from an old, pre-fix parse)
+    // is junk — fall back to the recognized tag, then a neutral label, so the card never shows nonsense.
+    val title = listOfNotNull(draft.name, item.notification.parsed.merchantRaw)
+        .firstOrNull { text -> text.isNotBlank() && text.any(Char::isLetter) }
+        ?: draft.tagIds.firstNotNullOfOrNull(tagName)
         ?: "Lançamento"
     val meta = buildList {
         draft.paymentMethod?.let { method ->
