@@ -26,6 +26,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -562,5 +563,91 @@ class HomeViewModelTest {
 
         assertEquals(currentMonth.minusMonths(1).toString(), store.month.value)
         assertEquals(currentMonth.minusMonths(1), vm.state.value.month)
+    }
+
+    // =========================================================================
+    // Manual refresh — isRefreshing flag + fail-soft + toast + concurrency guard
+    // =========================================================================
+
+    @Test
+    fun `onManualRefresh reloads the month`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onManualRefresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun `onManualRefresh success clears isRefreshing and shows no error toast`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onManualRefresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.isRefreshing)
+        // A successful refresh must not surface the connection-error toast.
+        assertNull(vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `onManualRefresh failure toasts and keeps content`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        // Initial load succeeded: 3 items
+        assertEquals(3, vm.state.value.monthCount)
+
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("network error"))
+        vm.onManualRefresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Sem conexão. Tente novamente.", vm.state.value.toastMessage)
+        // fail-soft: existing content is NOT blanked
+        assertEquals(3, vm.state.value.monthCount)
+        assertEquals(2, vm.state.value.shownItems.size)
+    }
+
+    @Test
+    fun `onManualRefresh ignores a concurrent call while refreshing`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Gate getMonth so the first onManualRefresh stays truly in-flight during runCurrent().
+        // Without this, MockK's stub returns synchronously and runCurrent() collapses the entire
+        // refresh cycle — setting isRefreshing back to false — before the second call checks it.
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+
+        vm.onManualRefresh()
+        // runCurrent advances past isRefreshing=true and into the suspended getMonth call,
+        // but cannot proceed past latch.await() — so isRefreshing is still true here.
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(vm.state.value.isRefreshing)
+
+        vm.onManualRefresh() // second call — ignored because isRefreshing is true
+        latch.complete(Result.success(monthItems)) // release the first refresh
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // 1 init call + 1 manual call; the second onManualRefresh was a no-op
+        coVerify(exactly = 2) { transactionRepository.getMonth(any()) }
+        assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun `refresh (ON_RESUME) stays silent on failure`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("network"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.refresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.isRefreshing)
+        assertTrue(vm.state.value.toastMessage != "Sem conexão. Tente novamente.")
     }
 }

@@ -32,6 +32,7 @@ import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +72,7 @@ data class HomeUiState(
     val isEmptyMonth: Boolean = false,
     val monthCount: Int = 0,
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
 )
 
 @HiltViewModel
@@ -133,56 +135,76 @@ class HomeViewModel @Inject constructor(
 
     private fun loadLookups() {
         viewModelScope.launch {
-            val tags = tagRepository.getAllTags().getOrDefault(emptyList())
-            val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
-            val cards = cardRepository.getCards().getOrDefault(emptyList())
+            val tagsResult = tagRepository.getAllTags()
+            val contextsResult = tagRepository.getAllContexts()
+            val cardsResult = cardRepository.getCards()
             val userName = tokenStore.getUserName().orEmpty()
-            _state.update {
-                it.copy(
-                    userName = userName,
-                    tags = tags.associateBy { t -> t.id },
-                    contexts = contexts,
-                    cards = cards.associateBy { c -> c.id },
-                ).recomputed()
+            _state.update { s ->
+                var next = s.copy(userName = userName)
+                if (tagsResult.isSuccess) next = next.copy(tags = tagsResult.getOrThrow().associateBy { it.id })
+                if (contextsResult.isSuccess) next = next.copy(contexts = contextsResult.getOrThrow())
+                if (cardsResult.isSuccess) next = next.copy(cards = cardsResult.getOrThrow().associateBy { it.id })
+                next.recomputed()
             }
         }
     }
 
     private fun loadMonth(showLoading: Boolean = true) {
+        viewModelScope.launch { reloadMonth(showLoading) }
+    }
+
+    /**
+     * Core reload: fetches the ledger and pending queue in parallel and commits the result
+     * fail-soft — on failure the existing rendered content is kept and [isLoading] is cleared.
+     * Returns the raw [Result] from [TransactionRepository.getMonth] so callers can react
+     * (e.g. [onManualRefresh] shows an error toast); never touches [HomeUiState.isRefreshing].
+     */
+    private suspend fun reloadMonth(showLoading: Boolean): Result<List<HistoryItem>> {
         val month = _state.value.month
         val key = month.toString()
         val current = month == YearMonth.now()
-        viewModelScope.launch {
-            if (showLoading) _state.update { it.copy(isLoading = true) }
-            // The fatura tile is secondary — load it concurrently in its own coroutine so its statement
-            // fetch never sits on the ledger's critical path (that was the month-switch delay).
-            loadOpenBills(month, key)
-            // Fetch the ledger and the pending queue in parallel, not one after the other. Off-months
-            // skip the pending call entirely — its banner is gated to the current month anyway.
-            val itemsDeferred = async { transactionRepository.getMonth(key).getOrDefault(emptyList()) }
+        if (showLoading) _state.update { it.copy(isLoading = true) }
+        // The fatura tile is secondary — load it concurrently in its own coroutine so its statement
+        // fetch never sits on the ledger's critical path (that was the month-switch delay).
+        loadOpenBills(month, key)
+        // Fetch the ledger and the pending queue in parallel, not one after the other. Off-months
+        // skip the pending call entirely — its banner is gated to the current month anyway.
+        return coroutineScope {
+            val itemsDeferred = async { transactionRepository.getMonth(key) }
             val pendingDeferred = async {
                 if (current) notificationRepository.getPendingReview().getOrDefault(emptyList()) else emptyList()
             }
-            val items = itemsDeferred.await()
+            val itemsResult = itemsDeferred.await()
             val pending = pendingDeferred.await()
             _state.update { s ->
                 // A newer month navigation supersedes this in-flight result.
                 if (s.month != month) return@update s
-                monthItems = items
-                s.copy(
-                    isLoading = false,
-                    isCurrentMonth = current,
-                    pendingReviewCount = pending.size.takeIf { current } ?: 0,
-                    pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
-                ).recomputed()
+                itemsResult.fold(
+                    onSuccess = { items ->
+                        monthItems = items
+                        s.copy(
+                            isLoading = false,
+                            isCurrentMonth = current,
+                            pendingReviewCount = pending.size.takeIf { current } ?: 0,
+                            pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
+                        ).recomputed()
+                    },
+                    onFailure = {
+                        // Fail-soft: keep the existing rendered content; only clear the loading spinner.
+                        s.copy(isLoading = false)
+                    },
+                )
             }
-            // Recognize confirm-ready items off the critical path: the ledger above is already rendered.
-            if (current) {
-                classifyPendingForConfirmReady(pending, month)
-            } else {
-                classifyGeneration++ // invalidate any in-flight pass; off-month shows no confirm-ready cards
-                _state.update { if (it.month == month) it.copy(confirmReady = emptyList()) else it }
+            // Recognize confirm-ready items off the critical path — only when the ledger succeeded.
+            if (itemsResult.isSuccess) {
+                if (current) {
+                    classifyPendingForConfirmReady(pending, month)
+                } else {
+                    classifyGeneration++ // invalidate any in-flight pass; off-month shows no confirm-ready cards
+                    _state.update { if (it.month == month) it.copy(confirmReady = emptyList()) else it }
+                }
             }
+            itemsResult
         }
     }
 
@@ -271,6 +293,27 @@ class HomeViewModel @Inject constructor(
                         )
                     }
                 }
+        }
+    }
+
+    fun onManualRefresh() {
+        if (_state.value.isRefreshing) return
+        viewModelScope.launch {
+            _state.update { it.copy(isRefreshing = true) }
+            loadLookups()
+            var failed = false
+            try {
+                failed = reloadMonth(showLoading = false).isFailure
+            } finally {
+                // Clear the flag in finally so a throw (e.g. cancellation) can never strand the pull
+                // indicator / disabled icon. Clear + toast in one update so no intermediate state leaks.
+                _state.update { s ->
+                    s.copy(
+                        isRefreshing = false,
+                        toastMessage = "Sem conexão. Tente novamente.".takeIf { failed } ?: s.toastMessage,
+                    )
+                }
+            }
         }
     }
 
