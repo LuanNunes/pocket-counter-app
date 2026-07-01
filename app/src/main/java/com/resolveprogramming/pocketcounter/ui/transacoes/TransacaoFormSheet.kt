@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
@@ -147,6 +148,7 @@ fun TransacaoFormSheet(
                     onValueChange = { draft = draft.copy(name = it) },
                     placeholder = "Ex.: Salário, Cliente X…".takeIf { draft.type == TransactionType.INCOME }
                         ?: "Ex.: iFood, Aluguel…",
+                    capitalization = KeyboardCapitalization.Sentences,
                 )
 
                 Spacer(Modifier.height(16.dp))
