@@ -88,4 +88,32 @@ class RetrofitTransactionRepositoryTest {
         assertTrue(result.isSuccess)
         assertNull(captured.captured.name)
     }
+
+    // getMonth fetches incomes and expenses concurrently; these lock in the two contracts that the
+    // parallelization must not break: incomes-before-expenses order, and failure propagation.
+
+    @Test
+    fun `getMonth preserves incomes-before-expenses order after the parallel fetch`() = runTest {
+        coEvery { api.getIncomes(202606) } returns listOf(
+            TransactionDto(id = "inc-1", transactionType = "INCOME", amount = BigDecimal("200.00")),
+        )
+        coEvery { api.getExpenses(202606) } returns listOf(
+            TransactionDto(id = "exp-1", transactionType = "EXPENSE", amount = BigDecimal("100.00")),
+        )
+
+        val result = repo.getMonth("2026-06")
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("inc-1", "exp-1"), result.getOrThrow().map { it.id })
+    }
+
+    @Test
+    fun `getMonth surfaces a failure in either call as Result-failure`() = runTest {
+        coEvery { api.getIncomes(202606) } returns emptyList()
+        coEvery { api.getExpenses(202606) } throws RuntimeException("expenses endpoint down")
+
+        val result = repo.getMonth("2026-06")
+
+        assertTrue(result.isFailure)
+    }
 }

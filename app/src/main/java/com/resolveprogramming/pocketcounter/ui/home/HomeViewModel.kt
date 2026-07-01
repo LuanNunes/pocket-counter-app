@@ -110,7 +110,16 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             viewedMonth.month.collect { key ->
                 val ym = YearMonth.parse(key)
-                _state.update { it.copy(month = ym, monthLabel = monthLabelPtBr(ym)) }
+                // Clear the fatura tile on the month flip so it shows a neutral zero — not the previous
+                // month's total — while loadOpenBills fetches the new statement off the critical path.
+                _state.update {
+                    it.copy(
+                        month = ym,
+                        monthLabel = monthLabelPtBr(ym),
+                        openBillsTotal = BigDecimal.ZERO,
+                        openBillsCount = 0,
+                    )
+                }
                 loadMonth()
             }
         }
