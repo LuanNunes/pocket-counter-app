@@ -6,12 +6,14 @@ import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
 import com.resolveprogramming.pocketcounter.domain.model.CompareOption
 import com.resolveprogramming.pocketcounter.domain.model.MonthlySummary
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.YearMonth
 import javax.inject.Inject
 
 data class ResumoUiState(
@@ -33,17 +35,11 @@ class ResumoViewModel @Inject constructor(
     private val today = java.time.LocalDate.now()
     private val monthKey = "%04d-%02d".format(today.year, today.monthValue)
 
-    private val _state = MutableStateFlow(ResumoUiState(monthLabel = currentMonthLabel()))
+    private val _state = MutableStateFlow(ResumoUiState(monthLabel = monthLabelPtBr(YearMonth.from(today))))
     val state: StateFlow<ResumoUiState> = _state.asStateFlow()
 
     init {
         loadOptions()
-    }
-
-    private fun currentMonthLabel(): String {
-        val ptBr = java.util.Locale("pt", "BR")
-        val month = today.month.getDisplayName(java.time.format.TextStyle.FULL, ptBr)
-        return "$month ${today.year}"
     }
 
     private fun loadOptions() {

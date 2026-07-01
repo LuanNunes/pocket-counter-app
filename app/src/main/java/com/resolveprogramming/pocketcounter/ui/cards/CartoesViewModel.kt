@@ -14,6 +14,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.buildFaturaBreakdown
+import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,8 +23,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -52,11 +51,10 @@ class CartoesViewModel @Inject constructor(
     private val cardPrefs: CardPrefsStore,
 ) : ViewModel() {
 
-    private val ptBr = Locale("pt", "BR")
     private val _state = MutableStateFlow(
         CartoesUiState(
             monthKey = viewedMonth.month.value,
-            monthLabel = monthLabel(YearMonth.parse(viewedMonth.month.value)),
+            monthLabel = monthLabelPtBr(YearMonth.parse(viewedMonth.month.value)),
         ),
     )
     val state: StateFlow<CartoesUiState> = _state.asStateFlow()
@@ -67,7 +65,7 @@ class CartoesViewModel @Inject constructor(
         viewModelScope.launch {
             viewedMonth.month.collect { key ->
                 _state.update {
-                    it.copy(monthKey = key, monthLabel = monthLabel(YearMonth.parse(key)), isLoading = true)
+                    it.copy(monthKey = key, monthLabel = monthLabelPtBr(YearMonth.parse(key)), isLoading = true)
                 }
                 loadData()
             }
@@ -107,9 +105,6 @@ class CartoesViewModel @Inject constructor(
 
     private fun refOf(monthKey: String): Int =
         YearMonth.parse(monthKey).let { it.year * 100 + it.monthValue }
-
-    private fun monthLabel(ym: YearMonth): String =
-        "${ym.month.getDisplayName(TextStyle.FULL, ptBr)} ${ym.year}"
 
     private fun loadTags() {
         viewModelScope.launch {

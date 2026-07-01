@@ -1,10 +1,11 @@
 package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import app.cash.turbine.test
+import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
-import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
@@ -19,6 +20,7 @@ import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -128,12 +130,15 @@ class TransacoesViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun makeViewModel(): TransacoesViewModel = TransacoesViewModel(
+    private fun makeViewModel(
+        ledgerRefresh: LedgerRefreshSignal = LedgerRefreshSignal(),
+    ): TransacoesViewModel = TransacoesViewModel(
         transactionRepository = transactionRepository,
         cardRepository = cardRepository,
         tagRepository = tagRepository,
         seriesRepository = seriesRepository,
         viewedMonth = ViewedMonthStore(),
+        ledgerRefresh = ledgerRefresh,
     )
 
     // -------------------------------------------------------------------------
@@ -561,6 +566,36 @@ class TransacoesViewModelTest {
         assertEquals(PaymentStatus.PENDING, reverted.statusPayment)
         assertNotNull(vm.state.value.toastMessage)
         assertFalse(vm.state.value.isLoading)
+    }
+
+    @Test
+    fun `markPaid broadcasts a ledger refresh signal for sibling screens`() = runTest {
+        coEvery { transactionRepository.markPaid("avulso-1") } returns Result.success(Unit)
+        val refresh = LedgerRefreshSignal()
+        var signals = 0
+        backgroundScope.launch { refresh.events.collect { signals++ } }
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.markPaid("avulso-1")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // A mark-paid must notify other screens (e.g. Home's Pendente) via the shared signal.
+        assertTrue(signals >= 1)
+    }
+
+    @Test
+    fun `reacts to an external ledger signal by reloading the month`() = runTest {
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // A change on another screen (e.g. a transaction confirmed from Home) broadcasts a refresh.
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // getMonth ran on init and again in response to the signal.
+        coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }
     }
 
     @Test

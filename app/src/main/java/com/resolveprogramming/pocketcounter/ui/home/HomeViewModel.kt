@@ -2,8 +2,10 @@ package com.resolveprogramming.pocketcounter.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
+import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -25,6 +27,7 @@ import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.domain.notification.confirmReadyItemOf
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
+import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
@@ -36,8 +39,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.YearMonth
-import java.time.format.TextStyle
-import java.util.Locale
 import javax.inject.Inject
 
 data class HomeUiState(
@@ -81,9 +82,8 @@ class HomeViewModel @Inject constructor(
     private val tokenStore: TokenStore,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val viewedMonth: ViewedMonthStore,
+    private val ledgerRefresh: LedgerRefreshSignal,
 ) : ViewModel() {
-
-    private val ptBr = Locale("pt", "BR")
 
     // The full month's rows, before listType/groupBy filtering — the source for recomputed().
     private var monthItems: List<HistoryItem> = emptyList()
@@ -96,7 +96,7 @@ class HomeViewModel @Inject constructor(
         YearMonth.parse(viewedMonth.month.value).let { ym ->
             HomeUiState(
                 month = ym,
-                monthLabel = monthLabel(ym),
+                monthLabel = monthLabelPtBr(ym),
                 isCurrentMonth = ym == YearMonth.now(),
             )
         },
@@ -110,9 +110,15 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             viewedMonth.month.collect { key ->
                 val ym = YearMonth.parse(key)
-                _state.update { it.copy(month = ym, monthLabel = monthLabel(ym)) }
+                _state.update { it.copy(month = ym, monthLabel = monthLabelPtBr(ym)) }
                 loadMonth()
             }
+        }
+        // Reload whenever the ledger changes — on this screen or a sibling (e.g. a row marked paid on
+        // Transações) — so Pendente/saldo and the fatura tile never go stale in the foreground. This is
+        // the single reload path for every mutation: emitters just call signal() and are served here too.
+        viewModelScope.launch {
+            ledgerRefresh.events.collect { loadMonth(showLoading = false) }
         }
     }
 
@@ -121,30 +127,30 @@ class HomeViewModel @Inject constructor(
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = tagRepository.getAllContexts().getOrDefault(emptyList())
             val cards = cardRepository.getCards().getOrDefault(emptyList())
-            val invoices = cardRepository.getOpenInvoices().getOrDefault(emptyList())
             val userName = tokenStore.getUserName().orEmpty()
-            val openBillsTotal = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
             _state.update {
                 it.copy(
                     userName = userName,
                     tags = tags.associateBy { t -> t.id },
                     contexts = contexts,
                     cards = cards.associateBy { c -> c.id },
-                    openBillsTotal = openBillsTotal,
-                    openBillsCount = invoices.size,
                 ).recomputed()
             }
         }
     }
 
-    private fun loadMonth() {
+    private fun loadMonth(showLoading: Boolean = true) {
         val month = _state.value.month
         val key = month.toString()
         val current = month == YearMonth.now()
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            if (showLoading) _state.update { it.copy(isLoading = true) }
             val items = transactionRepository.getMonth(key).getOrDefault(emptyList())
             val pending = notificationRepository.getPendingReview().getOrDefault(emptyList())
+            // The fatura tile is month-scoped: fetch the statement for the *viewed* month, not today's.
+            val invoices = cardRepository.getOpenInvoices(RemoteMappers.monthKeyToRef(key))
+                .getOrDefault(emptyList())
+            val openBillsTotal = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
             _state.update { s ->
                 // A newer month navigation supersedes this in-flight result.
                 if (s.month != month) return@update s
@@ -154,6 +160,8 @@ class HomeViewModel @Inject constructor(
                     isCurrentMonth = current,
                     pendingReviewCount = pending.size.takeIf { current } ?: 0,
                     pendingReviewFirstId = pending.firstOrNull()?.id?.takeIf { current },
+                    openBillsTotal = openBillsTotal,
+                    openBillsCount = invoices.size,
                 ).recomputed()
             }
             // Recognize confirm-ready items off the critical path: the ledger above is already rendered.
@@ -223,7 +231,8 @@ class HomeViewModel @Inject constructor(
                             toastMessage = "Transação confirmada",
                         )
                     }
-                    loadMonth()
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
                 }
                 .onFailure {
                     _state.update {
@@ -267,7 +276,8 @@ class HomeViewModel @Inject constructor(
                 .onSuccess {
                     val msg = "Marcado como pendente".takeIf { paid } ?: "Marcado como pago"
                     _state.update { it.copy(flashId = item.id, flashNonce = it.flashNonce + 1, toastMessage = msg) }
-                    loadMonth()
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
                 }
                 .onFailure { _state.update { it.copy(toastMessage = "Não foi possível atualizar") } }
         }
@@ -290,7 +300,8 @@ class HomeViewModel @Inject constructor(
                 .onSuccess { id ->
                     val msg = "Transação atualizada".takeIf { mode is FormMode.Edit } ?: "Transação salva"
                     _state.update { it.copy(formMode = null, flashId = id, flashNonce = it.flashNonce + 1, toastMessage = msg) }
-                    loadMonth()
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
                 }
                 .onFailure { _state.update { it.copy(toastMessage = "Não foi possível salvar") } }
         }
@@ -327,11 +338,6 @@ class HomeViewModel @Inject constructor(
             isEmptyMonth = monthItems.isEmpty(),
             monthCount = monthItems.size,
         )
-    }
-
-    private fun monthLabel(ym: YearMonth): String {
-        val month = ym.month.getDisplayName(TextStyle.FULL, ptBr).replaceFirstChar { it.uppercase(ptBr) }
-        return "$month ${ym.year}"
     }
 
     private companion object {
