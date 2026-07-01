@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.ui.home
 
+import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
@@ -13,6 +14,7 @@ import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
+import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
@@ -88,7 +90,7 @@ class HomeViewModelTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
         coEvery { cardRepository.getCards() } returns Result.success(emptyList())
-        coEvery { cardRepository.getOpenInvoices() } returns Result.success(emptyList())
+        coEvery { cardRepository.getOpenInvoices(any()) } returns Result.success(emptyList())
         coEvery { tokenStore.getUserName() } returns "Guilherme"
         coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
         coEvery { transactionRepository.getMonth(any()) } returns Result.success(monthItems)
@@ -104,7 +106,10 @@ class HomeViewModelTest {
     }
 
     // Fresh per VM so the process-scoped viewed month never leaks between tests.
-    private fun makeViewModel(viewedMonth: ViewedMonthStore = ViewedMonthStore()): HomeViewModel = HomeViewModel(
+    private fun makeViewModel(
+        viewedMonth: ViewedMonthStore = ViewedMonthStore(),
+        ledgerRefresh: LedgerRefreshSignal = LedgerRefreshSignal(),
+    ): HomeViewModel = HomeViewModel(
         notificationRepository = notificationRepository,
         transactionRepository = transactionRepository,
         tagRepository = tagRepository,
@@ -115,6 +120,7 @@ class HomeViewModelTest {
             notificationRepository,
         ),
         viewedMonth = viewedMonth,
+        ledgerRefresh = ledgerRefresh,
     )
 
     @Test
@@ -156,6 +162,46 @@ class HomeViewModelTest {
 
         coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }
         assertEquals(currentMonth.minusMonths(1), vm.state.value.month)
+    }
+
+    @Test
+    fun `fatura tile reflects the selected month, not the current one`() = runTest {
+        val currentRef = currentMonth.year * 100 + currentMonth.monthValue
+        val prev = currentMonth.minusMonths(1)
+        val prevRef = prev.year * 100 + prev.monthValue
+        val currentInvoice = mockk<OpenInvoice> { every { total } returns BigDecimal("100.00") }
+        val prevInvoice = mockk<OpenInvoice> { every { total } returns BigDecimal("777.00") }
+        coEvery { cardRepository.getOpenInvoices(currentRef) } returns Result.success(listOf(currentInvoice))
+        coEvery { cardRepository.getOpenInvoices(prevRef) } returns Result.success(listOf(prevInvoice))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(BigDecimal("100.00"), vm.state.value.openBillsTotal)
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The tile must follow the viewed month — it read the previous month's statement.
+        assertEquals(BigDecimal("777.00"), vm.state.value.openBillsTotal)
+        assertEquals(1, vm.state.value.openBillsCount)
+        coVerify { cardRepository.getOpenInvoices(prevRef) }
+    }
+
+    @Test
+    fun `ledger refresh signal reloads the month so Pendente stays fresh`() = runTest {
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, vm.state.value.kpis.pendingCount)
+
+        // A sibling screen (Transações) marks the pending expense paid, then broadcasts the change.
+        coEvery { transactionRepository.getMonth(any()) } returns
+            Result.success(listOf(expensePaid, income))
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.kpis.pendingCount)
+        assertEquals(BigDecimal.ZERO, vm.state.value.kpis.pendingTotal)
     }
 
     @Test

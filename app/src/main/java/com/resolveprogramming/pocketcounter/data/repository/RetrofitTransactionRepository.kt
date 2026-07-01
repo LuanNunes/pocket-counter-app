@@ -11,6 +11,8 @@ import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,11 +26,15 @@ class RetrofitTransactionRepository @Inject constructor(
 
     override suspend fun getMonth(monthKey: String): Result<List<HistoryItem>> = runCatching {
         val ref = RemoteMappers.monthKeyToRef(monthKey)
-        val incomes = api.getIncomes(ref)
-        val expenses = api.getExpenses(ref)
-        // Preserve the order the backend returns (its queries already ORDER BY displayOrder), exactly
-        // like the web client does — never re-sort here, or a row's manual position is lost.
-        (incomes + expenses).map { it.toHistoryItem() }
+        // Fetch incomes and expenses concurrently — they're independent endpoints, so awaiting them in
+        // series doubled the month-load latency for every month-scoped screen.
+        coroutineScope {
+            val incomes = async { api.getIncomes(ref) }
+            val expenses = async { api.getExpenses(ref) }
+            // Preserve the order the backend returns (its queries already ORDER BY displayOrder), exactly
+            // like the web client does — never re-sort here, or a row's manual position is lost.
+            (incomes.await() + expenses.await()).map { it.toHistoryItem() }
+        }
     }
 
     override suspend fun save(draft: WizardDraft): Result<String> = runCatching {

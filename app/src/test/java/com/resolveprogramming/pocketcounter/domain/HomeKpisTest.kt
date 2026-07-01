@@ -65,18 +65,19 @@ class HomeKpisTest {
     }
 
     @Test
-    fun `pendingTotal sums abs amounts of PENDING items across both types`() {
+    fun `pendingTotal sums abs amounts of PENDING expenses only, excluding pending income`() {
         val items = listOf(
             expense("e1", "100", PaymentStatus.PAID),
             expense("e2", "50", PaymentStatus.PENDING),
+            expense("e3", "40", PaymentStatus.PENDING),
             income("i1", "200", PaymentStatus.PENDING),
             income("i2", "300", PaymentStatus.PAID),
         )
 
         val kpis = HomeKpis.from(items)
 
-        // pending: |−50| + |200| = 250
-        assertEquals(BigDecimal("250"), kpis.pendingTotal)
+        // pending: only pending EXPENSES → |−50| + |−40| = 90; pending income (200) is excluded.
+        assertEquals(BigDecimal("90"), kpis.pendingTotal)
         assertEquals(2, kpis.pendingCount)
     }
 

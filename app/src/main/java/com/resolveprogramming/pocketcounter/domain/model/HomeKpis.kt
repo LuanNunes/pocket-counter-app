@@ -7,8 +7,9 @@ import java.time.YearMonth
  * Derived KPIs for the Home screen, computed from a list of [HistoryItem]s.
  *
  * [totals] delegates directly to [TransactionTotals.from] — do not re-fold income/expense.
- * [pendingTotal] is the sum of |amount| over items whose [HistoryItem.statusPayment] is
- * [PaymentStatus.PENDING], across both types. [pendingCount] is the count of those items.
+ * [pendingTotal] is the sum of |amount| over EXPENSE items whose [HistoryItem.statusPayment] is
+ * [PaymentStatus.PENDING] — i.e. bills still to pay. Pending income (receivables) is deliberately
+ * excluded so the figure reads as money owed. [pendingCount] is the count of those expense items.
  */
 data class HomeKpis(
     val totals: TransactionTotals,
@@ -20,7 +21,9 @@ data class HomeKpis(
     companion object {
 
         fun from(items: List<HistoryItem>): HomeKpis {
-            val pending = items.filter { it.statusPayment == PaymentStatus.PENDING }
+            val pending = items.filter {
+                it.type == TransactionType.EXPENSE && it.statusPayment == PaymentStatus.PENDING
+            }
             return HomeKpis(
                 totals = TransactionTotals.from(items),
                 expenseCount = items.count { it.type == TransactionType.EXPENSE },

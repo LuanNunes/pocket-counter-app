@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
@@ -14,6 +15,7 @@ import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
+import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -30,7 +32,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.time.YearMonth
-import java.time.format.TextStyle
 import java.util.Locale
 import javax.inject.Inject
 
@@ -103,6 +104,7 @@ class TransacoesViewModel @Inject constructor(
     private val tagRepository: TagRepository,
     private val seriesRepository: SeriesRepository,
     private val viewedMonth: ViewedMonthStore,
+    private val ledgerRefresh: LedgerRefreshSignal,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
@@ -110,7 +112,7 @@ class TransacoesViewModel @Inject constructor(
     private val _state = MutableStateFlow(
         TransacoesUiState(
             monthKey = viewedMonth.month.value,
-            monthLabel = monthLabel(YearMonth.parse(viewedMonth.month.value)),
+            monthLabel = monthLabelPtBr(YearMonth.parse(viewedMonth.month.value)),
         ),
     )
     val state: StateFlow<TransacoesUiState> = _state.asStateFlow()
@@ -120,9 +122,14 @@ class TransacoesViewModel @Inject constructor(
         // Follow the app-wide viewed month: reload whenever it changes (incl. the initial value).
         viewModelScope.launch {
             viewedMonth.month.collect { key ->
-                _state.update { it.copy(monthKey = key, monthLabel = monthLabel(YearMonth.parse(key))) }
+                _state.update { it.copy(monthKey = key, monthLabel = monthLabelPtBr(YearMonth.parse(key))) }
                 loadMonth()
             }
+        }
+        // Reload whenever the ledger changes — on this screen or a sibling (e.g. a row confirmed/added
+        // from Home). The single reload path for every mutation: emitters just call signal().
+        viewModelScope.launch {
+            ledgerRefresh.events.collect { loadMonth(showLoading = false) }
         }
     }
 
@@ -214,6 +221,8 @@ class TransacoesViewModel @Inject constructor(
                     }
                     .onFailure { _state.update { it.copy(toastMessage = "Não foi possível marcar como fixo") } }
             }
+            // No ledgerRefresh.signal(): fixo linkage is a Transações-only concept; it changes no amount
+            // or payment status, so Home's KPIs are unaffected. Local reload only.
             loadMonth(showLoading = false)
         }
     }
@@ -250,6 +259,7 @@ class TransacoesViewModel @Inject constructor(
             _state.value.items.firstOrNull { it.id == id }?.copy(displayOrder = index)
         }
         _state.update { it.copy(items = reordered).recomputed() }
+        // No ledgerRefresh.signal(): reordering only changes displayOrder, which Home doesn't render.
         viewModelScope.launch {
             transactionRepository.reorder(orderedIds)
                 .onFailure {
@@ -273,8 +283,8 @@ class TransacoesViewModel @Inject constructor(
                     _state.update { it.copy(tagEditTarget = null, toastMessage = "Tags desta transação") }
                 }
                 .onFailure { _state.update { it.copy(tagEditTarget = null, toastMessage = "Não foi possível salvar as tags") } }
-            loadLookups()
-            loadMonth()
+            loadLookups() // refresh the tag/context maps — the shared collector only reloads the month rows
+            ledgerRefresh.signal()
         }
     }
 
@@ -304,7 +314,9 @@ class TransacoesViewModel @Inject constructor(
         }
         viewModelScope.launch {
             action()
-                .onSuccess { loadMonth(showLoading = false) }
+                // The optimistic update above shows instantly; the shared collector (see init) does the
+                // confirming reload here and on every sibling screen.
+                .onSuccess { ledgerRefresh.signal() }
                 .onFailure {
                     _state.update {
                         it.copy(items = previousItems, toastMessage = "Não foi possível atualizar").recomputed()
@@ -324,7 +336,8 @@ class TransacoesViewModel @Inject constructor(
                     _state.update {
                         it.copy(confirmDeleteId = null, detailTarget = null, toastMessage = "Transação excluída")
                     }
-                    loadMonth()
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
                 }
                 .onFailure {
                     _state.update { it.copy(confirmDeleteId = null, toastMessage = "Não foi possível excluir") }
@@ -363,7 +376,8 @@ class TransacoesViewModel @Inject constructor(
                 .onSuccess {
                     val msg = "Transação atualizada".takeIf { mode is FormMode.Edit } ?: "Transação salva"
                     _state.update { it.copy(formMode = null, toastMessage = msg) }
-                    loadMonth()
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
                 }
                 .onFailure { _state.update { it.copy(toastMessage = "Não foi possível salvar") } }
         }
@@ -384,7 +398,8 @@ class TransacoesViewModel @Inject constructor(
                     _state.update {
                         it.copy(toastMessage = "Gerado: ${result.createdCount} · ignorados: ${result.skippedCount}")
                     }
-                    loadMonth()
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
                 }
                 .onFailure { _state.update { it.copy(toastMessage = "Não foi possível gerar o saldo") } }
         }
@@ -445,8 +460,4 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    private fun monthLabel(ym: YearMonth): String {
-        val month = ym.month.getDisplayName(TextStyle.FULL, ptBr)
-        return "$month ${ym.year}"
-    }
 }
