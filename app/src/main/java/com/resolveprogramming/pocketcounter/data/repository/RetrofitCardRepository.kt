@@ -16,6 +16,9 @@ import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -44,54 +47,67 @@ class RetrofitCardRepository @Inject constructor(
     }
 
     override suspend fun getOpenInvoices(refYearMonth: Int): Result<List<OpenInvoice>> = runCatching {
-        val cards = creditCards()
-        val ref = refYearMonth
-        val expenses = transactionApi.getExpenses(ref)
+        coroutineScope {
+            val ref = refYearMonth
+            // The cards list and the month's expenses don't depend on each other — fetch them together.
+            val cardsDeferred = async { creditCards() }
+            val expensesDeferred = async { transactionApi.getExpenses(ref) }
+            val cards = cardsDeferred.await()
+            val expenses = expensesDeferred.await()
 
-        // The fatura on screen is the data month's (ref) statement. Anchor its closing/due label
-        // to that month so the card reads the SAME month as the values shown. Using LocalDate.now()
-        // rolled the closing into the next month once today passed billDay (June data → "jul"
-        // vencimento). Anchoring to the first of the ref month keeps closesInDays and dueLabel
-        // consistent with each other and with the month being displayed.
-        val statementAnchor = LocalDate.of(ref / 100, ref % 100, 1)
+            // The fatura on screen is the data month's (ref) statement. Anchor its closing/due label
+            // to that month so the card reads the SAME month as the values shown. Using LocalDate.now()
+            // rolled the closing into the next month once today passed billDay (June data → "jul"
+            // vencimento). Anchoring to the first of the ref month keeps closesInDays and dueLabel
+            // consistent with each other and with the month being displayed.
+            val statementAnchor = LocalDate.of(ref / 100, ref % 100, 1)
 
-        cards.map { card ->
-            val cardExpenses = expenses.filter { it.cardId == card.id }
-            val invoiceTx = cardExpenses.firstOrNull { it.isInvoice && it.id != null }
-
-            val (items, total) = run {
-                if (invoiceTx != null) {
-                    val invoiceId = invoiceTx.id!!
-                    // Items have no own date field; the purchase date is embedded in the name.
-                    // Fall back to the invoice's date (not today) when the name carries none.
-                    val invoiceDate = RemoteMappers.parseDate(invoiceTx.datePaid)
-                        ?: RemoteMappers.parseDate(invoiceTx.dateDue)
-                        ?: LocalDate.now()
-                    val builtItems = invoiceItemApi.getItems(invoiceId)
-                        .map { it.toInvoiceItem(invoiceId, invoiceDate) }
-                    // The invoice header is the source of truth for the total — honor its amount even
-                    // when it has no line items yet (a manual/projected fatura, e.g. a future month).
-                    return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
-                }
-                val fallback = fallbackItems(cardExpenses)
-                fallback to fallback.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount }
-            }
-
-            val usage = run {
-                if (card.limit > BigDecimal.ZERO) {
-                    return@run total.divide(card.limit, 4, RoundingMode.HALF_UP).toFloat().coerceAtMost(1f)
-                }
-                0f
-            }
-            OpenInvoice(
-                card = card,
-                total = total,
-                usage = usage,
-                closesInDays = BillingCycle.closesInDays(card.billDay, statementAnchor),
-                dueLabel = BillingCycle.dueLabel(card.billDay, statementAnchor),
-                items = items.sortedByDescending { it.date },
-            )
+            // Each card's items sub-resource is an independent round-trip — fan them out instead of
+            // walking the cards serially (the old N+1 that made the fatura tile the slow tile).
+            cards.map { card -> async { buildOpenInvoice(card, expenses, statementAnchor) } }.awaitAll()
         }
+    }
+
+    private suspend fun buildOpenInvoice(
+        card: CreditCard,
+        expenses: List<TransactionDto>,
+        statementAnchor: LocalDate,
+    ): OpenInvoice {
+        val cardExpenses = expenses.filter { it.cardId == card.id }
+        val invoiceTx = cardExpenses.firstOrNull { it.isInvoice && it.id != null }
+
+        val (items, total) = run {
+            if (invoiceTx != null) {
+                val invoiceId = invoiceTx.id!!
+                // Items have no own date field; the purchase date is embedded in the name.
+                // Fall back to the invoice's date (not today) when the name carries none.
+                val invoiceDate = RemoteMappers.parseDate(invoiceTx.datePaid)
+                    ?: RemoteMappers.parseDate(invoiceTx.dateDue)
+                    ?: LocalDate.now()
+                val builtItems = invoiceItemApi.getItems(invoiceId)
+                    .map { it.toInvoiceItem(invoiceId, invoiceDate) }
+                // The invoice header is the source of truth for the total — honor its amount even
+                // when it has no line items yet (a manual/projected fatura, e.g. a future month).
+                return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
+            }
+            val fallback = fallbackItems(cardExpenses)
+            fallback to fallback.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount }
+        }
+
+        val usage = run {
+            if (card.limit > BigDecimal.ZERO) {
+                return@run total.divide(card.limit, 4, RoundingMode.HALF_UP).toFloat().coerceAtMost(1f)
+            }
+            0f
+        }
+        return OpenInvoice(
+            card = card,
+            total = total,
+            usage = usage,
+            closesInDays = BillingCycle.closesInDays(card.billDay, statementAnchor),
+            dueLabel = BillingCycle.dueLabel(card.billDay, statementAnchor),
+            items = items.sortedByDescending { it.date },
+        )
     }
 
     override suspend fun classifyPurchase(
