@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -283,6 +284,64 @@ private fun KpiStackRow(
                     color = ink.copy(alpha = 0.55f),
                 )
             }
+        }
+    }
+}
+
+/**
+ * Shown on Home whenever the notification-listener access is revoked/missing, so capture never fails
+ * silently. Tapping it deep-links to the system Notification-access settings. The caller re-evaluates
+ * the grant on every resume, so it appears/disappears as the user toggles the setting.
+ */
+@Composable
+fun NotificationAccessBanner(onEnable: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .border(1.dp, PocketTheme.colors.warn.copy(alpha = 0.5f), PocketTheme.shapes.card)
+            .clickable(onClick = onEnable)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .background(PocketTheme.colors.warn.copy(alpha = 0.18f), PocketTheme.shapes.icon),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.NotificationsOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = PocketTheme.colors.warn,
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Captura desativada. ") }
+                    append("Ative o acesso a notificações para capturar suas compras.")
+                },
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "ativar",
+                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Bold),
+                color = PocketTheme.colors.warn,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = PocketTheme.colors.warn,
+            )
         }
     }
 }

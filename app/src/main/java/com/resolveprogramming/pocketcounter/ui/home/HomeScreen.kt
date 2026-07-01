@@ -36,8 +36,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -49,6 +51,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.navigation.Routes
+import com.resolveprogramming.pocketcounter.platform.capture.CapturePermissions
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
@@ -56,6 +59,7 @@ import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadyCard
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
 import com.resolveprogramming.pocketcounter.ui.home.components.MonthNavBar
+import com.resolveprogramming.pocketcounter.ui.home.components.NotificationAccessBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.RevisarBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.SwipeCue
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
@@ -80,6 +84,16 @@ fun HomeContent(
     }
 
     FlashEffect(state.flashId, state.flashNonce, reducedMotion, viewModel::consumeFlash)
+
+    // Notification-listener access can be revoked at any time (Auto Blocker, reinstall, the user).
+    // Re-read it on every resume so the "capture off" banner appears/disappears without a restart.
+    val context = LocalContext.current
+    var notificationAccessGranted by remember {
+        mutableStateOf(CapturePermissions.isNotificationAccessGranted(context))
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        notificationAccessGranted = CapturePermissions.isNotificationAccessGranted(context)
+    }
 
     // init already loads; only refresh on subsequent resumes (e.g. returning from the wizard).
     // rememberSaveable so the flag survives this destination being disposed during navigation —
@@ -146,6 +160,16 @@ fun HomeContent(
                         isCurrentMonth = state.isCurrentMonth,
                         onStep = viewModel::selectMonth,
                     )
+                }
+
+                if (!notificationAccessGranted) {
+                    item {
+                        NotificationAccessBanner(
+                            onEnable = {
+                                context.startActivity(CapturePermissions.notificationAccessSettingsIntent())
+                            },
+                        )
+                    }
                 }
 
                 item {
