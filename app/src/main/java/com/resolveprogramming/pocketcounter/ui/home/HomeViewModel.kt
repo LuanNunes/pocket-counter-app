@@ -33,6 +33,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -303,7 +304,16 @@ class HomeViewModel @Inject constructor(
             loadLookups()
             var failed = false
             try {
-                failed = reloadMonth(showLoading = false).isFailure
+                // Hold the indicator for a minimum span while reloading. A reload that resolves within a
+                // frame (e.g. connection-refused when the backend is unreachable) would otherwise flip
+                // isRefreshing true→false sub-frame, which leaves PullToRefreshBox re-firing onRefresh
+                // forever — the "eternal refresh". The floor guarantees a clean true-then-false the
+                // gesture can settle on, and the re-entrancy guard above covers the window.
+                failed = coroutineScope {
+                    val reload = async { reloadMonth(showLoading = false) }
+                    delay(MIN_REFRESH_INDICATOR_MS)
+                    reload.await().isFailure
+                }
             } finally {
                 // Clear the flag in finally so a throw (e.g. cancellation) can never strand the pull
                 // indicator / disabled icon. Clear + toast in one update so no intermediate state leaks.
@@ -415,5 +425,9 @@ class HomeViewModel @Inject constructor(
         // Per-Home-load classify round-trips are bounded: only the freshest pending items are offered
         // as one-tap confirms; the rest stay in the wizard-path "para revisar" banner.
         const val CONFIRM_READY_CLASSIFY_CAP = 10
+
+        // Minimum time the pull-to-refresh indicator stays up, so a sub-frame reload can't strand
+        // PullToRefreshBox in a re-triggering loop. Also reads as intentional feedback, not a flicker.
+        const val MIN_REFRESH_INDICATOR_MS = 600L
     }
 }
