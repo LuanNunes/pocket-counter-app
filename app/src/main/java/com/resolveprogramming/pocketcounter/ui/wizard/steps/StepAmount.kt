@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -172,6 +173,7 @@ fun StepAmount(
             onValueChange = onNameChange,
             placeholder = "Ex.: Salário, Cliente X…".takeIf { type == TransactionType.INCOME }
                 ?: "Ex.: iFood, Aluguel…",
+            capitalization = KeyboardCapitalization.Sentences,
         )
 
         Spacer(Modifier.height(12.dp))
