@@ -20,10 +20,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +61,7 @@ import com.resolveprogramming.pocketcounter.ui.home.components.SwipeCue
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeContent(
     padding: PaddingValues,
@@ -99,74 +106,98 @@ fun HomeContent(
     }
 
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(
+        val pullState = rememberPullToRefreshState()
+        PullToRefreshBox(
+            isRefreshing = state.isRefreshing,
+            onRefresh = viewModel::onManualRefresh,
+            state = pullState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(padding),
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    state = pullState,
+                    isRefreshing = state.isRefreshing,
+                    color = PocketTheme.colors.accent,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                )
+            },
         ) {
-            item { Spacer(Modifier.height(8.dp)) }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item { Spacer(Modifier.height(8.dp)) }
 
-            item { HeaderSection(state.userName, onAssistant = { onNavigate("assistente") }) }
-
-            item {
-                MonthNavBar(
-                    monthLabel = state.monthLabel,
-                    isCurrentMonth = state.isCurrentMonth,
-                    onStep = viewModel::selectMonth,
-                )
-            }
-
-            item {
-                BalanceHero(
-                    monthLabel = state.monthLabel,
-                    kpis = state.kpis,
-                    balance = state.balance,
-                )
-            }
-
-            if (state.isCurrentMonth && state.confirmReady.isNotEmpty()) {
-                items(state.confirmReady, key = { it.notificationId }) { item ->
-                    ConfirmReadyCard(
-                        item = item,
-                        isConfirming = item.notificationId in state.confirmingIds,
-                        tagName = { id -> state.tags[id]?.name },
-                        cardName = { id -> state.cards[id]?.name },
-                        onConfirm = { viewModel.confirm(item) },
-                        onReview = { onNavigate(Routes.wizard(item.notificationId)) },
-                    )
-                }
-            }
-
-            if (state.isCurrentMonth && state.pendingReviewCount > 0) {
                 item {
-                    RevisarBanner(
-                        count = state.pendingReviewCount,
-                        onClick = {
-                            state.pendingReviewFirstId?.let { onNavigate(Routes.wizard(it)) }
-                        },
+                    HeaderSection(
+                        state.userName,
+                        isRefreshing = state.isRefreshing,
+                        onRefresh = viewModel::onManualRefresh,
+                        onAssistant = { onNavigate("assistente") },
                     )
                 }
-            }
 
-            item {
-                HomeQuickTiles(
-                    openBillsTotal = state.openBillsTotal,
-                    openBillsCount = state.openBillsCount,
-                    onResumo = { onNavigate("resumo") },
-                    onFaturas = { onNavigate("cartoes") },
-                )
-            }
+                item {
+                    MonthNavBar(
+                        monthLabel = state.monthLabel,
+                        isCurrentMonth = state.isCurrentMonth,
+                        onStep = viewModel::selectMonth,
+                    )
+                }
 
-            item {
-                SwipeCue(
-                    count = state.monthCount,
-                    onClick = onOpenTransacoes,
-                )
-            }
+                item {
+                    BalanceHero(
+                        monthLabel = state.monthLabel,
+                        kpis = state.kpis,
+                        balance = state.balance,
+                    )
+                }
 
-            item { Spacer(Modifier.height(20.dp)) }
+                if (state.isCurrentMonth && state.confirmReady.isNotEmpty()) {
+                    items(state.confirmReady, key = { it.notificationId }) { item ->
+                        ConfirmReadyCard(
+                            item = item,
+                            isConfirming = item.notificationId in state.confirmingIds,
+                            tagName = { id -> state.tags[id]?.name },
+                            cardName = { id -> state.cards[id]?.name },
+                            onConfirm = { viewModel.confirm(item) },
+                            onReview = { onNavigate(Routes.wizard(item.notificationId)) },
+                        )
+                    }
+                }
+
+                if (state.isCurrentMonth && state.pendingReviewCount > 0) {
+                    item {
+                        RevisarBanner(
+                            count = state.pendingReviewCount,
+                            onClick = {
+                                state.pendingReviewFirstId?.let { onNavigate(Routes.wizard(it)) }
+                            },
+                        )
+                    }
+                }
+
+                item {
+                    HomeQuickTiles(
+                        openBillsTotal = state.openBillsTotal,
+                        openBillsCount = state.openBillsCount,
+                        onResumo = { onNavigate("resumo") },
+                        onFaturas = { onNavigate("cartoes") },
+                    )
+                }
+
+                item {
+                    SwipeCue(
+                        count = state.monthCount,
+                        onClick = onOpenTransacoes,
+                    )
+                }
+
+                item { Spacer(Modifier.height(20.dp)) }
+            }
         }
 
         PocketToastHost(state = toastState)
@@ -174,7 +205,12 @@ fun HomeContent(
 }
 
 @Composable
-private fun HeaderSection(userName: String, onAssistant: () -> Unit = {}) {
+private fun HeaderSection(
+    userName: String,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    onAssistant: () -> Unit = {},
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -195,6 +231,34 @@ private fun HeaderSection(userName: String, onAssistant: () -> Unit = {}) {
                 color = PocketTheme.colors.text,
             )
         }
+        Box(
+            modifier = Modifier
+                .minimumInteractiveComponentSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(PocketTheme.shapes.labelPicker)
+                    .background(PocketTheme.colors.surface)
+                    .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.labelPicker),
+                contentAlignment = Alignment.Center,
+            ) {
+                IconButton(
+                    onClick = onRefresh,
+                    enabled = !isRefreshing,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = if (isRefreshing) "Atualizando" else "Atualizar",
+                        modifier = Modifier.size(20.dp),
+                        // Dim while a refresh is in flight so the disabled icon reads as busy.
+                        tint = PocketTheme.colors.accent.copy(alpha = if (isRefreshing) 0.4f else 1f),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.width(10.dp))
         Box(
             modifier = Modifier
                 .minimumInteractiveComponentSize()
