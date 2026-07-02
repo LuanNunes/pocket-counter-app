@@ -74,6 +74,21 @@ class RetrofitTagRepositoryTest {
     }
 
     @Test
+    fun `refreshLookups drops both lookup caches so the next reads refetch`() = runTest {
+        coEvery { tagApi.getTags() } returns emptyList()
+        coEvery { categoryApi.getCategories() } returns emptyList()
+
+        repo.getAllTags()
+        repo.getAllContexts()
+        repo.refreshLookups()
+        repo.getAllTags()
+        repo.getAllContexts()
+
+        coVerify(exactly = 2) { tagApi.getTags() }
+        coVerify(exactly = 2) { categoryApi.getCategories() }
+    }
+
+    @Test
     fun `getAllTags does not cache a failed read so the next call retries the api`() = runTest {
         coEvery { tagApi.getTags() } throws RuntimeException("boom") andThen emptyList()
 

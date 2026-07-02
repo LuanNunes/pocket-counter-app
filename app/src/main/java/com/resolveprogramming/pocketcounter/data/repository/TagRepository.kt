@@ -27,4 +27,7 @@ interface TagRepository {
     suspend fun createContext(input: ContextInput): Result<TagContext>
     suspend fun updateContext(id: String, input: ContextInput): Result<TagContext>
     suspend fun deleteContext(id: String): Result<Unit>
+
+    /** Drops any cached tag/context lookups so the next read refetches from the backend. */
+    fun refreshLookups()
 }

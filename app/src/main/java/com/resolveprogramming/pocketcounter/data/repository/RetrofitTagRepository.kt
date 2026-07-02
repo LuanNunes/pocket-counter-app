@@ -18,8 +18,11 @@ class RetrofitTagRepository @Inject constructor(
     private val categoryApi: CategoryApi,
 ) : TagRepository {
 
-    private val tagsCache = SuspendCache<List<Tag>>()
-    private val contextsCache = SuspendCache<List<TagContext>>()
+    // Lookups rarely change and are read on nearly every screen, so they're cached — but a category/tag
+    // added on the web must eventually surface without a process restart. The TTL self-heals stale reads;
+    // refreshLookups() (wired to pull-to-refresh) drops them immediately for a user-driven refresh.
+    private val tagsCache = SuspendCache<List<Tag>>(ttlMillis = LOOKUP_TTL_MS)
+    private val contextsCache = SuspendCache<List<TagContext>>(ttlMillis = LOOKUP_TTL_MS)
 
     override suspend fun getAllContexts(): Result<List<TagContext>> = runCatching {
         contextsCache.get { categoryApi.getCategories().map { it.toDomain() } }
@@ -77,9 +80,18 @@ class RetrofitTagRepository @Inject constructor(
         categoryApi.delete(id)
     }.onSuccess { invalidateLookups() }
 
+    /** Drops both lookup caches so the next read refetches — wired to the user-driven pull-to-refresh. */
+    override fun refreshLookups() = invalidateLookups()
+
     /** A context delete can cascade to its tags on the backend, so both caches drop together. */
     private fun invalidateLookups() {
         tagsCache.invalidate()
         contextsCache.invalidate()
+    }
+
+    private companion object {
+        // Lookups are re-read constantly, so keep the window generous — pull-to-refresh covers the
+        // "I just changed it on the web and want it now" case; this only bounds passive staleness.
+        const val LOOKUP_TTL_MS = 5 * 60 * 1000L
     }
 }
