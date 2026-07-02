@@ -17,6 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.platform.capture.CapturePermissions
+import com.resolveprogramming.pocketcounter.ui.components.NotificationAccessDisclosureDialog
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
@@ -36,6 +40,18 @@ fun OnboardingScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Play prominent-disclosure gate — same consent step as Home, shown before the settings intent.
+    var showAccessDisclosure by remember { mutableStateOf(false) }
+    if (showAccessDisclosure) {
+        NotificationAccessDisclosureDialog(
+            onAccept = {
+                showAccessDisclosure = false
+                context.startActivity(CapturePermissions.notificationAccessSettingsIntent())
+            },
+            onDismiss = { showAccessDisclosure = false },
+        )
+    }
 
     LifecycleResumeEffect(Unit) {
         viewModel.onGrantsChanged(
@@ -98,9 +114,7 @@ fun OnboardingScreen(
             subtitle = "Detecta avisos de compra e Pix dos apps dos bancos.",
             granted = state.notificationAccessGranted,
             actionLabel = "Abrir ajustes",
-            onAction = {
-                context.startActivity(CapturePermissions.notificationAccessSettingsIntent())
-            },
+            onAction = { showAccessDisclosure = true },
         )
 
         Spacer(Modifier.height(12.dp))
