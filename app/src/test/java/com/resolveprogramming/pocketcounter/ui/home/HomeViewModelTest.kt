@@ -26,6 +26,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -91,6 +92,7 @@ class HomeViewModelTest {
         Dispatchers.setMain(testDispatcher)
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
+        every { tagRepository.refreshLookups() } returns Unit
         coEvery { cardRepository.getCards() } returns Result.success(emptyList())
         coEvery { cardRepository.getOpenInvoices(any()) } returns Result.success(emptyList())
         coEvery { tokenStore.getUserName() } returns "Guilherme"
@@ -656,6 +658,19 @@ class HomeViewModelTest {
 
         coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }
         assertFalse(vm.state.value.isRefreshing)
+    }
+
+    @Test
+    fun `onManualRefresh flushes the tag context lookup caches before reloading`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.onManualRefresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Without this the reload just re-serves the stale in-memory lookups, so a category/tag added
+        // on the web would never appear on a pull-to-refresh.
+        verify { tagRepository.refreshLookups() }
     }
 
     @Test

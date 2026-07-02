@@ -359,6 +359,9 @@ class HomeViewModel @Inject constructor(
         if (_state.value.isRefreshing) return
         viewModelScope.launch {
             _state.update { it.copy(isRefreshing = true) }
+            // Drop the cached tag/context lookups first so this reload picks up categories/tags added on
+            // the web — otherwise loadLookups() below just re-serves the stale in-memory snapshot.
+            tagRepository.refreshLookups()
             loadLookups()
             var failed = false
             try {
