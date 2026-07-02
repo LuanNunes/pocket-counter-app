@@ -49,6 +49,24 @@ class AuthRepository @Inject constructor(
         appLockState.lock()
     }
 
+    /**
+     * Permanently deletes the account server-side, then drops the local session. Unlike [logout]
+     * this is NOT best-effort: the local session is cleared ONLY after the backend confirms the
+     * deletion, so a failed call never strands the user "signed out" of an account that still
+     * exists. A non-2xx or network error surfaces as [Result.failure] for the caller to report.
+     */
+    suspend fun deleteAccount(): Result<Unit> = try {
+        val response = authApi.deleteAccount()
+        if (!response.isSuccessful) {
+            error("Account deletion failed: ${response.code()} ${response.message()}")
+        }
+        tokenStore.clear()
+        appLockState.lock()
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
+    }
+
     private suspend fun runAuth(
         call: suspend () -> retrofit2.Response<com.resolveprogramming.pocketcounter.data.remote.dto.TokenResponse>,
     ): Result<Unit> = try {

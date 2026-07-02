@@ -5,6 +5,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.RegisterRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.TokenResponse
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.POST
 
 interface AuthApi {
@@ -23,4 +24,8 @@ interface AuthApi {
 
     @POST("api/v1/auth/logout")
     suspend fun logout(@Body request: LoginRequest): Response<Unit>
+
+    /** Permanently deletes the authenticated user's account and all their data. */
+    @DELETE("api/v1/account")
+    suspend fun deleteAccount(): Response<Unit>
 }

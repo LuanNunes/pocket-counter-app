@@ -28,11 +28,14 @@ sealed interface LockRowState {
 
 sealed interface MaisEvent {
     data object ShowEnrollSheet : MaisEvent
+    data object AccountDeletionFailed : MaisEvent
 }
 
 data class MaisUiState(
     val lockEnabled: Boolean = false,
     val lockRowState: LockRowState = LockRowState.Enabled,
+    /** True while a delete-account call is in flight — disables the confirm/cancel controls. */
+    val deletingAccount: Boolean = false,
 )
 
 @HiltViewModel
@@ -59,6 +62,25 @@ class MaisViewModel @Inject constructor(
     fun logout() {
         viewModelScope.launch {
             authRepository.logout()
+        }
+    }
+
+    /**
+     * Permanently deletes the account. On success the repository clears the session token, which the
+     * nav host observes to route back to sign-in — so this screen is torn down and [deletingAccount]
+     * intentionally stays true through the redirect. On failure the flag resets and a
+     * [MaisEvent.AccountDeletionFailed] is emitted so the screen can surface an error. Re-entrant
+     * calls are ignored while a deletion is already in flight.
+     */
+    fun deleteAccount() {
+        if (_state.value.deletingAccount) return
+        // Set the flag synchronously so a rapid second tap is guarded out before the coroutine runs.
+        _state.update { it.copy(deletingAccount = true) }
+        viewModelScope.launch {
+            authRepository.deleteAccount().onFailure {
+                _state.update { it.copy(deletingAccount = false) }
+                _events.send(MaisEvent.AccountDeletionFailed)
+            }
         }
     }
 

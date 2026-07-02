@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Settings
@@ -72,10 +73,16 @@ fun MaisScreen(
     val context = LocalContext.current
     val activity = context as? FragmentActivity
 
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 MaisEvent.ShowEnrollSheet -> context.startActivity(enrollIntent())
+                MaisEvent.AccountDeletionFailed -> {
+                    showDeleteDialog = false
+                    toastState.show("Não foi possível excluir a conta. Tente novamente.")
+                }
             }
         }
     }
@@ -147,6 +154,9 @@ fun MaisScreen(
                 item {
                     MaisLogoutRow(onClick = { showLogoutDialog = true })
                 }
+                item {
+                    MaisDeleteAccountRow(onClick = { showDeleteDialog = true })
+                }
             }
         }
         PocketToastHost(state = toastState)
@@ -174,6 +184,41 @@ fun MaisScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Cancelar", color = PocketTheme.colors.text2)
+                }
+            },
+            containerColor = PocketTheme.colors.surface,
+        )
+    }
+
+    if (showDeleteDialog) {
+        // Buttons are disabled while the delete call is in flight. On success the session clears and
+        // the nav host routes to sign-in (this screen leaves); on failure the event handler above
+        // closes the dialog and shows a toast.
+        val deleting = state.deletingAccount
+        AlertDialog(
+            onDismissRequest = { if (!deleting) showDeleteDialog = false },
+            title = { Text("Excluir conta?", color = PocketTheme.colors.text) },
+            text = {
+                Text(
+                    "Esta ação é permanente. Sua conta e todos os seus dados serão apagados e " +
+                        "não poderão ser recuperados.",
+                    color = PocketTheme.colors.text2,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = { viewModel.deleteAccount() },
+                ) {
+                    Text("Excluir conta", color = PocketTheme.colors.expense)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !deleting,
+                    onClick = { showDeleteDialog = false },
+                ) {
                     Text("Cancelar", color = PocketTheme.colors.text2)
                 }
             },
@@ -316,5 +361,45 @@ private fun MaisLogoutRow(onClick: () -> Unit) {
             color = PocketTheme.colors.expense,
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+@Composable
+private fun MaisDeleteAccountRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(PocketTheme.colors.surface2, PocketTheme.shapes.icon),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.DeleteForever,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = PocketTheme.colors.expense,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Excluir conta",
+                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PocketTheme.colors.expense,
+            )
+            Text(
+                "Apaga sua conta e todos os dados",
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+            )
+        }
     }
 }

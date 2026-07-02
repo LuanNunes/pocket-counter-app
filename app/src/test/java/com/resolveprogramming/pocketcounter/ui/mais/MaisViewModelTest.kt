@@ -21,8 +21,10 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 
 /**
  * Unit tests for MaisViewModel.
@@ -282,5 +284,82 @@ class MaisViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(stateBefore, vm.state.value)
+    }
+
+    // -------------------------------------------------------------------------
+    // deleteAccount()
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `deleteAccount delegates to authRepository deleteAccount`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.deleteAccount() } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        vm.deleteAccount()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify { authRepository.deleteAccount() }
+    }
+
+    @Test
+    fun `deleteAccount keeps deletingAccount true on success through the redirect`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.deleteAccount() } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.deleteAccount()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // On success the session clears and the nav host tears this screen down, so the flag stays
+        // true to keep the controls disabled during the redirect.
+        assertTrue(vm.state.value.deletingAccount)
+    }
+
+    @Test
+    fun `deleteAccount success emits no AccountDeletionFailed event`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.deleteAccount() } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.events.test {
+            vm.deleteAccount()
+            testDispatcher.scheduler.advanceUntilIdle()
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `deleteAccount failure resets the flag and emits AccountDeletionFailed`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.deleteAccount() } returns Result.failure(IOException("boom"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.events.test {
+            vm.deleteAccount()
+            testDispatcher.scheduler.advanceUntilIdle()
+            assertEquals(MaisEvent.AccountDeletionFailed, awaitItem())
+        }
+        assertFalse(vm.state.value.deletingAccount)
+    }
+
+    @Test
+    fun `deleteAccount ignores re-entrant calls while a deletion is in flight`() = runTest {
+        every { authenticator.availability() } returns BiometricAvailability.Available
+        coEvery { authRepository.deleteAccount() } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.deleteAccount()
+        vm.deleteAccount() // second call — guarded out because deletingAccount is already true
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { authRepository.deleteAccount() }
     }
 }
