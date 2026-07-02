@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.navigation.Routes
 import com.resolveprogramming.pocketcounter.platform.capture.CapturePermissions
+import com.resolveprogramming.pocketcounter.ui.components.NotificationAccessDisclosureDialog
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
@@ -94,6 +95,18 @@ fun HomeContent(
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         notificationAccessGranted = CapturePermissions.isNotificationAccessGranted(context)
+    }
+    // Play prominent-disclosure gate: show what capture reads/sends and get consent BEFORE the
+    // system notification-access settings intent fires (see NotificationAccessDisclosureDialog).
+    var showAccessDisclosure by remember { mutableStateOf(false) }
+    if (showAccessDisclosure) {
+        NotificationAccessDisclosureDialog(
+            onAccept = {
+                showAccessDisclosure = false
+                context.startActivity(CapturePermissions.notificationAccessSettingsIntent())
+            },
+            onDismiss = { showAccessDisclosure = false },
+        )
     }
 
     // init already loads; only refresh on subsequent resumes (e.g. returning from the wizard).
@@ -166,9 +179,7 @@ fun HomeContent(
                 if (!notificationAccessGranted) {
                     item {
                         NotificationAccessBanner(
-                            onEnable = {
-                                context.startActivity(CapturePermissions.notificationAccessSettingsIntent())
-                            },
+                            onEnable = { showAccessDisclosure = true },
                         )
                     }
                 }
