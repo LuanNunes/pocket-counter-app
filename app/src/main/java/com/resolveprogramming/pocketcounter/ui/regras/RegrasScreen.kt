@@ -1,6 +1,8 @@
 package com.resolveprogramming.pocketcounter.ui.regras
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,7 +25,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +37,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -40,6 +46,8 @@ import com.resolveprogramming.pocketcounter.ui.wizard.label
 import com.resolveprogramming.pocketcounter.ui.components.ManageTopBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadge
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
+import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
+import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
@@ -85,6 +93,7 @@ fun RegrasScreen(
                                 cardsById = state.cardsById,
                                 tagsById = state.tagsById,
                                 contextsById = state.contextsById,
+                                onEdit = { id -> viewModel.openEdit(id) },
                                 onDelete = { id -> viewModel.requestDelete(id) },
                             )
                         }
@@ -112,6 +121,16 @@ fun RegrasScreen(
                 }
             },
             containerColor = PocketTheme.colors.surface,
+        )
+    }
+
+    state.editTarget?.let { rule ->
+        RegraEditSheet(
+            rule = rule,
+            cards = state.cardsById.values.toList(),
+            saving = state.savingEdit,
+            onSave = { method, cardId -> viewModel.saveEdit(method, cardId) },
+            onDismiss = viewModel::cancelEdit,
         )
     }
 }
@@ -144,9 +163,16 @@ private fun RegraCard(
     cardsById: Map<String, CreditCard>,
     tagsById: Map<String, Tag>,
     contextsById: Map<String, TagContext>,
+    onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
-    PocketCard(modifier = Modifier.fillMaxWidth()) {
+    // Tapping anywhere on the card (except the delete button, which consumes its own click) opens the
+    // payment-method editor. IGNORE rules have no payment target, so they stay non-editable.
+    val editable = rule.id != null && rule.action == RuleAction.SUGGEST
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .let { base -> if (editable) base.clickable { onEdit(rule.id!!) } else base }
+    PocketCard(modifier = cardModifier) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -203,6 +229,100 @@ private fun RegraCard(
             }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RegraEditSheet(
+    rule: ClassificationRule,
+    cards: List<CreditCard>,
+    saving: Boolean,
+    onSave: (PaymentMethod?, String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var method by remember(rule.id) { mutableStateOf(rule.paymentMethod) }
+    var cardId by remember(rule.id) { mutableStateOf(rule.cardId) }
+    // Expense rules can be CREDIT; income rules can't (mirrors the wizard's payment invariant).
+    val methods = PaymentMethod.entries.filterNot {
+        it == PaymentMethod.CREDIT && rule.transactionType == TransactionType.INCOME
+    }
+
+    PocketBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            "Forma de pagamento",
+            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            color = PocketTheme.colors.text,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            rule.patterns.joinToString(", ").ifBlank { "sem padrão" },
+            style = PocketTheme.typography.bodyXs,
+            color = PocketTheme.colors.text3,
+        )
+        Spacer(Modifier.height(16.dp))
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            methods.forEach { m ->
+                SelectChip(
+                    label = m.label(),
+                    selected = method == m,
+                    onClick = {
+                        // Tap the selected method again to clear it (rule ends up with no method).
+                        method = m.takeIf { method != m }
+                        if (method != PaymentMethod.CREDIT) cardId = null
+                    },
+                )
+            }
+        }
+
+        if (method == PaymentMethod.CREDIT && cards.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Cartão", style = PocketTheme.typography.bodySm, color = PocketTheme.colors.text2)
+            Spacer(Modifier.height(8.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                cards.forEach { card ->
+                    SelectChip(
+                        label = card.name,
+                        selected = cardId == card.id,
+                        onClick = { cardId = card.id },
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(20.dp))
+        // A CREDIT method needs a card selected before it can be saved.
+        val canSave = !saving && (method != PaymentMethod.CREDIT || cardId != null)
+        PocketButton(
+            text = "Salvar",
+            onClick = { onSave(method, cardId) },
+            enabled = canSave,
+            fillMaxWidth = true,
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val bg = PocketTheme.colors.accentBg.takeIf { selected } ?: PocketTheme.colors.surface
+    val border = PocketTheme.colors.accent.takeIf { selected } ?: PocketTheme.colors.line
+    Text(
+        text = label,
+        style = PocketTheme.typography.bodySm,
+        color = PocketTheme.colors.text.takeIf { selected } ?: PocketTheme.colors.text2,
+        modifier = Modifier
+            .border(1.dp, border, PocketTheme.shapes.pill)
+            .background(bg, PocketTheme.shapes.pill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
 }
 
 @Composable

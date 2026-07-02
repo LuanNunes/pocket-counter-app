@@ -20,6 +20,11 @@ class RetrofitClassificationRuleRepository @Inject constructor(
         api.create(rule.toDto())
     }
 
+    override suspend fun update(rule: ClassificationRule): Result<Unit> = runCatching {
+        val id = rule.id ?: error("Cannot update a rule without an id")
+        api.update(id, rule.toDto())
+    }
+
     override suspend fun delete(id: String): Result<Unit> = runCatching {
         api.delete(id)
     }
