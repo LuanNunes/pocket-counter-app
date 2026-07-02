@@ -207,6 +207,7 @@ fun TransacoesContent(
             item = item,
             tagNames = effectiveTagIds(item.tagIds, emptyList())
                 .mapNotNull { state.tags[it]?.name },
+            cardName = item.cardId?.let { id -> state.cards.firstOrNull { it.id == id }?.name },
             onDismiss = viewModel::closeDetail,
             onMarkPaid = { viewModel.markPaid(item.id) },
             onMarkPending = { viewModel.markPending(item.id) },
