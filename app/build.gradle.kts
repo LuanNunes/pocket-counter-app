@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +8,13 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.detekt)
+}
+
+// Upload-key credentials live outside git (see .gitignore). When the file is absent — CI, a fresh
+// clone — release builds still compile, they just come out unsigned.
+val keystorePropertiesFile: File = rootProject.file("keystore.properties")
+val keystoreProperties: Properties = Properties().apply {
+    if (keystorePropertiesFile.exists()) keystorePropertiesFile.inputStream().use { load(it) }
 }
 
 detekt {
@@ -49,6 +58,22 @@ android {
             dimension = "environment"
             buildConfigField("String", "API_BASE_URL", "\"https://api-dev.pocket-counter.com/\"")
         }
+        // Production backend — the Play Store build is prodRelease.
+        create("prod") {
+            dimension = "environment"
+            buildConfigField("String", "API_BASE_URL", "\"https://api.pocket-counter.com/\"")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -58,6 +83,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release").takeIf { keystorePropertiesFile.exists() }
         }
     }
 
