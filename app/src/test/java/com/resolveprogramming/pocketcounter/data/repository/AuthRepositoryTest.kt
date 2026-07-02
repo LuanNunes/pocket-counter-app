@@ -175,4 +175,49 @@ class AuthRepositoryTest {
         coVerify { tokenStore.clear() }
         assertFalse(appLockState.isUnlocked.value)
     }
+
+    // -------------------------------------------------------------------------
+    // deleteAccount() — transactional: clear ONLY on backend success
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `deleteAccount success clears tokens and re-locks`() = runTest {
+        coEvery { authApi.deleteAccount() } returns Response.success(Unit)
+        appLockState.unlock()
+
+        val repo = makeRepo()
+        val result = repo.deleteAccount()
+
+        assertTrue(result.isSuccess)
+        coVerify { authApi.deleteAccount() }
+        coVerify { tokenStore.clear() }
+        assertFalse(appLockState.isUnlocked.value)
+    }
+
+    @Test
+    fun `deleteAccount does NOT clear the session when the backend fails`() = runTest {
+        coEvery { authApi.deleteAccount() } returns Response.error(500, "".toResponseBody())
+        appLockState.unlock()
+
+        val repo = makeRepo()
+        val result = repo.deleteAccount()
+
+        assertTrue(result.isFailure)
+        // The account still exists server-side, so the local session must be kept intact.
+        coVerify(exactly = 0) { tokenStore.clear() }
+        assertTrue(appLockState.isUnlocked.value)
+    }
+
+    @Test
+    fun `deleteAccount does NOT clear the session when the call throws`() = runTest {
+        coEvery { authApi.deleteAccount() } throws IOException("network error")
+        appLockState.unlock()
+
+        val repo = makeRepo()
+        val result = repo.deleteAccount()
+
+        assertTrue(result.isFailure)
+        coVerify(exactly = 0) { tokenStore.clear() }
+        assertTrue(appLockState.isUnlocked.value)
+    }
 }
