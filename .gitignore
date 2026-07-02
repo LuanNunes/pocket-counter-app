@@ -12,3 +12,7 @@ local.properties
 /handoff
 # Local Claude agent working memory
 .claude/agent-memory/
+# Release signing — never commit the upload keystore or its credentials
+/keystore.properties
+*.jks
+*.keystore
