@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRe
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +26,9 @@ data class RegrasUiState(
     val tagsById: Map<String, Tag> = emptyMap(),
     val contextsById: Map<String, TagContext> = emptyMap(),
     val confirmDelete: RegraDeleteTarget? = null,
+    /** The rule whose payment method/card is being edited, or null when the edit sheet is closed. */
+    val editTarget: ClassificationRule? = null,
+    val savingEdit: Boolean = false,
     val toastMessage: String? = null,
     val isLoading: Boolean = true,
 )
@@ -56,6 +60,38 @@ class RegrasViewModel @Inject constructor(
                     isLoading = false,
                 )
             }
+        }
+    }
+
+    fun openEdit(id: String) {
+        val rule = _state.value.rules.firstOrNull { it.id == id } ?: return
+        _state.update { it.copy(editTarget = rule) }
+    }
+
+    fun cancelEdit() = _state.update { it.copy(editTarget = null) }
+
+    /**
+     * Persists a new payment method (and card, for CREDIT) onto the edited rule, then reloads. The
+     * card is kept only for CREDIT, mirroring the wizard's payment invariant. Everything else on the
+     * rule (patterns, type, tags) is carried through unchanged so the update never drops it.
+     */
+    fun saveEdit(paymentMethod: PaymentMethod?, cardId: String?) {
+        val rule = _state.value.editTarget ?: return
+        if (_state.value.savingEdit) return
+        _state.update { it.copy(savingEdit = true) }
+        viewModelScope.launch {
+            val updated = rule.copy(
+                paymentMethod = paymentMethod,
+                cardId = cardId.takeIf { paymentMethod == PaymentMethod.CREDIT },
+            )
+            ruleRepository.update(updated)
+                .onSuccess {
+                    _state.update { it.copy(editTarget = null, savingEdit = false, toastMessage = "Regra atualizada") }
+                    load()
+                }
+                .onFailure {
+                    _state.update { it.copy(savingEdit = false, toastMessage = "Não foi possível atualizar") }
+                }
         }
     }
 

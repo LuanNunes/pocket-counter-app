@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
@@ -27,6 +28,7 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketChip
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+import com.resolveprogramming.pocketcounter.ui.wizard.label
 import java.time.format.DateTimeFormatter
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -34,6 +36,7 @@ import java.time.format.DateTimeFormatter
 fun TransacaoDetailSheet(
     item: HistoryItem,
     tagNames: List<String>,
+    cardName: String? = null,
     onDismiss: () -> Unit,
     onMarkPaid: () -> Unit,
     onMarkPending: () -> Unit,
@@ -82,6 +85,8 @@ fun TransacaoDetailSheet(
         DetailDivider()
 
         DetailRow("Data", item.date.format(dateFormat))
+        DetailDivider()
+        DetailRow("Pagamento", paymentDisplay(item.paymentMethod, cardName))
         DetailDivider()
         DetailRow("Descrição", item.displayTitle())
 
@@ -135,6 +140,19 @@ fun TransacaoDetailSheet(
         }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+/**
+ * pt-BR payment label for the detail sheet: method name, plus the card name for a CREDIT purchase
+ * when known. "Não informado" when the transaction has no payment method (e.g. an auto-classified
+ * notification whose matched rule carried none).
+ */
+private fun paymentDisplay(method: PaymentMethod?, cardName: String?): String {
+    val label = method?.label() ?: return "Não informado"
+    if (method == PaymentMethod.CREDIT && !cardName.isNullOrBlank()) {
+        return "$label · $cardName"
+    }
+    return label
 }
 
 @Composable

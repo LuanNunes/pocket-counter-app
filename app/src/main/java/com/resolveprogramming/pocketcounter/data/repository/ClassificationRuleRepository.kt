@@ -10,5 +10,8 @@ import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 interface ClassificationRuleRepository {
     suspend fun getAll(): Result<List<ClassificationRule>>
     suspend fun create(rule: ClassificationRule): Result<Unit>
+
+    /** Replaces the rule identified by [ClassificationRule.id] with the given values. */
+    suspend fun update(rule: ClassificationRule): Result<Unit>
     suspend fun delete(id: String): Result<Unit>
 }
