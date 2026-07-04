@@ -145,7 +145,13 @@ object BrNotificationParser {
     )
 
     private val EXPENSE_PHRASES = listOf("pix enviado", "transferência enviada", "transferencia enviada", "você pagou", "voce pagou")
-    private val EXPENSE_WORDS = listOf("compra", "débito", "debito", "pagamento", "saque", "fatura")
+    // "aprovada"/"aprovado" and "autoriza*" cover card purchase & pre-authorization pushes
+    // ("Compra aprovada", "Pré-autorização aprovada", "Transação aprovada") that lack the word
+    // "compra". Income pushes say "recebido/creditado", and the income guard resolves any overlap.
+    private val EXPENSE_WORDS = listOf(
+        "compra", "débito", "debito", "pagamento", "saque", "fatura",
+        "aprovada", "aprovado", "autorizada", "autorizado", "autorização", "autorizacao",
+    )
 
     private val INCOME_PHRASES = listOf(
         "pix recebido", "transferência recebida", "transferencia recebida",
