@@ -4,8 +4,10 @@ import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleS
 import com.resolveprogramming.pocketcounter.data.remote.GoogleSignInClient
 import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.AssistantRepository
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.LocalCardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitCardRepository
@@ -82,4 +84,9 @@ abstract class DataModule {
     abstract fun bindBiometricAuthenticator(
         impl: AndroidBiometricAuthenticator,
     ): BiometricAuthenticator
+
+    @Binds
+    abstract fun bindCardLast4Repository(
+        impl: LocalCardLast4Repository,
+    ): CardLast4Repository
 }

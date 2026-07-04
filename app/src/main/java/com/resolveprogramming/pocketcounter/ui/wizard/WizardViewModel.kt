@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -22,6 +23,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -62,6 +64,12 @@ data class WizardUiState(
     val isLoading: Boolean = true,
     val isSwitching: Boolean = false,
     val error: String? = null,
+    /**
+     * Set when the notification carried a "final NNNN" hint that could not be matched to a
+     * known card in the local last-4 map. The UI should prompt the user to assign it to an
+     * existing card (via [WizardViewModel.assignLast4ToCard]) or dismiss the prompt.
+     */
+    val unknownCardLast4: String? = null,
 ) {
     val selectionRange: IntRange?
         get() = if (selectionAnchor != null && selectionFocus != null) {
@@ -80,6 +88,7 @@ class WizardViewModel @Inject constructor(
     private val seriesRepository: SeriesRepository,
     private val classificationRuleRepository: ClassificationRuleRepository,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
+    private val cardLast4Repository: CardLast4Repository,
 ) : ViewModel() {
 
     private var notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -112,6 +121,7 @@ class WizardViewModel @Inject constructor(
             val queueDeferred = async {
                 notificationRepository.getPendingReview().getOrDefault(emptyList()).map { it.id }
             }
+            val last4MapDeferred = async { cardLast4Repository.getMap() }
 
             val base = baseDeferred.await()
             if (base == null) {
@@ -152,12 +162,17 @@ class WizardViewModel @Inject constructor(
             }
 
             val notification = classified?.notification ?: base
-            val draft = WizardDraft.fromNotification(notification)
+            val baseDraft = WizardDraft.fromNotification(notification)
             val degradeError = classifyResult.exceptionOrNull()?.message
 
             val tokens = notification.tokens.ifEmpty {
                 NotificationTokenizer.tokenize(notification.text, notification.parsed)
             }
+
+            // Prefill payment method + card from the local last-4 map when the notification
+            // carries a "final NNNN" hint and the draft was not already resolved by a rule.
+            val last4Map = last4MapDeferred.await()
+            val (draft, unknownLast4) = prefillFromLast4(baseDraft, notification, last4Map)
 
             // Switching to a different item resets to that item's fresh draft/step/tokens; only the
             // on-screen transition kept the previous item visible until this point.
@@ -173,6 +188,7 @@ class WizardViewModel @Inject constructor(
                 tokens = tokens,
                 isLoading = false,
                 error = degradeError,
+                unknownCardLast4 = unknownLast4,
             )
         }
     }
@@ -569,6 +585,72 @@ class WizardViewModel @Inject constructor(
                     }
                 }
                 .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
+        }
+    }
+
+    /**
+     * Associates [cardId] with the current [WizardUiState.unknownCardLast4] in the local
+     * last-4 store, applies CREDIT + [cardId] prefill to the draft, and clears the prompt.
+     *
+     * No-op when there is no pending unknown last-4.
+     */
+    fun assignLast4ToCard(cardId: String) {
+        val last4 = _state.value.unknownCardLast4 ?: return
+        viewModelScope.launch {
+            cardLast4Repository.associate(cardId, last4)
+            _state.update { state ->
+                state.copy(draft = state.draft.withCard(cardId), unknownCardLast4 = null)
+            }
+        }
+    }
+
+    /**
+     * Applies CREDIT + [cardId] to this draft, keeping the card only when the credit guard holds
+     * (an income draft must not carry a card id). Mirrors [WizardDraft.fromNotification].
+     */
+    private fun WizardDraft.withCard(cardId: String): WizardDraft {
+        val withMethod = withPaymentMethod(PaymentMethod.CREDIT)
+        if (withMethod.paymentMethod != PaymentMethod.CREDIT) return withMethod
+        return withMethod.copy(cardId = cardId)
+    }
+
+    /**
+     * Dismisses the unknown-card prompt without associating the last-4 or changing the draft.
+     */
+    fun dismissUnknownCard() {
+        _state.update { it.copy(unknownCardLast4 = null) }
+    }
+
+    /**
+     * Applies the last-4 prefill to [draft] based on [notification]'s payment hint and the
+     * local [last4Map].
+     *
+     * Returns a pair of (possibly-updated draft, unknownLast4):
+     * - If the draft already has CREDIT + cardId (set by a classification rule), it is not
+     *   overridden and unknownLast4 is null.
+     * - If the hint resolves to a known card, the draft is prefilled with CREDIT + that cardId
+     *   and unknownLast4 is null.
+     * - If the hint has a 4-digit suffix but it is not in the map, the draft is unchanged and
+     *   unknownLast4 is the 4-digit string.
+     * - If the hint carries no 4-digit suffix ("cartão", "conta", null), both outputs are
+     *   unchanged / null.
+     */
+    private fun prefillFromLast4(
+        draft: WizardDraft,
+        notification: NotificationItem,
+        last4Map: Map<String, String>,
+    ): Pair<WizardDraft, String?> {
+        // Classification rule already resolved a specific card — respect it.
+        if (draft.paymentMethod == PaymentMethod.CREDIT && draft.cardId != null) {
+            return Pair(draft, null)
+        }
+        val last4 = CardLast4Matcher.extractLast4(notification.parsed.paymentHint)
+            ?: return Pair(draft, null)
+        val matchedId = CardLast4Matcher.matchCardId(last4, last4Map)
+        return if (matchedId != null) {
+            Pair(draft.withCard(matchedId), null)
+        } else {
+            Pair(draft, last4)
         }
     }
 }

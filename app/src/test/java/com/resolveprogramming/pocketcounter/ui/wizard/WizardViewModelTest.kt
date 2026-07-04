@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -36,6 +37,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -55,6 +57,7 @@ class WizardViewModelTest {
     private val transactionRepository: TransactionRepository = mockk()
     private val seriesRepository: SeriesRepository = mockk()
     private val classificationRuleRepository: ClassificationRuleRepository = mockk()
+    private val cardLast4Repository: CardLast4Repository = mockk()
 
     @Before
     fun setUp() {
@@ -80,6 +83,9 @@ class WizardViewModelTest {
         // Default: queue is empty after any save/ignore → onDone is called
         coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
         coEvery { notificationRepository.markIgnored(any()) } returns Result.success(Unit)
+        // Default: empty last-4 map so most tests are unaffected by the prefill logic.
+        coEvery { cardLast4Repository.getMap() } returns emptyMap()
+        coEvery { cardLast4Repository.associate(any(), any()) } returns Unit
     }
 
     @After
@@ -100,6 +106,7 @@ class WizardViewModelTest {
         cardId: String? = null,
         tagIds: List<String> = emptyList(),
         tokens: List<Token> = emptyList(),
+        paymentHint: String? = null,
     ) = NotificationItem(
         id = id,
         app = "Banco Itaú",
@@ -113,7 +120,7 @@ class WizardViewModelTest {
             amount = amount,
             date = LocalDate.of(2026, 6, 12),
             merchantRaw = "IFOOD",
-            paymentHint = null,
+            paymentHint = paymentHint,
         ),
         suggestions = ClassificationSuggestion(
             tagIds = tagIds,
@@ -147,6 +154,7 @@ class WizardViewModelTest {
                 transactionRepository,
                 notificationRepository,
             ),
+            cardLast4Repository = cardLast4Repository,
         )
     }
 
@@ -1291,5 +1299,153 @@ class WizardViewModelTest {
         vm.assignRoleToSelection(TokenRole.AMOUNT)
 
         assertEquals(BigDecimal("30.96"), vm.state.value.draft.amount)
+    }
+
+    // -------------------------------------------------------------------------
+    // CardLast4 prefill — loadNotification
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `loadNotification prefills CREDIT and cardId when hint last4 matches known card`() = runTest {
+        val notification = makeNotification(paymentHint = "final 3685")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns mapOf("card-a" to "3685")
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val draft = vm.state.value.draft
+        assertEquals(PaymentMethod.CREDIT, draft.paymentMethod)
+        assertEquals("card-a", draft.cardId)
+        assertNull(vm.state.value.unknownCardLast4)
+    }
+
+    @Test
+    fun `loadNotification sets unknownCardLast4 when hint last4 not in map`() = runTest {
+        val notification = makeNotification(paymentHint = "final 9999")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns mapOf("card-a" to "1234")
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("9999", vm.state.value.unknownCardLast4)
+        // payment method is NOT changed when the card is unknown
+        assertNull(vm.state.value.draft.paymentMethod)
+    }
+
+    @Test
+    fun `loadNotification does not prefill when paymentHint is cartao`() = runTest {
+        val notification = makeNotification(paymentHint = "cartão")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.draft.paymentMethod)
+        assertNull(vm.state.value.unknownCardLast4)
+    }
+
+    @Test
+    fun `loadNotification does not prefill when paymentHint is null`() = runTest {
+        val notification = makeNotification(paymentHint = null)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.draft.paymentMethod)
+        assertNull(vm.state.value.unknownCardLast4)
+    }
+
+    @Test
+    fun `loadNotification does not stamp cardId on an INCOME draft even when last4 matches`() = runTest {
+        // A "final NNNN" hint on an INCOME notification must not leak a cardId: the credit guard
+        // no-ops withPaymentMethod(CREDIT) for income, so the card must not be copied either.
+        val notification = makeNotification(type = TransactionType.INCOME, paymentHint = "final 3685")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns mapOf("card-a" to "3685")
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.draft.cardId)
+        assertNotEquals(PaymentMethod.CREDIT, vm.state.value.draft.paymentMethod)
+    }
+
+    @Test
+    fun `loadNotification does not override existing CREDIT plus cardId from classification`() = runTest {
+        // Classification already returned CREDIT+card-from-rule — last4 map should not override it.
+        val notification = makeNotification(
+            paymentHint = "final 3685",
+            paymentMethod = PaymentMethod.CREDIT,
+            cardId = "card-from-rule",
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns mapOf("card-a" to "3685")
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // draft must keep the classification result, not be overridden by the last4 match
+        assertEquals("card-from-rule", vm.state.value.draft.cardId)
+        assertNull(vm.state.value.unknownCardLast4)
+    }
+
+    // -------------------------------------------------------------------------
+    // CardLast4 prefill — assignLast4ToCard and dismissUnknownCard
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `assignLast4ToCard associates and applies CREDIT prefill then clears unknownCardLast4`() = runTest {
+        val notification = makeNotification(paymentHint = "final 9999")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns emptyMap()
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("9999", vm.state.value.unknownCardLast4)
+
+        vm.assignLast4ToCard("card-b")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { cardLast4Repository.associate("card-b", "9999") }
+        val draft = vm.state.value.draft
+        assertEquals(PaymentMethod.CREDIT, draft.paymentMethod)
+        assertEquals("card-b", draft.cardId)
+        assertNull(vm.state.value.unknownCardLast4)
+    }
+
+    @Test
+    fun `dismissUnknownCard clears unknownCardLast4 without changing draft`() = runTest {
+        val notification = makeNotification(paymentHint = "final 9999")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns emptyMap()
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("9999", vm.state.value.unknownCardLast4)
+        val draftBefore = vm.state.value.draft
+
+        vm.dismissUnknownCard()
+
+        assertNull(vm.state.value.unknownCardLast4)
+        assertEquals(draftBefore, vm.state.value.draft)
     }
 }

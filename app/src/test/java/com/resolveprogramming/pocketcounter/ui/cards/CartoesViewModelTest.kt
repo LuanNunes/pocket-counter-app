@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.cards
 
 import com.resolveprogramming.pocketcounter.data.local.CardPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -12,6 +13,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_CONTEXT_ID
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,7 @@ class CartoesViewModelTest {
 
     private val cardRepository: CardRepository = mockk()
     private val tagRepository: TagRepository = mockk()
+    private val cardLast4Repository: CardLast4Repository = mockk()
 
     // Fake the persisted card-tile pref with an in-memory flow that setTileCollapsed updates.
     private val collapsedFlow = MutableStateFlow(false)
@@ -93,6 +96,7 @@ class CartoesViewModelTest {
         coEvery { cardRepository.getOpenInvoices(any()) } returns Result.success(emptyList())
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
+        coEvery { cardLast4Repository.associate(any(), any()) } returns Unit
     }
 
     @After
@@ -106,6 +110,7 @@ class CartoesViewModelTest {
             tagRepository = tagRepository,
             viewedMonth = viewedMonth,
             cardPrefs = cardPrefs,
+            cardLast4Repository = cardLast4Repository,
         )
 
     private fun invoiceItem(
@@ -269,5 +274,49 @@ class CartoesViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(true, vm.state.value.cardCollapsed)
+    }
+
+    // ── addCard with last4 ────────────────────────────────────────────────────
+
+    @Test
+    fun `addCard with valid last4 calls associate after card is created`() = runTest {
+        val createdCard = card1.copy(id = "card-new")
+        coEvery { cardRepository.addCard("Novo", null, null, null) } returns Result.success(createdCard)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.addCard(name = "Novo", brand = null, closingDay = null, color = null, last4 = "3685")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { cardLast4Repository.associate("card-new", "3685") }
+    }
+
+    @Test
+    fun `addCard with blank last4 does not call associate`() = runTest {
+        val createdCard = card1.copy(id = "card-new")
+        coEvery { cardRepository.addCard("Novo", null, null, null) } returns Result.success(createdCard)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.addCard(name = "Novo", brand = null, closingDay = null, color = null, last4 = "")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { cardLast4Repository.associate(any(), any()) }
+    }
+
+    @Test
+    fun `addCard with null last4 does not call associate`() = runTest {
+        val createdCard = card1.copy(id = "card-new")
+        coEvery { cardRepository.addCard("Novo", null, null, null) } returns Result.success(createdCard)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.addCard(name = "Novo", brand = null, closingDay = null, color = null, last4 = null)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { cardLast4Repository.associate(any(), any()) }
     }
 }

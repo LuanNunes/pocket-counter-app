@@ -228,6 +228,9 @@ fun WizardScreen(
                                 selectedCardId = state.draft.cardId,
                                 onSelectMethod = viewModel::selectPaymentMethod,
                                 onSelectCard = viewModel::selectCard,
+                                unknownCardLast4 = state.unknownCardLast4,
+                                onAssignCard = viewModel::assignLast4ToCard,
+                                onDismissUnknown = viewModel::dismissUnknownCard,
                             )
 
                             WizardStep.TAGS -> StepTags(
