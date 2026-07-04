@@ -6,9 +6,11 @@ import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
+import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
@@ -125,5 +127,76 @@ class RegrasViewModelTest {
         assertEquals("rule-1", vm.state.value.editTarget?.id)
         assertFalse(vm.state.value.savingEdit)
         assertEquals("Não foi possível atualizar", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `applyDedupe updates canonicals before deleting duplicates`() = runTest {
+        val tagA = Tag(id = "tag-a", name = "a", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        val tagB = Tag(id = "tag-b", name = "b", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        val canonical = ifoodRule.copy(id = "rule-1", patterns = listOf("Ifood"), tags = listOf(tagA))
+        val duplicate = ifoodRule.copy(id = "rule-2", patterns = listOf("Rappi"), tags = listOf(tagB))
+        coEvery { ruleRepository.getAll() } returns Result.success(listOf(canonical, duplicate))
+        coEvery { ruleRepository.update(any()) } returns Result.success(Unit)
+        coEvery { ruleRepository.delete(any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.previewDedupe()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.dedupePreview?.mergedRules)
+        assertEquals(1, vm.state.value.dedupePreview?.deletedRules)
+
+        vm.applyDedupe()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val updateSlot = slot<ClassificationRule>()
+        coVerifyOrder {
+            ruleRepository.update(capture(updateSlot))
+            ruleRepository.delete("rule-2")
+        }
+        assertEquals("rule-1", updateSlot.captured.id)
+        assertEquals(listOf("Ifood", "Rappi"), updateSlot.captured.patterns)
+        assertNull(vm.state.value.dedupePreview)
+        assertFalse(vm.state.value.isMerging)
+        assertEquals("Regras mescladas", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `applyDedupe withholds deletes when a canonical update fails`() = runTest {
+        val tagA = Tag(id = "tag-a", name = "a", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        val tagB = Tag(id = "tag-b", name = "b", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        val canonical = ifoodRule.copy(id = "rule-1", patterns = listOf("Ifood"), tags = listOf(tagA))
+        val duplicate = ifoodRule.copy(id = "rule-2", patterns = listOf("Rappi"), tags = listOf(tagB))
+        coEvery { ruleRepository.getAll() } returns Result.success(listOf(canonical, duplicate))
+        coEvery { ruleRepository.update(any()) } returns Result.failure(RuntimeException("boom"))
+        coEvery { ruleRepository.delete(any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.previewDedupe()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.applyDedupe()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The update failed, so 'rule-2' (whose "Rappi" pattern wasn't absorbed) must NOT be deleted.
+        coVerify(exactly = 0) { ruleRepository.delete(any()) }
+        assertEquals("Não foi possível mesclar todas as regras", vm.state.value.toastMessage)
+        assertFalse(vm.state.value.isMerging)
+    }
+
+    @Test
+    fun `previewDedupe with no duplicates reports the empty case`() = runTest {
+        // setUp already returns a single, ungroupable rule → nothing to merge.
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.previewDedupe()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val preview = vm.state.value.dedupePreview
+        assertEquals(0, preview?.mergedRules)
+        assertEquals(0, preview?.deletedRules)
     }
 }

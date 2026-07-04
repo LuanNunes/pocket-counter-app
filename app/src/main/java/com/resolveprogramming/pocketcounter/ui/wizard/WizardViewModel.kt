@@ -10,8 +10,8 @@ import com.resolveprogramming.pocketcounter.data.repository.NotificationReposito
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
-import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
@@ -25,6 +25,8 @@ import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
+import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPlan
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -505,14 +507,12 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * Creates a learned classification rule when the user enabled "Aprender este padrão".
+     * Merges or creates a learned classification rule when the user enabled "Aprender este padrão".
      *
-     * The CONTAINS pattern must be a substring of the notification text, or it can never match a
-     * future notification — so candidates (merchant first, then parsed merchant, then payment hint)
-     * are validated against [NotificationItem.text] and free-text edits to the Descrição that don't
-     * appear in the message are skipped. Only tags carrying a context (idCategory) survive
-     * serialization, so a rule is created only when at least one such tag exists (income tags have
-     * no context, mirroring the card path). Best-effort — failures are swallowed.
+     * Uses [RuleTeachPlanner] to decide whether to update an existing same-category rule
+     * (appending the new pattern) or create a fresh one. Payment method and card id are never
+     * written into rules — Workstream 1 derives the card from the notification's last-4 hint at
+     * classify time. Best-effort — failures are swallowed.
      */
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
@@ -520,20 +520,18 @@ class WizardViewModel @Inject constructor(
         // Only tags with a context serialize into the rule (ClassificationRuleTagDto needs idCategory).
         val ruleTags = _state.value.allTags.filter { it.id in draft.tagIds && !it.idContext.isNullOrBlank() }
         if (ruleTags.isEmpty()) return
+        // Group the rule under the first selected context. If the user picked tags from two
+        // different contexts the rule becomes multi-context and RuleDedupePlanner will leave it
+        // alone — an accepted edge case, as tags almost always share one context here.
+        val categoryId = ruleTags.first().idContext!!
+        val existing = classificationRuleRepository.getAll().getOrNull().orEmpty()
+        val plan = RuleTeachPlanner.plan(existing, categoryId, ruleTags, draft.type, pattern)
         runCatching {
-            classificationRuleRepository.create(
-                ClassificationRule(
-                    id = null,
-                    patterns = listOf(pattern),
-                    matchType = "CONTAINS",
-                    active = true,
-                    appliedCount = 0,
-                    transactionType = draft.type,
-                    paymentMethod = draft.paymentMethod,
-                    cardId = draft.cardId,
-                    tags = ruleTags,
-                ),
-            )
+            when (plan) {
+                is TeachPlan.Update -> classificationRuleRepository.update(plan.rule)
+                is TeachPlan.Create -> classificationRuleRepository.create(plan.rule)
+                is TeachPlan.NoOp -> Unit
+            }
         }
     }
 
