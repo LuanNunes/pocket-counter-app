@@ -316,6 +316,69 @@ class NotificationTokenizerTest {
     }
 
     // -------------------------------------------------------------------------
+    // tokenize — MERCHANT (acquirer-prefixed), PAYMENT, DATE highlighting
+    // -------------------------------------------------------------------------
+
+    private val cardText =
+        "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - DL*UberRides valor RS 25,10 em 03/07, as 14h35."
+
+    @Test
+    fun `tokenize highlights an acquirer-prefixed merchant token via contains-match`() {
+        // Parser strips "DL*" so merchantRaw is "UberRides"; the token is still "DL*UberRides".
+        val parsed = ParsedNotification(
+            type = TransactionType.EXPENSE, amount = BigDecimal("25.10"),
+            date = LocalDate.of(2026, 7, 3), merchantRaw = "UberRides", paymentHint = "final 3685",
+        )
+
+        val tokens = NotificationTokenizer.tokenize(cardText, parsed)
+
+        val merchant = tokens.filter { it.role == TokenRole.MERCHANT }
+        assertEquals(listOf("DL*UberRides"), merchant.map { it.text })
+    }
+
+    @Test
+    fun `tokenize highlights the final NNNN payment tokens`() {
+        val parsed = ParsedNotification(
+            type = TransactionType.EXPENSE, amount = BigDecimal("25.10"),
+            date = LocalDate.of(2026, 7, 3), merchantRaw = "UberRides", paymentHint = "final 3685",
+        )
+
+        val tokens = NotificationTokenizer.tokenize(cardText, parsed)
+
+        val payment = tokens.filter { it.role == TokenRole.PAYMENT }
+        assertEquals(listOf("final", "3685"), payment.map { it.text })
+    }
+
+    @Test
+    fun `tokenize highlights the date token`() {
+        val parsed = ParsedNotification(
+            type = TransactionType.EXPENSE, amount = BigDecimal("25.10"),
+            date = LocalDate.of(2026, 7, 3), merchantRaw = "UberRides", paymentHint = "final 3685",
+        )
+
+        val tokens = NotificationTokenizer.tokenize(cardText, parsed)
+
+        val date = tokens.filter { it.role == TokenRole.DATE }
+        assertEquals(listOf("03/07,"), date.map { it.text })
+    }
+
+    @Test
+    fun `tokenize highlights amount date payment and merchant together without overlap`() {
+        val parsed = ParsedNotification(
+            type = TransactionType.EXPENSE, amount = BigDecimal("25.10"),
+            date = LocalDate.of(2026, 7, 3), merchantRaw = "UberRides", paymentHint = "final 3685",
+        )
+
+        val tokens = NotificationTokenizer.tokenize(cardText, parsed)
+
+        assertEquals("25,10", tokens.first { it.role == TokenRole.AMOUNT }.text)
+        assertEquals(1, tokens.count { it.role == TokenRole.AMOUNT })
+        assertEquals(1, tokens.count { it.role == TokenRole.MERCHANT })
+        assertEquals(2, tokens.count { it.role == TokenRole.PAYMENT })
+        assertEquals(1, tokens.count { it.role == TokenRole.DATE })
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
