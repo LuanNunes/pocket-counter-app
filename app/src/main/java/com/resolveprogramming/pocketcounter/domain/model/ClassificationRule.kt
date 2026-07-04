@@ -14,4 +14,28 @@ data class ClassificationRule(
     val cardId: String?,
     val tags: List<Tag>,
     val action: RuleAction = RuleAction.SUGGEST,
-)
+) {
+    companion object {
+        /**
+         * A brand-new learned rule created by teaching: an active SUGGEST rule that matches
+         * [pattern] via CONTAINS and applies [type] + [tags]. It carries no payment method or card
+         * on purpose — those are derived per-notification from its "final NNNN" hint, not learned.
+         */
+        fun learned(
+            pattern: String,
+            type: TransactionType?,
+            tags: List<Tag>,
+        ): ClassificationRule = ClassificationRule(
+            id = null,
+            patterns = listOf(pattern),
+            matchType = "CONTAINS",
+            active = true,
+            appliedCount = 0,
+            transactionType = type,
+            paymentMethod = null,
+            cardId = null,
+            tags = tags,
+            action = RuleAction.SUGGEST,
+        )
+    }
+}

@@ -31,20 +31,7 @@ object RuleTeachPlanner {
         val target = existing.firstOrNull { rule ->
             rule.action == RuleAction.SUGGEST &&
                 rule.tags.any { it.idContext == categoryId }
-        } ?: return TeachPlan.Create(
-            ClassificationRule(
-                id = null,
-                patterns = listOf(pattern),
-                matchType = "CONTAINS",
-                active = true,
-                appliedCount = 0,
-                transactionType = type,
-                paymentMethod = null,
-                cardId = null,
-                tags = tags,
-                action = RuleAction.SUGGEST,
-            ),
-        )
+        } ?: return TeachPlan.Create(ClassificationRule.learned(pattern, type, tags))
 
         if (isCovered(target.patterns, pattern)) return TeachPlan.NoOp
 
