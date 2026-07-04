@@ -645,10 +645,7 @@ class WizardViewModel @Inject constructor(
         val last4 = CardLast4Matcher.extractLast4(notification.parsed.paymentHint)
             ?: return Pair(draft, null)
         val matchedId = CardLast4Matcher.matchCardId(last4, last4Map)
-        return if (matchedId != null) {
-            Pair(draft.withCard(matchedId), null)
-        } else {
-            Pair(draft, last4)
-        }
+            ?: return Pair(draft, last4)
+        return Pair(draft.withCard(matchedId), null)
     }
 }

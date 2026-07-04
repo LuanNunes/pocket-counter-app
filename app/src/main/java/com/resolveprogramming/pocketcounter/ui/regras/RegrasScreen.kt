@@ -156,31 +156,32 @@ fun RegrasScreen(
                 },
                 containerColor = PocketTheme.colors.surface,
             )
-        } else {
-            AlertDialog(
-                onDismissRequest = viewModel::dismissDedupe,
-                title = { Text("Mesclar regras duplicadas", color = PocketTheme.colors.text) },
-                text = {
-                    Text(
-                        "Isto vai remover ${preview.deletedRules} " +
-                            "${"regra duplicada".takeIf { preview.deletedRules == 1 } ?: "regras duplicadas"}, " +
-                            "consolidando os padrões nas regras que permanecem.",
-                        color = PocketTheme.colors.text2,
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = viewModel::applyDedupe, enabled = !state.isMerging) {
-                        Text("Mesclar", color = PocketTheme.colors.accent)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = viewModel::dismissDedupe) {
-                        Text("Cancelar", color = PocketTheme.colors.text2)
-                    }
-                },
-                containerColor = PocketTheme.colors.surface,
-            )
+            return@let
         }
+
+        AlertDialog(
+            onDismissRequest = viewModel::dismissDedupe,
+            title = { Text("Mesclar regras duplicadas", color = PocketTheme.colors.text) },
+            text = {
+                Text(
+                    "Isto vai remover ${preview.deletedRules} " +
+                        "${"regra duplicada".takeIf { preview.deletedRules == 1 } ?: "regras duplicadas"}, " +
+                        "consolidando os padrões nas regras que permanecem.",
+                    color = PocketTheme.colors.text2,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::applyDedupe, enabled = !state.isMerging) {
+                    Text("Mesclar", color = PocketTheme.colors.accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissDedupe) {
+                    Text("Cancelar", color = PocketTheme.colors.text2)
+                }
+            },
+            containerColor = PocketTheme.colors.surface,
+        )
     }
 
     state.editTarget?.let { rule ->
