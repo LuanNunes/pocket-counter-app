@@ -53,6 +53,7 @@ import com.resolveprogramming.pocketcounter.domain.model.AssistantMessage
 import com.resolveprogramming.pocketcounter.domain.model.AssistantMessageStatus
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
 import com.resolveprogramming.pocketcounter.ui.components.SquareIconButton
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -305,6 +306,7 @@ private fun Composer(
                     onValueChange = onInput,
                     enabled = !busy && !quotaExhausted,
                     textStyle = PocketTheme.typography.body.copy(color = PocketTheme.colors.text),
+                    cursorBrush = SolidColor(PocketTheme.colors.accent),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (canSend) onSend() }),
                     decorationBox = { inner ->

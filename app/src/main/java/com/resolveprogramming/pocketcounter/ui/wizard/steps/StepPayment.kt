@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,12 +56,25 @@ fun StepPayment(
     onSelectMethod: (PaymentMethod) -> Unit,
     onSelectCard: (String) -> Unit,
     modifier: Modifier = Modifier,
+    unknownCardLast4: String? = null,
+    onAssignCard: (String) -> Unit = {},
+    onDismissUnknown: () -> Unit = {},
 ) {
     val methods = PaymentMethod.entries.filterNot {
         it == PaymentMethod.CREDIT && type == TransactionType.INCOME
     }
 
     Column(modifier = modifier) {
+        if (unknownCardLast4 != null && cards.isNotEmpty()) {
+            UnknownCardPrompt(
+                last4 = unknownCardLast4,
+                cards = cards,
+                onAssignCard = onAssignCard,
+                onDismiss = onDismissUnknown,
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+
         Text(
             text = "Como foi pago?",
             style = PocketTheme.typography.stepQuestion,
@@ -132,6 +146,54 @@ fun StepPayment(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun UnknownCardPrompt(
+    last4: String,
+    cards: List<CreditCard>,
+    onAssignCard: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, PocketTheme.colors.accent, PocketTheme.shapes.card)
+            .background(PocketTheme.colors.accentBg, PocketTheme.shapes.card)
+            .padding(16.dp),
+    ) {
+        Text(
+            text = "Qual cartão é •$last4?",
+            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+            color = PocketTheme.colors.text,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "Assim já preenchemos o cartão nas próximas compras com esse final.",
+            style = PocketTheme.typography.bodySm,
+            color = PocketTheme.colors.text3,
+        )
+        Spacer(Modifier.height(12.dp))
+
+        cards.forEach { card ->
+            CardRow(
+                card = card,
+                isSelected = false,
+                onClick = { onAssignCard(card.id) },
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+
+        Text(
+            text = "agora não",
+            style = PocketTheme.typography.body,
+            color = PocketTheme.colors.text3,
+            modifier = Modifier
+                .clip(PocketTheme.shapes.chip)
+                .clickable(onClick = onDismiss)
+                .padding(vertical = 10.dp, horizontal = 8.dp),
+        )
     }
 }
 

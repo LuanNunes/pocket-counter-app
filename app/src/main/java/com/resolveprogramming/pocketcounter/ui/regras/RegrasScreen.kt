@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
@@ -77,7 +78,20 @@ fun RegrasScreen(
             bottomBar = { PocketTabBar(active = TabId.MAIS, onNav = onNav) },
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                ManageTopBar(title = "Regras aprendidas", onBack = onBack)
+                ManageTopBar(
+                    title = "Regras aprendidas",
+                    onBack = onBack,
+                    actions = {
+                        if (state.rules.isNotEmpty()) {
+                            SquareIconButton(
+                                icon = Icons.AutoMirrored.Filled.MergeType,
+                                contentDescription = "Mesclar regras duplicadas",
+                                enabled = !state.isMerging,
+                                onClick = viewModel::previewDedupe,
+                            )
+                        }
+                    },
+                )
                 val isEmpty = !state.isLoading && state.rules.isEmpty()
                 if (isEmpty) {
                     EmptyState()
@@ -117,6 +131,52 @@ fun RegrasScreen(
             },
             dismissButton = {
                 TextButton(onClick = viewModel::cancelDelete) {
+                    Text("Cancelar", color = PocketTheme.colors.text2)
+                }
+            },
+            containerColor = PocketTheme.colors.surface,
+        )
+    }
+
+    state.dedupePreview?.let { preview ->
+        if (preview.isEmpty) {
+            AlertDialog(
+                onDismissRequest = viewModel::dismissDedupe,
+                title = { Text("Mesclar regras duplicadas", color = PocketTheme.colors.text) },
+                text = {
+                    Text(
+                        "Nenhuma regra duplicada encontrada.",
+                        color = PocketTheme.colors.text2,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = viewModel::dismissDedupe) {
+                        Text("Entendi", color = PocketTheme.colors.accent)
+                    }
+                },
+                containerColor = PocketTheme.colors.surface,
+            )
+            return@let
+        }
+
+        AlertDialog(
+            onDismissRequest = viewModel::dismissDedupe,
+            title = { Text("Mesclar regras duplicadas", color = PocketTheme.colors.text) },
+            text = {
+                Text(
+                    "Isto vai remover ${preview.deletedRules} " +
+                        "${"regra duplicada".takeIf { preview.deletedRules == 1 } ?: "regras duplicadas"}, " +
+                        "consolidando os padrões nas regras que permanecem.",
+                    color = PocketTheme.colors.text2,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::applyDedupe, enabled = !state.isMerging) {
+                    Text("Mesclar", color = PocketTheme.colors.accent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissDedupe) {
                     Text("Cancelar", color = PocketTheme.colors.text2)
                 }
             },

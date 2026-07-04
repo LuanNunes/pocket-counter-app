@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.local.CardPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -49,6 +50,7 @@ class CartoesViewModel @Inject constructor(
     private val tagRepository: TagRepository,
     private val viewedMonth: ViewedMonthStore,
     private val cardPrefs: CardPrefsStore,
+    private val cardLast4Repository: CardLast4Repository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -169,11 +171,20 @@ class CartoesViewModel @Inject constructor(
 
     fun dismissAddCard() = _state.update { it.copy(showAddCard = false) }
 
-    fun addCard(name: String, brand: String?, closingDay: Int?, color: String?) {
+    /**
+     * Creates a new credit card. When [last4] is a non-blank 4-digit string it is stored in the
+     * local last-4 map so subsequent "final NNNN" notifications can be prefilled automatically.
+     *
+     * The [last4] param is local-only — it never reaches [CardRepository] or the backend.
+     */
+    fun addCard(name: String, brand: String?, closingDay: Int?, color: String?, last4: String? = null) {
         viewModelScope.launch {
             _state.update { it.copy(isSavingCard = true) }
             cardRepository.addCard(name, brand, closingDay, color)
-                .onSuccess {
+                .onSuccess { card ->
+                    if (!last4.isNullOrBlank() && last4.length == 4) {
+                        cardLast4Repository.associate(card.id, last4)
+                    }
                     _state.update {
                         it.copy(isSavingCard = false, showAddCard = false, toastMessage = "Cartão adicionado ✓")
                     }

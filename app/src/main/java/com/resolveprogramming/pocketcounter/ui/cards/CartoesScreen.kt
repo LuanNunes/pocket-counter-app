@@ -189,8 +189,8 @@ fun CartoesScreen(
         AddCardSheet(
             isSaving = state.isSavingCard,
             onDismiss = viewModel::dismissAddCard,
-            onSave = { name, brand, closingDay, color ->
-                viewModel.addCard(name, brand, closingDay, color)
+            onSave = { name, brand, closingDay, color, last4 ->
+                viewModel.addCard(name, brand, closingDay, color, last4)
             },
         )
     }
@@ -1112,12 +1112,13 @@ private fun ClassifyPurchaseSheet(
 private fun AddCardSheet(
     isSaving: Boolean,
     onDismiss: () -> Unit,
-    onSave: (name: String, brand: String?, closingDay: Int?, color: String?) -> Unit,
+    onSave: (name: String, brand: String?, closingDay: Int?, color: String?, last4: String?) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
     var closingDay by remember { mutableStateOf("") }
     var color by remember { mutableStateOf("") }
+    var last4 by remember { mutableStateOf("") }
 
     val parsedDay = closingDay.toIntOrNull()
     val dayValid = parsedDay != null && parsedDay in 1..31
@@ -1149,6 +1150,17 @@ private fun AddCardSheet(
 
         Spacer(Modifier.height(14.dp))
 
+        FormLabel("Final do cartão (opcional)")
+        Spacer(Modifier.height(6.dp))
+        FormTextField(
+            value = last4,
+            onValueChange = { last4 = it.filter { ch -> ch.isDigit() }.take(4) },
+            placeholder = "4 últimos dígitos",
+            keyboardType = KeyboardType.Number,
+        )
+
+        Spacer(Modifier.height(14.dp))
+
         FormLabel("Bandeira (opcional)")
         Spacer(Modifier.height(6.dp))
         FormTextField(value = brand, onValueChange = { brand = it }, placeholder = "Ex.: Mastercard")
@@ -1175,6 +1187,7 @@ private fun AddCardSheet(
                                     brand.trim().takeIf { b -> b.isNotBlank() },
                                     parsedDay,
                                     color.trim().takeIf { c -> c.isNotBlank() },
+                                    last4.takeIf { it.length == 4 },
                                 )
                             }
                         }

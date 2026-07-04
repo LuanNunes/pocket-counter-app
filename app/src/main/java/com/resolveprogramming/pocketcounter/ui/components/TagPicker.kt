@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.Tag
@@ -82,6 +83,7 @@ fun TagPicker(
             value = query,
             onValueChange = { query = it },
             textStyle = PocketTheme.typography.body.copy(color = PocketTheme.colors.text),
+            cursorBrush = SolidColor(PocketTheme.colors.accent),
             singleLine = true,
             decorationBox = { inner ->
                 Box(
