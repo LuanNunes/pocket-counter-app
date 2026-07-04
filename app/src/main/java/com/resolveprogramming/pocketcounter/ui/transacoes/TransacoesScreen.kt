@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -506,6 +507,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
         onValueChange = onQueryChange,
         singleLine = true,
         textStyle = PocketTheme.typography.body.copy(color = PocketTheme.colors.text),
+        cursorBrush = SolidColor(PocketTheme.colors.accent),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         decorationBox = { inner ->
             Box(

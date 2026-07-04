@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -301,6 +302,7 @@ private fun RecurrenceDayField(
                     onRecurrenceDayChange(day?.takeIf { it in 1..31 })
                 },
                 textStyle = PocketTheme.typography.monoSm.copy(color = PocketTheme.colors.text),
+                cursorBrush = SolidColor(PocketTheme.colors.accent),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.width(40.dp),
