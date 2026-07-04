@@ -21,38 +21,29 @@ object RuleDedupePlanner {
      * classification correctness (patterns are unioned before any delete).
      */
     fun plan(all: List<ClassificationRule>): DedupePlan {
-        val suggestRules = all.filter { it.action == RuleAction.SUGGEST }
-
-        // Group by single distinct idContext across the rule's tags.
-        // A rule with 0 or >1 distinct contexts is left alone (safety).
-        val groups = suggestRules
-            .groupBy { rule ->
-                val contexts = rule.tags.mapNotNull { it.idContext }.distinct()
-                if (contexts.size == 1) contexts[0] else null
-            }
+        // Group by the rule's single tag-context. A rule with 0 or >1 distinct contexts has a
+        // null key; dropping those leaves only genuine same-category groups, and keeping only
+        // groups of 2+ leaves only the ones that actually have duplicates to consolidate.
+        val duplicateGroups = all
+            .filter { it.action == RuleAction.SUGGEST }
+            .groupBy { rule -> rule.tags.mapNotNull { it.idContext }.distinct().singleOrNull() }
+            .filterKeys { it != null }
+            .filterValues { it.size >= 2 }
 
         val updates = mutableListOf<ClassificationRule>()
         val deletes = mutableListOf<String>()
 
-        for ((context, group) in groups) {
-            // null key = rules that are ungroupable (zero-tag or multi-category) — skip entirely
-            if (context == null) continue
-            if (group.size < 2) continue
-
-            // Canonical = the first rule in `all` order (oldest wins at classify time)
-            val canonical = group[0]
+        for (group in duplicateGroups.values) {
+            // Canonical = the first rule in `all` order (oldest wins at classify time).
+            val canonical = group.first()
             val nonCanonicals = group.drop(1)
 
-            // Merge all patterns — union, de-duplicated case-insensitively, canonical's first
+            // Union the patterns (de-duplicated case-insensitively, canonical's first).
             val merged = mergePatterns(canonical.patterns, nonCanonicals.flatMap { it.patterns })
-
             if (merged != canonical.patterns) {
                 updates += canonical.copy(patterns = merged)
             }
-
-            nonCanonicals.forEach { rule ->
-                rule.id?.let { deletes += it }
-            }
+            deletes += nonCanonicals.mapNotNull { it.id }
         }
 
         return DedupePlan(updates = updates, deletes = deletes)
