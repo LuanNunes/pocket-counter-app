@@ -159,6 +159,24 @@ class BrNotificationParserTest {
         assertEquals(TransactionType.EXPENSE, result.parsed.type)
     }
 
+    @Test
+    fun `parse pre-autorizacao aprovada yields EXPENSE`() {
+        // Card pre-authorization without the word "compra" — "aprovada" is the expense signal.
+        val result = BrNotificationParser.parse(
+            "Pre-autorizacao aprovada no seu PERSON BLACK CASHBAC final 3685 - DL*UberRides valor RS 17,94 em 04/07",
+            NOW,
+        )
+
+        assertEquals(TransactionType.EXPENSE, result.parsed.type)
+    }
+
+    @Test
+    fun `parse transacao aprovada yields EXPENSE`() {
+        val result = BrNotificationParser.parse("Transação aprovada no cartão final 1234 R$ 42,00", NOW)
+
+        assertEquals(TransactionType.EXPENSE, result.parsed.type)
+    }
+
     // -------------------------------------------------------------------------
     // Type keyword detection — INCOME paths
     // -------------------------------------------------------------------------

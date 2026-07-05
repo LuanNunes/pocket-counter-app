@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
@@ -44,9 +46,14 @@ fun SourceTextCard(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
         ) {
             Text(
+                // weight(1f) bounds this meta line so the long ISO timestamp can't push the
+                // "toque para marcar" hint into a narrow, vertically-wrapping column (which used to
+                // inflate the header to a huge empty block).
+                modifier = Modifier.weight(1f),
                 text = buildString {
                     append("SMS".takeIf { notification.channel == NotificationChannel.SMS } ?: "Push")
                     append(" • ")
@@ -56,11 +63,15 @@ fun SourceTextCard(
                 },
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text3,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = "toque para marcar",
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text3,
+                maxLines = 1,
+                softWrap = false,
             )
         }
 
