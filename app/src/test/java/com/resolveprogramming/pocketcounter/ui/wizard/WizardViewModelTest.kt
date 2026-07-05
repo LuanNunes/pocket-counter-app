@@ -5,8 +5,10 @@ import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
@@ -62,6 +64,7 @@ class WizardViewModelTest {
     private val classificationRuleRepository: ClassificationRuleRepository = mockk()
     private val cardLast4Repository: CardLast4Repository = mockk()
     private val fakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository()
+    private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository = mockk()
 
     @Before
     fun setUp() {
@@ -90,6 +93,10 @@ class WizardViewModelTest {
         // Default: empty last-4 map so most tests are unaffected by the prefill logic.
         coEvery { cardLast4Repository.getMap() } returns emptyMap()
         coEvery { cardLast4Repository.associate(any(), any()) } returns Unit
+        // Default: empty dictionary so most tests are unaffected by the learned-dictionary logic.
+        coEvery { paymentMethodDictionaryRepository.getMap() } returns emptyMap()
+        coEvery { paymentMethodDictionaryRepository.learn(any(), any()) } returns Unit
+        coEvery { paymentMethodDictionaryRepository.forget(any()) } returns Unit
     }
 
     @After
@@ -148,6 +155,7 @@ class WizardViewModelTest {
     private fun makeViewModel(
         notificationId: String = "notif-1",
         paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = fakePaymentMethodPrefsRepository,
+        dictionaryRepository: PaymentMethodDictionaryRepository = paymentMethodDictionaryRepository,
     ): WizardViewModel {
         val handle = SavedStateHandle(mapOf("notificationId" to notificationId))
         return WizardViewModel(
@@ -163,6 +171,7 @@ class WizardViewModelTest {
             ),
             cardLast4Repository = cardLast4Repository,
             paymentMethodPrefsRepository = paymentMethodPrefsRepository,
+            paymentMethodDictionaryRepository = dictionaryRepository,
         )
     }
 
@@ -1647,5 +1656,181 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(setOf(PaymentMethod.PIX), vm.state.value.enabledMethods)
+    }
+
+    // -------------------------------------------------------------------------
+    // learnPaymentMethodIfMarked — dictionary learning on save
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `learnPaymentMethodIfMarked_genuineUnknownToken_callsLearn`() = runTest {
+        // "eletronico" is not in the builtin parser; a single PAYMENT token + concrete method
+        // on the draft must trigger learn("eletronico", CREDIT).
+        val tokens = listOf(Token(text = "eletronico", role = TokenRole.PAYMENT))
+        val notification = makeNotification(
+            paymentMethod = PaymentMethod.CREDIT,
+            tokens = tokens,
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectPaymentMethod(PaymentMethod.CREDIT)
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { paymentMethodDictionaryRepository.learn("eletronico", PaymentMethod.CREDIT) }
+    }
+
+    @Test
+    fun `learnPaymentMethodIfMarked_cardHintToken_doesNotCallLearn`() = runTest {
+        // A "final 3685" PAYMENT span is a card hint, not a word to learn.
+        val tokens = listOf(
+            Token(text = "final", role = TokenRole.PAYMENT),
+            Token(text = "3685", role = TokenRole.PAYMENT),
+        )
+        val notification = makeNotification(tokens = tokens)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectPaymentMethod(PaymentMethod.CREDIT)
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { paymentMethodDictionaryRepository.learn(any(), any()) }
+    }
+
+    @Test
+    fun `learnPaymentMethodIfMarked_singleCartaoToken_doesNotCallLearn`() = runTest {
+        // A lone "cartão" token is ambiguous (credit or debit) — must never be learned.
+        val notification = makeNotification(tokens = listOf(Token(text = "cartão", role = TokenRole.PAYMENT)))
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.selectPaymentMethod(PaymentMethod.CREDIT)
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { paymentMethodDictionaryRepository.learn(any(), any()) }
+    }
+
+    @Test
+    fun `learnPaymentMethodIfMarked_singleDigitsToken_doesNotCallLearn`() = runTest {
+        // A lone digit token (a manually-marked card-number fragment) must never be learned.
+        val notification = makeNotification(tokens = listOf(Token(text = "3685", role = TokenRole.PAYMENT)))
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.selectPaymentMethod(PaymentMethod.CREDIT)
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { paymentMethodDictionaryRepository.learn(any(), any()) }
+    }
+
+    @Test
+    fun `learnPaymentMethodIfMarked_multiTokenNonCardSpan_doesNotCallLearn`() = runTest {
+        // v1 skips multi-token PAYMENT spans, even when they are not a card hint.
+        val tokens = listOf(
+            Token(text = "vale", role = TokenRole.PAYMENT),
+            Token(text = "refeição", role = TokenRole.PAYMENT),
+        )
+        val notification = makeNotification(tokens = tokens)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.selectPaymentMethod(PaymentMethod.CASH)
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { paymentMethodDictionaryRepository.learn(any(), any()) }
+    }
+
+    @Test
+    fun `learnPaymentMethodIfMarked_builtinKnownWord_doesNotCallLearn`() = runTest {
+        // "débito" is already known by BrNotificationParser as DEBIT → no need to relearn.
+        val tokens = listOf(Token(text = "débito", role = TokenRole.PAYMENT))
+        val notification = makeNotification(tokens = tokens)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectPaymentMethod(PaymentMethod.DEBIT)
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { paymentMethodDictionaryRepository.learn(any(), any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Prefill from learned dictionary
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `prefill_learnedToken_setsPaymentMethod`() = runTest {
+        // "eletronico" is NOT recognized by the builtin; the learned map maps it to CREDIT.
+        val fakeDictRepo = FakePaymentMethodDictionaryRepository(
+            initial = mapOf("eletronico" to PaymentMethod.CREDIT),
+        )
+        val notification = makeNotification()
+            .copy(text = "pagamento eletronico aprovado R\$ 50,00")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel(dictionaryRepository = fakeDictRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(PaymentMethod.CREDIT, vm.state.value.draft.paymentMethod)
+    }
+
+    @Test
+    fun `prefill_existingMethod_notOverriddenByLearnedDictionary`() = runTest {
+        // Classification already resolved PIX; the learned map has "eletronico"→CREDIT in the text
+        // but the existing method must not be replaced.
+        val fakeDictRepo = FakePaymentMethodDictionaryRepository(
+            initial = mapOf("eletronico" to PaymentMethod.CREDIT),
+        )
+        val notification = makeNotification(paymentMethod = PaymentMethod.PIX)
+            .copy(text = "pagamento eletronico aprovado R\$ 50,00")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel(dictionaryRepository = fakeDictRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(PaymentMethod.PIX, vm.state.value.draft.paymentMethod)
     }
 }
