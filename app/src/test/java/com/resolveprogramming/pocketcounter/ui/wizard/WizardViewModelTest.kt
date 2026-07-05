@@ -952,6 +952,37 @@ class WizardViewModelTest {
     }
 
     @Test
+    fun `loadNotification prefills DEBIT from an explicit debito mention in the text`() = runTest {
+        val notification = makeNotification(id = "notif-1")
+            .copy(text = "Compra no débito aprovada Compra de R$ 14,42 em PONTE DO TRIGO")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns emptyMap()
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(PaymentMethod.DEBIT, vm.state.value.draft.paymentMethod)
+    }
+
+    @Test
+    fun `loadNotification does not override a rule-provided method with the text mention`() = runTest {
+        // Rule suggests PIX; the text says "débito" — the rule wins, text is only a fallback.
+        val notification = makeNotification(id = "notif-1", paymentMethod = PaymentMethod.PIX)
+            .copy(text = "Compra no débito aprovada R$ 14,42")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { cardLast4Repository.getMap() } returns emptyMap()
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(PaymentMethod.PIX, vm.state.value.draft.paymentMethod)
+    }
+
+    @Test
     fun `ignore with learn creates an IGNORE rule from the merchant and marks ignored`() = runTest {
         // Merchant "IFOOD" appears in the text, so it becomes the CONTAINS pattern.
         val notification = makeNotification(id = "notif-1").copy(text = "Compra IFOOD aprovada R$ 49,90")
