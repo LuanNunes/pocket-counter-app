@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -28,6 +29,7 @@ import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
 import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
+import com.resolveprogramming.pocketcounter.domain.notification.PaymentMethodResolver
 import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPlan
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
@@ -97,6 +99,7 @@ class WizardViewModel @Inject constructor(
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val cardLast4Repository: CardLast4Repository,
     private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
+    private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository,
 ) : ViewModel() {
 
     private var notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -135,6 +138,7 @@ class WizardViewModel @Inject constructor(
                 notificationRepository.getPendingReview().getOrDefault(emptyList()).map { it.id }
             }
             val last4MapDeferred = async { cardLast4Repository.getMap() }
+            val dictDeferred = async { paymentMethodDictionaryRepository.getMap() }
 
             val base = baseDeferred.await()
             if (base == null) {
@@ -186,10 +190,10 @@ class WizardViewModel @Inject constructor(
             // Prefill payment method + card from the local last-4 map when the notification
             // carries a "final NNNN" hint and the draft was not already resolved by a rule.
             val last4Map = last4MapDeferred.await()
+            val learnedMap = dictDeferred.await()
             val (last4Draft, unknownLast4) = prefillFromLast4(baseDraft, notification, last4Map)
-            // Fall back to an explicit method named in the text ("no débito", "via pix") when a rule
-            // or the last-4 card lookup didn't already resolve one.
-            val draft = last4Draft.withParsedPaymentMethod(notification)
+            // Resolve the payment method: learned dictionary first, then the built-in word list.
+            val draft = last4Draft.withResolvedPaymentMethod(notification, learnedMap)
 
             // Switching to a different item resets to that item's fresh draft/step/tokens; only the
             // on-screen transition kept the previous item visible until this point.
@@ -461,6 +465,8 @@ class WizardViewModel @Inject constructor(
                     linkSeries(draft, transactionId)
                     // Persist a learned rule so future matching notifications pre-fill these tags.
                     learnRuleIfRequested(draft)
+                    // Persist a learned payment-method word if the user marked one.
+                    learnPaymentMethodIfMarked(draft)
                     // Process the review queue in place: load the next pending item, or return to
                     // the app when none remain.
                     advanceToNext(onDone)
@@ -553,6 +559,32 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
+     * Persists a learned payment-method word when the user explicitly marked a PAYMENT span in the
+     * token editor and a concrete [WizardDraft.paymentMethod] is set. Best-effort — failures are
+     * swallowed.
+     *
+     * Guards (all must hold; if any fails the call is a no-op):
+     *  1. A [TokenRole.PAYMENT] span exists and is exactly ONE token (v1: skip multi-token spans,
+     *     which is also what blocks the tokenizer's auto-assigned "final NNNN" two-token span).
+     *  2. [WizardDraft.paymentMethod] is non-null.
+     *  3. The span is not a card-hint word ("cartão"/"conta"/"final") nor a pure-digit fragment
+     *     (e.g. a lone "3685"), so a manually-marked card token can't poison the dictionary.
+     *  4. [BrNotificationParser.parsePaymentMethod] does NOT already return the same method for the
+     *     span text (don't store words the built-in already handles).
+     */
+    private suspend fun learnPaymentMethodIfMarked(draft: WizardDraft) {
+        val method = draft.paymentMethod ?: return
+        val paymentTokens = _state.value.tokens.filter { it.role == TokenRole.PAYMENT }
+        if (paymentTokens.size != 1) return
+        val span = paymentTokens.first().text
+        val normalizedSpan = PaymentMethodResolver.normalizeKey(span)
+        if (normalizedSpan in CARD_HINT_WORDS) return
+        if (normalizedSpan.isNotEmpty() && normalizedSpan.all { it.isDigit() }) return
+        if (BrNotificationParser.parsePaymentMethod(span) == method) return
+        runCatching { paymentMethodDictionaryRepository.learn(span, method) }
+    }
+
+    /**
      * The CONTAINS pattern for a learned rule: the first merchant-ish candidate (edited merchant, then
      * parsed merchant, then payment hint) that is actually a substring of the notification text — a
      * pattern that doesn't appear in the message could never match a future notification.
@@ -630,13 +662,16 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * Fills the payment method from an explicit mention in [notification]'s text ("no débito",
-     * "via pix") when nothing has resolved one yet. Routed through [WizardDraft.withPaymentMethod]
-     * so the credit guard still holds (an income draft can't become CREDIT).
+     * Resolves the payment method from the learned dictionary and, as a fallback, the built-in
+     * word list ([BrNotificationParser.parsePaymentMethod]). No-op when [paymentMethod] is already
+     * set. Routed through [WizardDraft.withPaymentMethod] so the credit guard still holds.
      */
-    private fun WizardDraft.withParsedPaymentMethod(notification: NotificationItem): WizardDraft {
+    private fun WizardDraft.withResolvedPaymentMethod(
+        notification: NotificationItem,
+        learnedMap: Map<String, PaymentMethod>,
+    ): WizardDraft {
         if (paymentMethod != null) return this
-        val method = BrNotificationParser.parsePaymentMethod(notification.text) ?: return this
+        val method = PaymentMethodResolver.resolve(notification.text, learnedMap) ?: return this
         return withPaymentMethod(method)
     }
 
@@ -675,5 +710,10 @@ class WizardViewModel @Inject constructor(
         val matchedId = CardLast4Matcher.matchCardId(last4, last4Map)
             ?: return Pair(draft, last4)
         return Pair(draft.withCard(matchedId), null)
+    }
+
+    private companion object {
+        /** Normalized card-hint words that must never be learned as a payment-method token. */
+        private val CARD_HINT_WORDS = setOf("cartão", "cartao", "conta", "final")
     }
 }
