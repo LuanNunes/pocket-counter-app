@@ -1,6 +1,7 @@
 package com.resolveprogramming.pocketcounter.domain.notification
 
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -124,6 +125,23 @@ object BrNotificationParser {
         .appendPattern("dd/MM")
         .parseDefaulting(ChronoField.YEAR, now.year.toLong())
         .toFormatter()
+
+    /**
+     * The explicit payment method named in the text ("no débito", "via pix", "em dinheiro"), or null.
+     * "cartão"/"conta" stay ambiguous (a card can be credit or debit), so they are NOT mapped here —
+     * those keep flowing through the card / "final NNNN" path.
+     */
+    fun parsePaymentMethod(text: String): PaymentMethod? {
+        val lower = text.lowercase()
+        return when {
+            lower.containsWord("débito") || lower.containsWord("debito") -> PaymentMethod.DEBIT
+            lower.containsWord("crédito") || lower.containsWord("credito") -> PaymentMethod.CREDIT
+            lower.containsWord("pix") -> PaymentMethod.PIX
+            lower.containsWord("dinheiro") || lower.containsWord("espécie") || lower.containsWord("especie") ->
+                PaymentMethod.CASH
+            else -> null
+        }
+    }
 
     private fun parsePaymentHint(text: String): String? {
         val lower = text.lowercase()

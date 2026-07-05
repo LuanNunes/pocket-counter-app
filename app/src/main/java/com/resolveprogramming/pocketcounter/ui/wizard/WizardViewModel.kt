@@ -25,6 +25,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
 import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
@@ -185,7 +186,10 @@ class WizardViewModel @Inject constructor(
             // Prefill payment method + card from the local last-4 map when the notification
             // carries a "final NNNN" hint and the draft was not already resolved by a rule.
             val last4Map = last4MapDeferred.await()
-            val (draft, unknownLast4) = prefillFromLast4(baseDraft, notification, last4Map)
+            val (last4Draft, unknownLast4) = prefillFromLast4(baseDraft, notification, last4Map)
+            // Fall back to an explicit method named in the text ("no débito", "via pix") when a rule
+            // or the last-4 card lookup didn't already resolve one.
+            val draft = last4Draft.withParsedPaymentMethod(notification)
 
             // Switching to a different item resets to that item's fresh draft/step/tokens; only the
             // on-screen transition kept the previous item visible until this point.
@@ -623,6 +627,17 @@ class WizardViewModel @Inject constructor(
         val withMethod = withPaymentMethod(PaymentMethod.CREDIT)
         if (withMethod.paymentMethod != PaymentMethod.CREDIT) return withMethod
         return withMethod.copy(cardId = cardId)
+    }
+
+    /**
+     * Fills the payment method from an explicit mention in [notification]'s text ("no débito",
+     * "via pix") when nothing has resolved one yet. Routed through [WizardDraft.withPaymentMethod]
+     * so the credit guard still holds (an income draft can't become CREDIT).
+     */
+    private fun WizardDraft.withParsedPaymentMethod(notification: NotificationItem): WizardDraft {
+        if (paymentMethod != null) return this
+        val method = BrNotificationParser.parsePaymentMethod(notification.text) ?: return this
+        return withPaymentMethod(method)
     }
 
     /**

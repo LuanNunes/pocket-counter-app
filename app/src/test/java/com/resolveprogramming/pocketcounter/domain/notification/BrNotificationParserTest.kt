@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.domain.notification
 
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -669,5 +670,48 @@ class BrNotificationParserTest {
         assertEquals(TransactionType.INCOME, result.parsed.type)
         assertFalse("Pix recebido must not be classified as EXPENSE",
             result.parsed.type == TransactionType.EXPENSE)
+    }
+
+    // -------------------------------------------------------------------------
+    // parsePaymentMethod
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parsePaymentMethod detects debito`() {
+        val method = BrNotificationParser.parsePaymentMethod(
+            "Compra no débito aprovada Compra de R$ 14,42 em PONTE DO TRIGO",
+        )
+        assertEquals(PaymentMethod.DEBIT, method)
+    }
+
+    @Test
+    fun `parsePaymentMethod detects debito without accent`() {
+        assertEquals(PaymentMethod.DEBIT, BrNotificationParser.parsePaymentMethod("compra no debito"))
+    }
+
+    @Test
+    fun `parsePaymentMethod detects credito`() {
+        assertEquals(PaymentMethod.CREDIT, BrNotificationParser.parsePaymentMethod("Compra no crédito R$ 10,00"))
+    }
+
+    @Test
+    fun `parsePaymentMethod detects pix`() {
+        assertEquals(PaymentMethod.PIX, BrNotificationParser.parsePaymentMethod("Pagamento via Pix de R$ 30,00"))
+    }
+
+    @Test
+    fun `parsePaymentMethod detects dinheiro as cash`() {
+        assertEquals(PaymentMethod.CASH, BrNotificationParser.parsePaymentMethod("Pago em dinheiro R$ 5,00"))
+    }
+
+    @Test
+    fun `parsePaymentMethod returns null for an ambiguous cartao mention`() {
+        // A bare "cartão" can be credit or debit — left to the card / final-NNNN flow, not mapped.
+        assertNull(BrNotificationParser.parsePaymentMethod("Compra no cartão R$ 20,00"))
+    }
+
+    @Test
+    fun `parsePaymentMethod returns null when no method is named`() {
+        assertNull(BrNotificationParser.parsePaymentMethod("Compra aprovada R$ 20,00 em LOJA"))
     }
 }
