@@ -226,6 +226,7 @@ fun WizardScreen(
                                 cards = state.cards,
                                 selectedMethod = state.draft.paymentMethod,
                                 selectedCardId = state.draft.cardId,
+                                enabledMethods = state.enabledMethods,
                                 onSelectMethod = viewModel::selectPaymentMethod,
                                 onSelectCard = viewModel::selectCard,
                                 unknownCardLast4 = state.unknownCardLast4,

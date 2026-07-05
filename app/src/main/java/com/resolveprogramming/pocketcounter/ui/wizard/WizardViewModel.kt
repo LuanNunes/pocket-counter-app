@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
@@ -16,6 +17,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -72,6 +74,8 @@ data class WizardUiState(
      * existing card (via [WizardViewModel.assignLast4ToCard]) or dismiss the prompt.
      */
     val unknownCardLast4: String? = null,
+    /** User-configured enabled payment methods; used to filter the method-selection UI. */
+    val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
 ) {
     val selectionRange: IntRange?
         get() = if (selectionAnchor != null && selectionFocus != null) {
@@ -91,6 +95,7 @@ class WizardViewModel @Inject constructor(
     private val classificationRuleRepository: ClassificationRuleRepository,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val cardLast4Repository: CardLast4Repository,
+    private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
 ) : ViewModel() {
 
     private var notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -99,6 +104,11 @@ class WizardViewModel @Inject constructor(
 
     init {
         loadNotification(initial = true)
+        viewModelScope.launch {
+            paymentMethodPrefsRepository.enabledMethods.collect { enabled ->
+                _state.update { it.copy(enabledMethods = enabled) }
+            }
+        }
     }
 
     /**
@@ -159,6 +169,7 @@ class WizardViewModel @Inject constructor(
                     pendingTransactionId = classified.pendingTransactionId,
                     isConfirmingPending = true,
                     isLoading = false,
+                    enabledMethods = _state.value.enabledMethods,
                 )
                 return@launch
             }
@@ -178,6 +189,7 @@ class WizardViewModel @Inject constructor(
 
             // Switching to a different item resets to that item's fresh draft/step/tokens; only the
             // on-screen transition kept the previous item visible until this point.
+            // enabledMethods is a cross-concern that survives the item reset.
             _state.value = WizardUiState(
                 notification = notification,
                 draft = draft,
@@ -191,6 +203,7 @@ class WizardViewModel @Inject constructor(
                 isLoading = false,
                 error = degradeError,
                 unknownCardLast4 = unknownLast4,
+                enabledMethods = _state.value.enabledMethods,
             )
         }
     }

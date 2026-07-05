@@ -1,5 +1,7 @@
 package com.resolveprogramming.pocketcounter.di
 
+import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodPrefsStore
+import com.resolveprogramming.pocketcounter.data.local.PaymentMethodPrefsStore
 import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleSignIn
 import com.resolveprogramming.pocketcounter.data.remote.GoogleSignInClient
 import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
@@ -8,7 +10,9 @@ import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.LocalCardLast4Repository
+import com.resolveprogramming.pocketcounter.data.repository.LocalPaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAssistantRepository
@@ -89,4 +93,14 @@ abstract class DataModule {
     abstract fun bindCardLast4Repository(
         impl: LocalCardLast4Repository,
     ): CardLast4Repository
+
+    @Binds
+    abstract fun bindPaymentMethodPrefsStore(
+        impl: DataStorePaymentMethodPrefsStore,
+    ): PaymentMethodPrefsStore
+
+    @Binds
+    abstract fun bindPaymentMethodPrefsRepository(
+        impl: LocalPaymentMethodPrefsRepository,
+    ): PaymentMethodPrefsRepository
 }

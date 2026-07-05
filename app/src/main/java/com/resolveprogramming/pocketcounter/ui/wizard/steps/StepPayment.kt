@@ -23,12 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.CurrencyBitcoin
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,13 +32,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+import com.resolveprogramming.pocketcounter.ui.wizard.icon
 import com.resolveprogramming.pocketcounter.ui.wizard.label
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -53,6 +49,7 @@ fun StepPayment(
     cards: List<CreditCard>,
     selectedMethod: PaymentMethod?,
     selectedCardId: String?,
+    enabledMethods: Set<PaymentMethod>,
     onSelectMethod: (PaymentMethod) -> Unit,
     onSelectCard: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -60,9 +57,7 @@ fun StepPayment(
     onAssignCard: (String) -> Unit = {},
     onDismissUnknown: () -> Unit = {},
 ) {
-    val methods = PaymentMethod.entries.filterNot {
-        it == PaymentMethod.CREDIT && type == TransactionType.INCOME
-    }
+    val methods = PaymentMethodPreferences.selectable(enabledMethods, selectedMethod, type)
 
     Column(modifier = modifier) {
         if (unknownCardLast4 != null && cards.isNotEmpty()) {
@@ -291,12 +286,4 @@ private fun CardRow(
             }
         }
     }
-}
-
-private fun PaymentMethod.icon(): ImageVector = when (this) {
-    PaymentMethod.CREDIT -> Icons.Filled.CreditCard
-    PaymentMethod.DEBIT -> Icons.Filled.AccountBalanceWallet
-    PaymentMethod.PIX -> Icons.Filled.Bolt
-    PaymentMethod.CASH -> Icons.Filled.Payments
-    PaymentMethod.CRYPTO -> Icons.Filled.CurrencyBitcoin
 }

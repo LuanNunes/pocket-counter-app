@@ -292,6 +292,7 @@ fun TransacoesContent(
             cards = state.cards,
             tags = state.tags.values.toList(),
             contexts = state.contexts,
+            enabledMethods = state.enabledMethods,
             onSave = viewModel::saveForm,
             onDismiss = viewModel::closeForm,
         )
