@@ -4,12 +4,14 @@ import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -132,6 +134,7 @@ class TransacoesViewModelTest {
 
     private fun makeViewModel(
         ledgerRefresh: LedgerRefreshSignal = LedgerRefreshSignal(),
+        paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
     ): TransacoesViewModel = TransacoesViewModel(
         transactionRepository = transactionRepository,
         cardRepository = cardRepository,
@@ -139,6 +142,7 @@ class TransacoesViewModelTest {
         seriesRepository = seriesRepository,
         viewedMonth = ViewedMonthStore(),
         ledgerRefresh = ledgerRefresh,
+        paymentMethodPrefsRepository = paymentMethodPrefsRepository,
     )
 
     // -------------------------------------------------------------------------
@@ -919,5 +923,18 @@ class TransacoesViewModelTest {
 
         assertEquals(listOf(card), vm.state.value.cards)
         assertTrue(vm.state.value.formMode is FormMode.Add)
+    }
+
+    // -------------------------------------------------------------------------
+    // enabledMethods — payment-method availability config
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `enabledMethods in state reflects the repo emission`() = runTest {
+        val fakeRepo = FakePaymentMethodPrefsRepository(initial = setOf(PaymentMethod.PIX))
+        val vm = makeViewModel(paymentMethodPrefsRepository = fakeRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(setOf(PaymentMethod.PIX), vm.state.value.enabledMethods)
     }
 }

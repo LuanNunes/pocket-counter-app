@@ -25,6 +25,7 @@ import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.ui.assistente.AssistantScreen
 import com.resolveprogramming.pocketcounter.ui.auth.AuthScreen
 import com.resolveprogramming.pocketcounter.ui.cards.CartoesScreen
+import com.resolveprogramming.pocketcounter.ui.configuracoes.ConfiguracoesScreen
 import com.resolveprogramming.pocketcounter.ui.home.HomePager
 import com.resolveprogramming.pocketcounter.ui.lock.LockScreen
 import androidx.navigation.NavHostController
@@ -53,6 +54,7 @@ object Routes {
     const val CONTEXTOS = "contextos"
     const val RELATORIO = "relatorio"
     const val ASSISTENTE = "assistente"
+    const val CONFIGURACOES = "configuracoes"
 
     fun wizard(notificationId: String) = "wizard/$notificationId"
 }
@@ -217,6 +219,10 @@ fun PocketNavHost(
 
         composable(Routes.ASSISTENTE) {
             AssistantScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.CONFIGURACOES) {
+            ConfiguracoesScreen(onBack = { navController.popBackStack() })
         }
 
         composable(Routes.RESUMO) {

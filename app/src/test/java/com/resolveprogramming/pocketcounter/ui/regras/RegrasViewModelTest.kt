@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.regras
 
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
@@ -59,7 +60,9 @@ class RegrasViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun makeViewModel() = RegrasViewModel(ruleRepository, cardRepository, tagRepository)
+    private fun makeViewModel(
+        paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
+    ) = RegrasViewModel(ruleRepository, cardRepository, tagRepository, paymentMethodPrefsRepository)
 
     @Test
     fun `saveEdit persists the chosen method and card onto the edited rule`() = runTest {
@@ -198,5 +201,18 @@ class RegrasViewModelTest {
         val preview = vm.state.value.dedupePreview
         assertEquals(0, preview?.mergedRules)
         assertEquals(0, preview?.deletedRules)
+    }
+
+    // -------------------------------------------------------------------------
+    // enabledMethods — payment-method availability config
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `enabledMethods in state reflects the repo emission`() = runTest {
+        val fakeRepo = FakePaymentMethodPrefsRepository(initial = setOf(PaymentMethod.PIX))
+        val vm = makeViewModel(paymentMethodPrefsRepository = fakeRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(setOf(PaymentMethod.PIX), vm.state.value.enabledMethods)
     }
 }

@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.rules.DedupePlan
@@ -42,6 +44,8 @@ data class RegrasUiState(
     val isMerging: Boolean = false,
     val toastMessage: String? = null,
     val isLoading: Boolean = true,
+    /** User-configured enabled payment methods; used to filter the method-selection UI. */
+    val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
 )
 
 @HiltViewModel
@@ -49,6 +53,7 @@ class RegrasViewModel @Inject constructor(
     private val ruleRepository: ClassificationRuleRepository,
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
+    private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(RegrasUiState())
@@ -57,7 +62,14 @@ class RegrasViewModel @Inject constructor(
     /** The plan backing [state]'s [DedupePreview]; applied verbatim so counts and effect match. */
     private var pendingPlan: DedupePlan? = null
 
-    init { load() }
+    init {
+        load()
+        viewModelScope.launch {
+            paymentMethodPrefsRepository.enabledMethods.collect { enabled ->
+                _state.update { it.copy(enabledMethods = enabled) }
+            }
+        }
+    }
 
     private fun load() {
         viewModelScope.launch {

@@ -6,12 +6,15 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
+import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
@@ -95,6 +98,8 @@ data class TransacoesUiState(
     val toastMessage: String? = null,
     val isLoading: Boolean = true,
     val error: String? = null,
+    /** User-configured enabled payment methods; used to filter the method-selection UI. */
+    val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
 )
 
 @HiltViewModel
@@ -105,6 +110,7 @@ class TransacoesViewModel @Inject constructor(
     private val seriesRepository: SeriesRepository,
     private val viewedMonth: ViewedMonthStore,
     private val ledgerRefresh: LedgerRefreshSignal,
+    private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
@@ -130,6 +136,11 @@ class TransacoesViewModel @Inject constructor(
         // from Home). The single reload path for every mutation: emitters just call signal().
         viewModelScope.launch {
             ledgerRefresh.events.collect { loadMonth(showLoading = false) }
+        }
+        viewModelScope.launch {
+            paymentMethodPrefsRepository.enabledMethods.collect { enabled ->
+                _state.update { it.copy(enabledMethods = enabled) }
+            }
         }
     }
 

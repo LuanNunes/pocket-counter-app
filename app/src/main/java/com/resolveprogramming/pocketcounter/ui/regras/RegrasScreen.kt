@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -188,6 +189,7 @@ fun RegrasScreen(
         RegraEditSheet(
             rule = rule,
             cards = state.cardsById.values.toList(),
+            enabledMethods = state.enabledMethods,
             saving = state.savingEdit,
             onSave = { method, cardId -> viewModel.saveEdit(method, cardId) },
             onDismiss = viewModel::cancelEdit,
@@ -296,6 +298,7 @@ private fun RegraCard(
 private fun RegraEditSheet(
     rule: ClassificationRule,
     cards: List<CreditCard>,
+    enabledMethods: Set<PaymentMethod>,
     saving: Boolean,
     onSave: (PaymentMethod?, String?) -> Unit,
     onDismiss: () -> Unit,
@@ -303,9 +306,7 @@ private fun RegraEditSheet(
     var method by remember(rule.id) { mutableStateOf(rule.paymentMethod) }
     var cardId by remember(rule.id) { mutableStateOf(rule.cardId) }
     // Expense rules can be CREDIT; income rules can't (mirrors the wizard's payment invariant).
-    val methods = PaymentMethod.entries.filterNot {
-        it == PaymentMethod.CREDIT && rule.transactionType == TransactionType.INCOME
-    }
+    val methods = PaymentMethodPreferences.selectable(enabledMethods, rule.paymentMethod, rule.transactionType)
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
         Text(

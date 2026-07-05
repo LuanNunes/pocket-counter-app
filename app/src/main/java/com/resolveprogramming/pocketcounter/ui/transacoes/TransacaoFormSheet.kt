@@ -18,13 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.CurrencyBitcoin
-import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -37,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -45,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
@@ -61,6 +56,7 @@ import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
 import com.resolveprogramming.pocketcounter.ui.components.SegmentTone
 import com.resolveprogramming.pocketcounter.ui.components.TagPicker
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+import com.resolveprogramming.pocketcounter.ui.wizard.icon
 import com.resolveprogramming.pocketcounter.ui.wizard.label
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -80,6 +76,7 @@ fun TransacaoFormSheet(
     cards: List<CreditCard>,
     tags: List<Tag>,
     contexts: List<TagContext>,
+    enabledMethods: Set<PaymentMethod>,
     onSave: (WizardDraft) -> Unit,
     onDismiss: () -> Unit,
     defaultDate: LocalDate? = null,
@@ -165,9 +162,7 @@ fun TransacaoFormSheet(
 
                 LabelWithHint(label = "Pagamento", hint = "opcional")
                 Spacer(Modifier.height(8.dp))
-                val methods = PaymentMethod.entries.filterNot {
-                    it == PaymentMethod.CREDIT && draft.type == TransactionType.INCOME
-                }
+                val methods = PaymentMethodPreferences.selectable(enabledMethods, draft.paymentMethod, draft.type)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -458,14 +453,6 @@ private fun CardPicker(
             }
         }
     }
-}
-
-private fun PaymentMethod.icon(): ImageVector = when (this) {
-    PaymentMethod.CREDIT -> Icons.Filled.CreditCard
-    PaymentMethod.DEBIT -> Icons.Filled.AccountBalanceWallet
-    PaymentMethod.PIX -> Icons.Filled.Bolt
-    PaymentMethod.CASH -> Icons.Filled.Payments
-    PaymentMethod.CRYPTO -> Icons.Filled.CurrencyBitcoin
 }
 
 private fun seedDraft(

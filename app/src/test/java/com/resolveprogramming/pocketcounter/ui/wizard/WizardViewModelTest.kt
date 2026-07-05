@@ -5,6 +5,7 @@ import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -60,6 +61,7 @@ class WizardViewModelTest {
     private val seriesRepository: SeriesRepository = mockk()
     private val classificationRuleRepository: ClassificationRuleRepository = mockk()
     private val cardLast4Repository: CardLast4Repository = mockk()
+    private val fakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository()
 
     @Before
     fun setUp() {
@@ -143,7 +145,10 @@ class WizardViewModelTest {
         billDay = 10,
     )
 
-    private fun makeViewModel(notificationId: String = "notif-1"): WizardViewModel {
+    private fun makeViewModel(
+        notificationId: String = "notif-1",
+        paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = fakePaymentMethodPrefsRepository,
+    ): WizardViewModel {
         val handle = SavedStateHandle(mapOf("notificationId" to notificationId))
         return WizardViewModel(
             savedStateHandle = handle,
@@ -157,6 +162,7 @@ class WizardViewModelTest {
                 notificationRepository,
             ),
             cardLast4Repository = cardLast4Repository,
+            paymentMethodPrefsRepository = paymentMethodPrefsRepository,
         )
     }
 
@@ -1592,5 +1598,23 @@ class WizardViewModelTest {
 
         // getAll must have been called (we don't care about exact count, just that it was)
         coVerify(atLeast = 1) { classificationRuleRepository.getAll() }
+    }
+
+    // -------------------------------------------------------------------------
+    // enabledMethods — payment-method availability config
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `enabledMethods in state reflects the repo emission`() = runTest {
+        val fakeRepo = FakePaymentMethodPrefsRepository(initial = setOf(PaymentMethod.PIX))
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel(paymentMethodPrefsRepository = fakeRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(setOf(PaymentMethod.PIX), vm.state.value.enabledMethods)
     }
 }
