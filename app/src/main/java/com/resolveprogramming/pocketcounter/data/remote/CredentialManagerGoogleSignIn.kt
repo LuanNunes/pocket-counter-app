@@ -36,4 +36,25 @@ class CredentialManagerGoogleSignIn @Inject constructor() : GoogleSignInClient {
             Result.failure(e)
         }
     }
+
+    override suspend fun requestIdTokenSilently(activityContext: Context): Result<String> {
+        val option = GetGoogleIdOption.Builder()
+            .setServerClientId(BuildConfig.GOOGLE_SERVER_CLIENT_ID)
+            .setFilterByAuthorizedAccounts(true)
+            .setAutoSelectEnabled(true)
+            .build()
+
+        val request = GetCredentialRequest(listOf(option))
+
+        return try {
+            val credentialManager = CredentialManager.create(activityContext)
+            val response = credentialManager.getCredential(activityContext, request)
+            val idToken = GoogleIdTokenCredential.createFrom(response.credential.data).idToken
+            Result.success(idToken)
+        } catch (e: GetCredentialException) {
+            // Covers NoCredentialException (no reusable account) and every other retrieval failure:
+            // all map to the same "fall back to the login screen" outcome, no error UI.
+            Result.failure(e)
+        }
+    }
 }
