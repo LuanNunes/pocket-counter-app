@@ -187,6 +187,13 @@ internal object RemoteMappers {
             // Ledger order is the backend's (rows arrive ORDER BY displayOrder); `date` only feeds the
             // day-group headers. Use the stable dueDate, not datePaid — marking a row paid sets datePaid
             // (~today), which would shift the row to another day group.
+            //
+            // Deliberately NOT datePurchase, even though it is the truer purchase date for a row created
+            // elsewhere: this `date` is also a write input. setTags derives refYearMonth from it to locate
+            // the row, and the edit sheet seeds the form from it, which toDto() writes back as dateDue.
+            // HistoryItem carries one date, so preferring datePurchase would send a cross-month row's tag
+            // edit to the wrong month partition and rewrite its due date. Showing the purchase date needs
+            // a second date field on HistoryItem first.
             date = parseDate(dateDue) ?: parseDate(datePaid) ?: LocalDate.now(),
             amount = signed,
             type = type,

@@ -408,6 +408,127 @@ class RetrofitCardRepositoryTest {
     }
 
     // -------------------------------------------------------------------------
+    // datePurchase — the item's own purchase date, replacing the legacy name suffix
+    // -------------------------------------------------------------------------
+
+    /** Stubs one invoice holding [items], due 2026-06-10, so only the item mapping is under test. */
+    private fun stubInvoiceWith(vararg items: TransactionItemDto) {
+        val invoiceTx = TransactionDto(
+            id = invoiceId,
+            transactionType = "EXPENSE",
+            paymentMethod = "CREDIT",
+            cardId = cardId,
+            isInvoice = true,
+            amount = BigDecimal("100.00"),
+            dateDue = "2026-06-10",
+        )
+        coEvery { creditCardApi.getCards() } returns listOf(cardDto)
+        coEvery { transactionApi.getExpenses(any()) } returns listOf(invoiceTx)
+        coEvery { invoiceItemApi.getItems(invoiceId) } returns items.toList()
+    }
+
+    @Test
+    fun `getOpenInvoices reads the item purchase date from datePurchase`() = runTest {
+        stubInvoiceWith(
+            TransactionItemDto(
+                id = "it-1",
+                idTransaction = invoiceId,
+                name = "Padaria",
+                amount = BigDecimal("30.00"),
+                datePurchase = "2026-06-03",
+            ),
+        )
+
+        val item = repo.getOpenInvoices().getOrThrow().single().items.single()
+
+        assertEquals(LocalDate.of(2026, 6, 3), item.date)
+        assertEquals("Padaria", item.name)
+    }
+
+    @Test
+    fun `getOpenInvoices falls back to the legacy name suffix when datePurchase is null`() = runTest {
+        // Items stored before the backend stopped stamping names still carry " · yyyy-MM-dd".
+        stubInvoiceWith(
+            TransactionItemDto(
+                id = "it-1",
+                idTransaction = invoiceId,
+                name = "Padaria · 2026-06-03",
+                amount = BigDecimal("30.00"),
+                datePurchase = null,
+            ),
+        )
+
+        val item = repo.getOpenInvoices().getOrThrow().single().items.single()
+
+        assertEquals(LocalDate.of(2026, 6, 3), item.date)
+        assertEquals("Padaria", item.name)
+    }
+
+    @Test
+    fun `getOpenInvoices prefers datePurchase over a stale legacy name suffix`() = runTest {
+        stubInvoiceWith(
+            TransactionItemDto(
+                id = "it-1",
+                idTransaction = invoiceId,
+                name = "Padaria · 2026-06-03",
+                amount = BigDecimal("30.00"),
+                datePurchase = "2026-06-07",
+            ),
+        )
+
+        val item = repo.getOpenInvoices().getOrThrow().single().items.single()
+
+        assertEquals(LocalDate.of(2026, 6, 7), item.date)
+        // The suffix is still stripped from the display name even when it isn't the date source.
+        assertEquals("Padaria", item.name)
+    }
+
+    @Test
+    fun `getOpenInvoices falls back to the invoice date when the item has no date at all`() = runTest {
+        stubInvoiceWith(
+            TransactionItemDto(
+                id = "it-1",
+                idTransaction = invoiceId,
+                name = "Padaria",
+                amount = BigDecimal("30.00"),
+                datePurchase = null,
+            ),
+        )
+
+        val item = repo.getOpenInvoices().getOrThrow().single().items.single()
+
+        assertEquals(LocalDate.of(2026, 6, 10), item.date)
+    }
+
+    @Test
+    fun `classifyPurchase omits datePurchase so the backend preserves the stored one`() = runTest {
+        // A partial PUT sends datePurchase = null, which the backend reads as "keep what is saved".
+        // Sending null must never be used to clear the field.
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            TransactionItemDto(
+                id = "it1",
+                idTransaction = "inv1",
+                name = "iFood",
+                amount = BigDecimal("50.00"),
+                datePurchase = "2026-06-03",
+            ),
+        )
+        coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
+
+        repo.classifyPurchase(
+            invoiceId = "inv1",
+            itemId = "it1",
+            tags = listOf(Tag(id = "t1", name = "x", kind = TransactionType.EXPENSE, idContext = "cat1")),
+            learnRule = false,
+            card = card,
+        )
+
+        coVerify(exactly = 1) {
+            invoiceItemApi.updateItem("inv1", "it1", match { it.datePurchase == null })
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // classifyPurchase — new signature (invoiceId + itemId)
     // -------------------------------------------------------------------------
 
