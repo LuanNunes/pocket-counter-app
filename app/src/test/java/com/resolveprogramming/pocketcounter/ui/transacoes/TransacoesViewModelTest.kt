@@ -925,6 +925,97 @@ class TransacoesViewModelTest {
         assertTrue(vm.state.value.formMode is FormMode.Add)
     }
 
+    // =========================================================================
+    // detailTarget — the open sheet is a live view of the row, not a snapshot
+    // =========================================================================
+
+    @Test
+    fun `saveForm in Edit mode refreshes the open detail sheet with the updated row`() = runTest {
+        val edited = avulsoItem1.copy(amount = BigDecimal("99.00"), name = "Editado")
+        coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
+            Result.success(allItems),
+            Result.success(listOf(edited, avulsoItem2, fixoItem1, fixoItem2)),
+        )
+        coEvery { transactionRepository.update("avulso-1", any()) } returns Result.success("avulso-1")
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openDetail(avulsoItem1)
+        vm.openEdit(avulsoItem1)
+        vm.saveForm(WizardDraft(type = TransactionType.EXPENSE, amount = BigDecimal("99.00")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The sheet stays open behind the form and must show the saved values, not the snapshot
+        // captured when it was opened.
+        assertEquals(BigDecimal("99.00"), vm.state.value.detailTarget?.amount)
+        assertEquals("Editado", vm.state.value.detailTarget?.name)
+    }
+
+    @Test
+    fun `detailTarget follows a status change made from the list`() = runTest {
+        val pending = avulsoItem1.copy(statusPayment = PaymentStatus.PENDING)
+        coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
+            Result.success(listOf(pending, avulsoItem2, fixoItem1, fixoItem2)),
+            Result.success(listOf(avulsoItem1, avulsoItem2, fixoItem1, fixoItem2)),
+        )
+        coEvery { transactionRepository.markPaid("avulso-1") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openDetail(pending)
+        assertEquals(PaymentStatus.PENDING, vm.state.value.detailTarget?.statusPayment)
+
+        // markPaid closes the sheet; reopening it must reflect the new status.
+        vm.markPaid("avulso-1")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNull(vm.state.value.detailTarget)
+
+        vm.openDetail(pending)
+        assertEquals(PaymentStatus.PAID, vm.state.value.detailTarget?.statusPayment)
+    }
+
+    @Test
+    fun `detailTarget closes when the row disappears from the month`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
+            Result.success(allItems),
+            Result.success(listOf(avulsoItem2, fixoItem1, fixoItem2)),
+        )
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openDetail(avulsoItem1)
+        assertNotNull(vm.state.value.detailTarget)
+
+        // Another screen deleted the row; the reload drops it and the sheet must not linger.
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.detailTarget)
+    }
+
+    @Test
+    fun `detailTarget stays open when an edit moves the row out of the active type filter`() = runTest {
+        // Editing an EXPENSE into an INCOME must not blank the sheet while typeFilter is EXPENSE.
+        val flipped = avulsoItem1.copy(type = TransactionType.INCOME)
+        coEvery { transactionRepository.getMonth(any()) } returnsMany listOf(
+            Result.success(allItems),
+            Result.success(listOf(flipped, avulsoItem2, fixoItem1, fixoItem2)),
+        )
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openDetail(avulsoItem1)
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(TransactionType.INCOME, vm.state.value.detailTarget?.type)
+        assertTrue("The row left the EXPENSE list", vm.state.value.listItems.none { it.id == "avulso-1" })
+    }
+
     // -------------------------------------------------------------------------
     // enabledMethods — payment-method availability config
     // -------------------------------------------------------------------------

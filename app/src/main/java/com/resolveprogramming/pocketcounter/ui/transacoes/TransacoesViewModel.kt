@@ -88,6 +88,9 @@ data class TransacoesUiState(
     val ledgerFilter: LedgerFilter = LedgerFilter.TODOS,
     val fixoCount: Int = 0,
     val searchOpen: Boolean = false,
+    /** Id of the row whose detail sheet is open; the source of truth for [detailTarget]. */
+    val detailTargetId: String? = null,
+    /** Derived from [detailTargetId] + [items] by recomputed() — never assign it directly. */
     val detailTarget: HistoryItem? = null,
     val tagEditTarget: HistoryItem? = null,
     val formMode: FormMode? = null,
@@ -280,10 +283,11 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun openDetail(item: HistoryItem) = _state.update { it.copy(detailTarget = item) }
-    fun closeDetail() = _state.update { it.copy(detailTarget = null) }
+    fun openDetail(item: HistoryItem) = _state.update { it.copy(detailTargetId = item.id).recomputed() }
+    fun closeDetail() = _state.update { it.copy(detailTargetId = null).recomputed() }
 
-    fun openTagEdit(item: HistoryItem) = _state.update { it.copy(tagEditTarget = item, detailTarget = null) }
+    fun openTagEdit(item: HistoryItem) =
+        _state.update { it.copy(tagEditTarget = item, detailTargetId = null).recomputed() }
     fun closeTagEdit() = _state.update { it.copy(tagEditTarget = null) }
 
     /** Saves tags as a per-transaction override. */
@@ -321,7 +325,7 @@ class TransacoesViewModel @Inject constructor(
             item.copy(statusPayment = target).takeIf { item.id == id } ?: item
         }
         _state.update {
-            it.copy(items = optimistic, detailTarget = null, toastMessage = successMessage).recomputed()
+            it.copy(items = optimistic, detailTargetId = null, toastMessage = successMessage).recomputed()
         }
         viewModelScope.launch {
             action()
@@ -345,7 +349,11 @@ class TransacoesViewModel @Inject constructor(
             transactionRepository.delete(id)
                 .onSuccess {
                     _state.update {
-                        it.copy(confirmDeleteId = null, detailTarget = null, toastMessage = "Transação excluída")
+                        it.copy(
+                            confirmDeleteId = null,
+                            detailTargetId = null,
+                            toastMessage = "Transação excluída",
+                        ).recomputed()
                     }
                     // The shared collector (see init) reloads this month for us and every sibling screen.
                     ledgerRefresh.signal()
@@ -427,6 +435,11 @@ class TransacoesViewModel @Inject constructor(
      *  - [typeTotal]/[typeCount] reflect the visible rows after all filters.
      *  - [listItems] and [ledgerGroups] show only the visible rows.
      *  - [totals] is never touched here — it is full-month and set by loadMonth().
+     *
+     * [detailTarget] is re-resolved from [items] so the open sheet reflects the latest row (e.g.
+     * after an edit reloads the month) instead of the snapshot taken when it was opened. It reads
+     * [items], not the filtered list, so a row that leaves the active filter keeps its sheet open;
+     * a row that no longer exists (deleted) resolves to null and the sheet closes.
      */
     private fun TransacoesUiState.recomputed(): TransacoesUiState {
         val byType = items.filter { it.type == typeFilter }
@@ -448,6 +461,7 @@ class TransacoesViewModel @Inject constructor(
             incomeCount = items.count { it.type == TransactionType.INCOME },
             typeTotal = total,
             typeCount = canonical.size,
+            detailTarget = detailTargetId?.let { id -> items.firstOrNull { it.id == id } },
         )
     }
 
