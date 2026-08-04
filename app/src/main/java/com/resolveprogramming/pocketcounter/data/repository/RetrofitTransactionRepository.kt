@@ -96,6 +96,9 @@ class RetrofitTransactionRepository @Inject constructor(
             statusPayment = "PAID".takeIf { isPaid } ?: "PENDING",
             refYearMonth = RemoteMappers.refYearMonth(date),
             dateDue = date.toString(),
+            // The purchase date in its own field: the backend nests a credit purchase into a card
+            // invoice from datePurchase, and only falls back to dateDue while that overload lives.
+            datePurchase = date.toString(),
             datePaid = date.toString().takeIf { isPaid },
             tags = tagIds.map { TagDto(id = it, name = "") },
             // Preserve manual sort position across edits (0 for new rows).

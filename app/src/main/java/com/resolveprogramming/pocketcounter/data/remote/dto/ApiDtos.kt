@@ -23,6 +23,9 @@ data class TransactionDto(
     val isInvoice: Boolean = false,
     val idSeries: String? = null,             // UUID of the recurring series
     val dateDue: String? = null,              // ISO yyyy-MM-dd
+    // The date the purchase was made, ISO yyyy-MM-dd. The backend picks which card invoice a credit
+    // purchase nests into from this; dateDue is only accepted as a deprecated fallback for it.
+    val datePurchase: String? = null,
     val datePaid: String? = null,
     val tags: List<TagDto>? = null,
     // Passthrough fields the backend's update copies verbatim — preserved on tag-only edits.
@@ -96,6 +99,9 @@ data class TransactionItemDto(
     val name: String,
     @Serializable(with = RemoteBigDecimalSerializer::class)
     val amount: BigDecimal,
+    // ISO yyyy-MM-dd. On a partial PUT, null means "keep the stored value" — the backend preserves
+    // it. Never send null expecting to clear the field.
+    val datePurchase: String? = null,
     val tagIds: List<String>? = null,
     val tags: List<TagDto>? = null,
 )

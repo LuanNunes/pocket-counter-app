@@ -89,6 +89,54 @@ class RetrofitTransactionRepositoryTest {
         assertNull(captured.captured.name)
     }
 
+    // -------------------------------------------------------------------------
+    // datePurchase — the purchase date now travels in its own field
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `save sends the purchase date in datePurchase`() = runTest {
+        // The backend picks which invoice a credit purchase lands in from datePurchase; dateDue was
+        // only ever an overload for it.
+        val captured = slot<TransactionDto>()
+        coEvery { api.addExpense(capture(captured)) } returns "tx-1"
+
+        repo.save(expenseDraft("Mercado"))
+
+        assertEquals(fixedDate.toString(), captured.captured.datePurchase)
+    }
+
+    @Test
+    fun `save still sends dateDue alongside datePurchase`() = runTest {
+        // dateDue stays populated: it is the field the month read maps back to HistoryItem.date, and
+        // the backend still accepts it as the deprecated fallback.
+        val captured = slot<TransactionDto>()
+        coEvery { api.addExpense(capture(captured)) } returns "tx-1"
+
+        repo.save(expenseDraft("Mercado"))
+
+        assertEquals(fixedDate.toString(), captured.captured.dateDue)
+    }
+
+    @Test
+    fun `update sends the purchase date in datePurchase`() = runTest {
+        val captured = slot<TransactionDto>()
+        coEvery { api.update("tx-99", capture(captured)) } returns "tx-99"
+
+        repo.update("tx-99", expenseDraft("Mercado"))
+
+        assertEquals(fixedDate.toString(), captured.captured.datePurchase)
+    }
+
+    @Test
+    fun `save income also carries datePurchase`() = runTest {
+        val captured = slot<TransactionDto>()
+        coEvery { api.addIncome(capture(captured)) } returns "tx-2"
+
+        repo.save(incomeDraft("Salário"))
+
+        assertEquals(fixedDate.toString(), captured.captured.datePurchase)
+    }
+
     // getMonth fetches incomes and expenses concurrently; these lock in the two contracts that the
     // parallelization must not break: incomes-before-expenses order, and failure propagation.
 

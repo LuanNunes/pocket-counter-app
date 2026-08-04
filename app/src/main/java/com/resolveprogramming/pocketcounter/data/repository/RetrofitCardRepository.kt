@@ -123,6 +123,9 @@ class RetrofitCardRepository @Inject constructor(
         val existing = invoiceItemApi.getItems(invoiceId).firstOrNull { it.id == itemId }
             ?: error("Invoice item $itemId not found on invoice $invoiceId")
 
+        // datePurchase is deliberately left out. It defaults to null and the Json is configured with
+        // encodeDefaults off, so the key is omitted from the body entirely — which the backend reads
+        // as "keep the stored value". Omitting it must never be used to try to clear the field.
         val body = TransactionItemDto(
             id = itemId,
             idTransaction = invoiceId,
@@ -176,13 +179,15 @@ class RetrofitCardRepository @Inject constructor(
     }
 
     private fun TransactionItemDto.toInvoiceItem(invoiceId: String, fallbackDate: LocalDate): InvoiceItem {
-        val (cleanName, parsedDate) = splitTrailingDate(name)
+        val (cleanName, stampedDate) = splitTrailingDate(name)
         return InvoiceItem(
             transactionId = invoiceId,
             invoiceId = invoiceId,
             itemId = id,
             name = cleanName.takeIf { it.isNotBlank() } ?: "Compra",
-            date = parsedDate ?: fallbackDate,
+            // datePurchase is the real field; the name stamp is only a fallback for items stored
+            // before the backend carried a date (see splitTrailingDate).
+            date = RemoteMappers.parseDate(datePurchase) ?: stampedDate ?: fallbackDate,
             amount = amount.abs(),
             tags = tags.orEmpty().map { it.toDomain() },
             installmentLabel = null,
@@ -190,10 +195,18 @@ class RetrofitCardRepository @Inject constructor(
     }
 
     /**
-     * Invoice item names arrive as "<merchant> · YYYY-MM-DD" — the only place the per-item purchase
-     * date is carried (the DTO has no date field). Splits the trailing ISO date off so the date
-     * shows on the date line, not appended to the merchant name. Returns the name unchanged + null
-     * when no trailing date is present.
+     * LEGACY. Invoice item names used to arrive as "<merchant> · YYYY-MM-DD" because the DTO had no
+     * date field, so the stamp was the only place the per-item purchase date was carried. The
+     * backend now sends [TransactionItemDto.datePurchase] and no longer stamps the name.
+     *
+     * This stays for two reasons. Items already stored with a stamped name keep the suffix in their
+     * persisted `name`, so dropping this would surface "Padaria · 2026-06-03" as the merchant — it
+     * still strips the suffix for display even when [TransactionItemDto.datePurchase] supplies the
+     * date. And [classifyPurchase] derives its classification-rule pattern from the stored name: a
+     * rule keyed on "Padaria · 2026-06-03" would never CONTAINS-match a future purchase. That second
+     * use outlives the last legacy stamped name.
+     *
+     * Returns the name unchanged + null when no trailing date is present.
      */
     private fun splitTrailingDate(raw: String): Pair<String, LocalDate?> {
         val match = TRAILING_ISO_DATE.find(raw) ?: return raw to null
@@ -207,14 +220,21 @@ class RetrofitCardRepository @Inject constructor(
             .filter { !it.isInvoice }
             .mapNotNull { tx ->
                 val txId = tx.id ?: return@mapNotNull null
+                val rawName = tx.name?.takeIf { it.isNotBlank() }
+                    ?: tx.description?.takeIf { it.isNotBlank() }
+                    ?: "Compra"
+                val (cleanName, stampedDate) = splitTrailingDate(rawName)
                 InvoiceItem(
                     transactionId = txId,
                     invoiceId = txId,
                     itemId = null,
-                    name = tx.name?.takeIf { it.isNotBlank() }
-                        ?: tx.description?.takeIf { it.isNotBlank() }
-                        ?: "Compra",
-                    date = RemoteMappers.parseDate(tx.datePaid)
+                    name = cleanName.takeIf { it.isNotBlank() } ?: rawName,
+                    // An invoice line shows when the purchase happened, so datePurchase leads here
+                    // too — otherwise the same purchase would date differently on this path and on
+                    // the sub-resource one above.
+                    date = RemoteMappers.parseDate(tx.datePurchase)
+                        ?: stampedDate
+                        ?: RemoteMappers.parseDate(tx.datePaid)
                         ?: RemoteMappers.parseDate(tx.dateDue)
                         ?: LocalDate.now(),
                     amount = (tx.amount ?: BigDecimal.ZERO).abs(),
