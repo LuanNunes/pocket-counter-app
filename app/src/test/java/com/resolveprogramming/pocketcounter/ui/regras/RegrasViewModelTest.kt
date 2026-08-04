@@ -62,7 +62,13 @@ class RegrasViewModelTest {
 
     private fun makeViewModel(
         paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
-    ) = RegrasViewModel(ruleRepository, cardRepository, tagRepository, paymentMethodPrefsRepository)
+    ) = RegrasViewModel(
+        ruleRepository,
+        cardRepository,
+        tagRepository,
+        paymentMethodPrefsRepository,
+        testDispatcher,
+    )
 
     @Test
     fun `saveEdit persists the chosen method and card onto the edited rule`() = runTest {
@@ -137,7 +143,13 @@ class RegrasViewModelTest {
         val tagA = Tag(id = "tag-a", name = "a", kind = TransactionType.EXPENSE, idContext = "ctx-food")
         val tagB = Tag(id = "tag-b", name = "b", kind = TransactionType.EXPENSE, idContext = "ctx-food")
         val canonical = ifoodRule.copy(id = "rule-1", patterns = listOf("Ifood"), tags = listOf(tagA))
-        val duplicate = ifoodRule.copy(id = "rule-2", patterns = listOf("Rappi"), tags = listOf(tagB))
+        // "Ifood Delivery" overlaps the canonical's "Ifood", which is what puts the two rules in the
+        // same merge group; "Rappi" is the pattern that has to be carried over before rule-2 dies.
+        val duplicate = ifoodRule.copy(
+            id = "rule-2",
+            patterns = listOf("Ifood Delivery", "Rappi"),
+            tags = listOf(tagB),
+        )
         coEvery { ruleRepository.getAll() } returns Result.success(listOf(canonical, duplicate))
         coEvery { ruleRepository.update(any()) } returns Result.success(Unit)
         coEvery { ruleRepository.delete(any()) } returns Result.success(Unit)
@@ -161,6 +173,9 @@ class RegrasViewModelTest {
         }
         assertEquals("rule-1", updateSlot.captured.id)
         assertEquals(listOf("Ifood", "Rappi"), updateSlot.captured.patterns)
+        // Merging is newer-wins on tags too: the survivor carries the duplicate's tag, not the
+        // canonical's — which is why the dialog copy has to say so.
+        assertEquals(listOf(tagB), updateSlot.captured.tags)
         assertNull(vm.state.value.dedupePreview)
         assertFalse(vm.state.value.isMerging)
         assertEquals("Regras mescladas", vm.state.value.toastMessage)
@@ -171,7 +186,11 @@ class RegrasViewModelTest {
         val tagA = Tag(id = "tag-a", name = "a", kind = TransactionType.EXPENSE, idContext = "ctx-food")
         val tagB = Tag(id = "tag-b", name = "b", kind = TransactionType.EXPENSE, idContext = "ctx-food")
         val canonical = ifoodRule.copy(id = "rule-1", patterns = listOf("Ifood"), tags = listOf(tagA))
-        val duplicate = ifoodRule.copy(id = "rule-2", patterns = listOf("Rappi"), tags = listOf(tagB))
+        val duplicate = ifoodRule.copy(
+            id = "rule-2",
+            patterns = listOf("Ifood Delivery", "Rappi"),
+            tags = listOf(tagB),
+        )
         coEvery { ruleRepository.getAll() } returns Result.success(listOf(canonical, duplicate))
         coEvery { ruleRepository.update(any()) } returns Result.failure(RuntimeException("boom"))
         coEvery { ruleRepository.delete(any()) } returns Result.success(Unit)
