@@ -1,6 +1,7 @@
 package com.resolveprogramming.pocketcounter.domain.rules
 
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -14,39 +15,72 @@ sealed interface TeachPlan {
 object RuleTeachPlanner {
 
     /**
-     * Decides how teaching [pattern] under [categoryId] should mutate the rule set.
+     * Decides how teaching [pattern] out of [notificationText] should mutate the rule set.
      *
-     * When several SUGGEST rules share the category, the target is the FIRST in [existing] —
-     * assumed to be the oldest (backend creation order), which is the rule classify actually applies
-     * (oldest wins). If the backend order were reversed, a taught pattern could land on a rule that
-     * classify doesn't use until a later dedupe consolidates the group. See [RuleDedupePlanner].
+     * The target is the FIRST active SUGGEST rule in [existing] whose patterns match
+     * [notificationText]. [existing] is assumed to be in backend creation order (oldest first), so
+     * that rule is by definition the one classify applied to this notification — classify runs
+     * exactly one rule and the oldest match wins — which makes it the only rule whose correction the
+     * user will actually see next time. Rules that merely share the taught tags' context are not
+     * targets: same category, different merchant. IGNORE and deactivated rules are never targets —
+     * classify skips them, so teaching one would silently do nothing. No match → a fresh rule.
+     *
+     * Known consequence of overwriting tags instead of unioning them: teaching a SUB-MERCHANT of an
+     * existing rule re-tags the whole merchant. Teaching "UBER EATS" while a rule matches "Uber"
+     * targets that rule, [RulePatterns.compact] drops the narrower new pattern as already covered,
+     * and the taught tags replace the old ones — so Uber rides start being tagged as Uber Eats. The
+     * escape hatch is deleting the rule in Regras and teaching the two merchants separately; a union
+     * would instead make a wrong tag impossible to remove through the wizard, which is how the rule
+     * set drifted in the first place.
      */
     fun plan(
         existing: List<ClassificationRule>,
-        categoryId: String,
-        tags: List<Tag>,
-        type: TransactionType?,
+        notificationText: String,
         pattern: String,
+        type: TransactionType?,
+        paymentMethod: PaymentMethod?,
+        cardId: String?,
+        tags: List<Tag>,
     ): TeachPlan {
         val target = existing.firstOrNull { rule ->
             rule.action == RuleAction.SUGGEST &&
-                rule.tags.any { it.idContext == categoryId }
-        } ?: return TeachPlan.Create(ClassificationRule.learned(pattern, type, tags))
+                rule.active != false &&
+                rule.patterns.any { RulePatterns.matches(it, notificationText) }
+        } ?: return TeachPlan.Create(
+            ClassificationRule.learned(pattern, type, paymentMethod, cardId, tags),
+        )
 
-        if (isCovered(target.patterns, pattern)) return TeachPlan.NoOp
-
-        return TeachPlan.Update(target.copy(patterns = target.patterns + pattern))
+        val candidate = target.copy(
+            patterns = RulePatterns.compact(target.patterns + pattern),
+            // Never null out a type the rule already learned.
+            transactionType = type ?: target.transactionType,
+            paymentMethod = paymentMethod ?: target.paymentMethod,
+            cardId = resolveCardId(paymentMethod, cardId, target.cardId),
+            // Overwritten, not unioned: a union would make a wrong tag impossible to remove through
+            // the wizard, which is exactly how the rule set drifted in the first place.
+            tags = tags,
+        )
+        if (isNoOp(candidate, target)) return TeachPlan.NoOp
+        return TeachPlan.Update(candidate)
     }
 
     /**
-     * Returns true when [pattern] is already covered by [existing] patterns.
-     * Covered means: an existing pattern P where P equals pattern (case-insensitive)
-     * OR pattern contains P (existing is a broader substring that matches any text
-     * containing the new pattern).
+     * Tags compare on identity ([Tag.id] + [Tag.idContext]) instead of whole objects: a rule loaded
+     * from the backend carries tag stubs (blank name, no color) while the taught tags come from the
+     * tag list fully populated, so object equality would report a difference on every single save and
+     * fire a redundant PUT for a rule nothing actually changed on.
      */
-    private fun isCovered(existingPatterns: List<String>, pattern: String): Boolean =
-        existingPatterns.any { p ->
-            p.equals(pattern, ignoreCase = true) ||
-                pattern.contains(p, ignoreCase = true)
-        }
+    private fun isNoOp(candidate: ClassificationRule, target: ClassificationRule): Boolean =
+        candidate.copy(tags = target.tags) == target && tagIdentity(candidate.tags) == tagIdentity(target.tags)
+
+    private fun tagIdentity(tags: List<Tag>): List<Pair<String, String?>> = tags.map { it.id to it.idContext }
+
+    /**
+     * Method and card move as a pair: a null taught method leaves both untouched (never pairing a new
+     * method with a stale card), a concrete one overwrites both and keeps the card only for CREDIT.
+     */
+    private fun resolveCardId(method: PaymentMethod?, cardId: String?, current: String?): String? {
+        if (method == null) return current
+        return cardId.takeIf { method == PaymentMethod.CREDIT }
+    }
 }

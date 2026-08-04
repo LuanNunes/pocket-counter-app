@@ -79,6 +79,8 @@ class WizardViewModelTest {
         coEvery { seriesRepository.setTags(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.linkTransaction(any(), any(), any()) } returns Result.success(Unit)
         coEvery { classificationRuleRepository.create(any()) } returns Result.success(Unit)
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
+        coEvery { classificationRuleRepository.update(any()) } returns Result.success(Unit)
         // Broad fallbacks so in-place switches resolve without NPE; tests override for specific ids.
         coEvery { notificationRepository.getById(any()) } answers {
             Result.success(makeNotification(id = firstArg()))
@@ -1525,7 +1527,7 @@ class WizardViewModelTest {
     )
 
     @Test
-    fun `learnRuleIfRequested_noSameCategoryRule_callsCreate_withNullPaymentAndCard`() = runTest {
+    fun `learnRuleIfRequested_noRuleMatchesNotification_callsCreate_withDraftPaymentAndCard`() = runTest {
         // Notification text must contain the merchant so learnPattern resolves it
         val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI aprovada R$ 49,90")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
@@ -1538,7 +1540,6 @@ class WizardViewModelTest {
 
         // No existing rules → TeachPlanner will Create
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
-        coEvery { classificationRuleRepository.update(any()) } returns Result.success(Unit)
 
         coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
@@ -1546,9 +1547,11 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // Toggle tag and enable learn rule
+        // Toggle tag, enable learn rule, and mark the draft's own payment method/card
         vm.toggleTag("tag-cat")
         vm.toggleLearnRule(true)
+        vm.selectPaymentMethod(PaymentMethod.CREDIT)
+        vm.selectCard("card-x")
         // Update name/merchant to RAPPI (appears in the notification text)
         vm.updateName("RAPPI")
 
@@ -1558,8 +1561,8 @@ class WizardViewModelTest {
         coVerify(exactly = 1) {
             classificationRuleRepository.create(
                 match { rule ->
-                    rule.paymentMethod == null &&
-                        rule.cardId == null &&
+                    rule.paymentMethod == PaymentMethod.CREDIT &&
+                        rule.cardId == "card-x" &&
                         rule.patterns.contains("RAPPI") &&
                         rule.action == RuleAction.SUGGEST
                 },
@@ -1569,7 +1572,50 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `learnRuleIfRequested_sameCategoryRuleExists_callsUpdate_withPatternAppended_notCreate`() = runTest {
+    fun `learnRuleIfRequested_ruleMatchingNotificationExists_callsUpdate_withPatternAppended_notCreate`() = runTest {
+        val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI DELIVERY aprovada R$ 49,90")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+
+        // Existing rule's pattern actually matches the notification text → TeachPlanner will Update
+        val existingRule = makeExistingRule(
+            id = "rule-existing",
+            patterns = listOf("COMPRA"),
+            tags = listOf(categoryTag),
+        )
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(listOf(existingRule))
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+        vm.updateName("RAPPI DELIVERY")
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Must call update, not create
+        coVerify(exactly = 1) {
+            classificationRuleRepository.update(
+                match { rule ->
+                    rule.id == "rule-existing" &&
+                        rule.patterns == listOf("COMPRA", "RAPPI DELIVERY")
+                },
+            )
+        }
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_sameContextRuleExists_butPatternDoesNotMatchNotification_callsCreate`() = runTest {
         val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI aprovada R$ 49,90")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -1578,14 +1624,14 @@ class WizardViewModelTest {
         val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
 
-        // Existing rule already belongs to the same category → TeachPlanner will Update
+        // Existing rule shares the taught tag's context, but its pattern ("IFOOD") doesn't appear
+        // anywhere in this notification's text ("Compra RAPPI aprovada...") — must NOT be targeted.
         val existingRule = makeExistingRule(
             id = "rule-existing",
             patterns = listOf("IFOOD"),
             tags = listOf(categoryTag),
         )
         coEvery { classificationRuleRepository.getAll() } returns Result.success(listOf(existingRule))
-        coEvery { classificationRuleRepository.update(any()) } returns Result.success(Unit)
 
         coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
@@ -1600,16 +1646,42 @@ class WizardViewModelTest {
         vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // Must call update, not create
         coVerify(exactly = 1) {
-            classificationRuleRepository.update(
-                match { rule ->
-                    rule.id == "rule-existing" &&
-                        rule.patterns == listOf("IFOOD", "RAPPI")
-                },
+            classificationRuleRepository.create(
+                match { rule -> rule.patterns.contains("RAPPI") },
             )
         }
+        coVerify(exactly = 0) { classificationRuleRepository.update(any()) }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_getAllFails_neitherCreatesNorUpdates`() = runTest {
+        val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI aprovada R$ 49,90")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+
+        coEvery { classificationRuleRepository.getAll() } returns Result.failure(RuntimeException("boom"))
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+        vm.updateName("RAPPI")
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // A failed rule load must NOT be treated as "no rules exist" — that would mint a duplicate.
         coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+        coVerify(exactly = 0) { classificationRuleRepository.update(any()) }
     }
 
     @Test

@@ -14,12 +14,15 @@ import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.rules.DedupePlan
 import com.resolveprogramming.pocketcounter.domain.rules.RuleDedupePlanner
+import com.resolveprogramming.pocketcounter.di.DefaultDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class RegraDeleteTarget(val id: String, val patternLabel: String)
@@ -54,6 +57,7 @@ class RegrasViewModel @Inject constructor(
     private val cardRepository: CardRepository,
     private val tagRepository: TagRepository,
     private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(RegrasUiState())
@@ -148,12 +152,16 @@ class RegrasViewModel @Inject constructor(
     /**
      * Computes a merge preview without mutating anything: reloads the rules and runs the pure
      * planner. The resulting [DedupePlan] is held so [applyDedupe] persists exactly what was shown.
+     *
+     * Planning runs off the main thread: it compares every rule against every other one, pattern by
+     * pattern, allocating a folded string per comparison — quadratic work that a few hundred rules
+     * turn into hundreds of thousands of passes.
      */
     fun previewDedupe() {
         if (_state.value.isMerging) return
         viewModelScope.launch {
             val all = ruleRepository.getAll().getOrDefault(emptyList())
-            val plan = RuleDedupePlanner.plan(all)
+            val plan = withContext(defaultDispatcher) { RuleDedupePlanner.plan(all) }
             pendingPlan = plan
             _state.update {
                 it.copy(dedupePreview = DedupePreview(plan.updates.size, plan.deletes.size))

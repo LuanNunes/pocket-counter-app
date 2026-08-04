@@ -497,7 +497,8 @@ class WizardViewModel @Inject constructor(
      * missing pattern or a create failure is swallowed and the ignore still proceeds.
      */
     private suspend fun learnIgnoreRule() {
-        val pattern = learnPattern(_state.value.draft) ?: return
+        val notification = _state.value.notification ?: return
+        val pattern = learnPattern(_state.value.draft, notification) ?: return
         runCatching {
             classificationRuleRepository.create(
                 ClassificationRule(
@@ -532,23 +533,31 @@ class WizardViewModel @Inject constructor(
     /**
      * Merges or creates a learned classification rule when the user enabled "Aprender este padrão".
      *
-     * Uses [RuleTeachPlanner] to decide whether to update an existing same-category rule
-     * (appending the new pattern) or create a fresh one. Payment method and card id are never
-     * written into rules — Workstream 1 derives the card from the notification's last-4 hint at
-     * classify time. Best-effort — failures are swallowed.
+     * [RuleTeachPlanner] targets the rule classify actually applied to THIS notification (the oldest
+     * SUGGEST rule whose patterns match its text), so a correction edits what the user just saw go
+     * wrong instead of minting a near-duplicate beside it. The taught payment method and card ride
+     * along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing to derive them from,
+     * and a merchant's method is a property of the merchant. Best-effort — failures are swallowed.
      */
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
-        val pattern = learnPattern(draft) ?: return
+        val notification = _state.value.notification ?: return
+        val pattern = learnPattern(draft, notification) ?: return
         // Only tags with a context serialize into the rule (ClassificationRuleTagDto needs idCategory).
         val ruleTags = _state.value.allTags.filter { it.id in draft.tagIds && !it.idContext.isNullOrBlank() }
         if (ruleTags.isEmpty()) return
-        // Group the rule under the first selected context. If the user picked tags from two
-        // different contexts the rule becomes multi-context and RuleDedupePlanner will leave it
-        // alone — an accepted edge case, as tags almost always share one context here.
-        val categoryId = ruleTags.first().idContext!!
-        val existing = classificationRuleRepository.getAll().getOrNull().orEmpty()
-        val plan = RuleTeachPlanner.plan(existing, categoryId, ruleTags, draft.type, pattern)
+        // A failed load must NOT read as "no rules exist": that would create a duplicate of the very
+        // rule we couldn't see, on every 401/timeout. Skipping one teach is the cheaper failure.
+        val existing = classificationRuleRepository.getAll().getOrElse { return }
+        val plan = RuleTeachPlanner.plan(
+            existing = existing,
+            notificationText = notification.text,
+            pattern = pattern,
+            type = draft.type,
+            paymentMethod = draft.paymentMethod,
+            cardId = draft.cardId,
+            tags = ruleTags,
+        )
         runCatching {
             when (plan) {
                 is TeachPlan.Update -> classificationRuleRepository.update(plan.rule)
@@ -589,15 +598,13 @@ class WizardViewModel @Inject constructor(
      * parsed merchant, then payment hint) that is actually a substring of the notification text — a
      * pattern that doesn't appear in the message could never match a future notification.
      */
-    private fun learnPattern(draft: WizardDraft): String? {
-        val notification = _state.value.notification ?: return null
-        return listOfNotNull(
+    private fun learnPattern(draft: WizardDraft, notification: NotificationItem): String? =
+        listOfNotNull(
             draft.merchant?.takeIf { it.isNotBlank() },
             notification.parsed.merchantRaw?.takeIf { it.isNotBlank() },
             notification.parsed.paymentHint?.takeIf { it.isNotBlank() },
         ).map { it.trim() }
             .firstOrNull { it.isNotBlank() && notification.text.contains(it, ignoreCase = true) }
-    }
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
         if (!draft.isFixo) return
