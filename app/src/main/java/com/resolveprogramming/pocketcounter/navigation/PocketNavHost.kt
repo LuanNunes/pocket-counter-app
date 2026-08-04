@@ -12,6 +12,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -37,6 +40,8 @@ import com.resolveprogramming.pocketcounter.ui.fixas.ContasFixasScreen
 import com.resolveprogramming.pocketcounter.ui.mais.MaisScreen
 import com.resolveprogramming.pocketcounter.ui.regras.RegrasScreen
 import com.resolveprogramming.pocketcounter.ui.relatorio.RelatorioScreen
+import com.resolveprogramming.pocketcounter.ui.session.RecoveryState
+import com.resolveprogramming.pocketcounter.ui.session.SessionRecoveryViewModel
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.WizardScreen
 
@@ -85,6 +90,37 @@ private fun navTab(navController: NavHostController, tab: TabId) {
 internal fun shouldLock(isLoggedIn: Boolean?, lockEnabled: Boolean?, isUnlocked: Boolean): Boolean =
     isLoggedIn == true && lockEnabled == true && !isUnlocked
 
+/**
+ * Before showing the login screen to a logged-out user, silently try to re-establish the session
+ * with the previously-authorized Google account. Returns true once the flow should proceed past
+ * this gate — recovery failed/not applicable (→ login screen) or succeeded (the upstream
+ * `isLoggedIn` flow flips and routes into the app on the next recomposition). Returns false only
+ * while the attempt is in flight, during which a loader is drawn.
+ *
+ * `Recovered` is treated as fall-through (not a held loader) so a stuck/stale success state can
+ * never trap the user on an infinite spinner: the outer `isLoggedIn == false` guard keeps the
+ * login screen from flashing once the session flow has flipped.
+ */
+@Composable
+private fun sessionRecoveryGate(
+    viewModel: SessionRecoveryViewModel = hiltViewModel(),
+): Boolean {
+    val recovery by viewModel.state.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as? FragmentActivity
+
+    LaunchedEffect(activity) {
+        if (activity != null) viewModel.attempt(activity)
+    }
+
+    val settled = recovery == RecoveryState.Failed || recovery == RecoveryState.Recovered
+    if (activity == null || settled) return true
+
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = PocketTheme.colors.accent)
+    }
+    return false
+}
+
 @Composable
 fun PocketNavHost(
     tokenStore: TokenStore,
@@ -108,6 +144,10 @@ fun PocketNavHost(
 
     if (shouldLock(isLoggedIn, lockEnabled, isUnlocked)) {
         LockScreen()
+        return
+    }
+
+    if (isLoggedIn == false && !sessionRecoveryGate()) {
         return
     }
 
