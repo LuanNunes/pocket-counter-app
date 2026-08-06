@@ -100,6 +100,13 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Compose tests run on the JVM under Robolectric, so they need real resources.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -160,4 +167,10 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.mockk)
+
+    // Compose UI tests, run on the JVM under Robolectric — no device or emulator needed.
+    testImplementation(composeBom)
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.robolectric)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

@@ -28,7 +28,9 @@ fun RowScope.MetaPaymentSlot(payment: String) {
             .weight(1f, fill = false)
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(Constraints())
-                if (placeable.width > constraints.maxWidth) return@layout layout(0, 0) {}
+                // Height is still reported when the label is dropped: zero would collapse the
+                // row under IntrinsicSize.Min.
+                if (placeable.width > constraints.maxWidth) return@layout layout(0, placeable.height) {}
                 layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
             },
     )
