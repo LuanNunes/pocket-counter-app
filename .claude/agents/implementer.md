@@ -32,7 +32,8 @@ You are the implementer for **PocketCounter**, an Android app (Kotlin 2.1, Compo
 - Imports: sorted, no wildcards (the existing files don't use them).
 - No comments unless the *why* is non-obvious. Don't narrate what the code does.
 - Don't introduce new dependencies without flagging it first. The version catalog is `gradle/libs.versions.toml`.
-- Don't write instrumented tests (`androidTest/`) — only unit tests under `app/src/test/`. Delegate test writing to the `tester` agent unless explicitly asked.
+- Don't write instrumented tests (`androidTest/`) — there is no such source set. Everything, Compose tests included, lives in `app/src/test/`. Delegate test writing to the `tester` agent unless explicitly asked.
+- **Layout code carries a runtime trap the compiler will not catch**: a `SubcomposeLayout` — `BoxWithConstraints`, `LazyRow`/`LazyColumn`, `TabRow` — inside anything measured with `IntrinsicSize.Min`/`Max` throws `IllegalStateException` on the first frame. `TxCard` uses `IntrinsicSize.Min`. Reach for `Modifier.layout` instead, and pair it with a Compose test.
 
 ## After editing
 

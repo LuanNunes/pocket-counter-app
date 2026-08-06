@@ -20,6 +20,7 @@ junit = "4.13.2"
 kotlinx-coroutines-test = "1.9.0"
 turbine = "1.2.0"
 mockk = "1.13.13"
+robolectric = "4.14.1"
 detekt = "1.23.8"
 biometric = "1.1.0"
 fragment-ktx = "1.8.5"
@@ -77,6 +78,9 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines-test" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 
 # Biometric
 biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
