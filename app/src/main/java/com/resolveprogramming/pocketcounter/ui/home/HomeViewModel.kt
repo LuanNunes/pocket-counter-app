@@ -485,6 +485,12 @@ class HomeViewModel @Inject constructor(
     private companion object {
         // Per-Home-load classify round-trips are bounded: only the freshest pending items are offered
         // as one-tap confirms; the rest stay in the wizard-path "para revisar" banner.
+        //
+        // Do NOT lower this to match the section's visible cap
+        // (ConfirmReadySection.CONFIRM_READY_VISIBLE_CAP). That one only hides cards behind an
+        // expander; this one decides how many get classified at all, and since
+        // pendingReviewCount = (pending.size - ready.size), shrinking it would silently inflate the
+        // "para revisar" banner with items nobody ever failed to review.
         const val CONFIRM_READY_CLASSIFY_CAP = 10
 
         // Minimum time the pull-to-refresh indicator stays up, so a sub-frame reload can't strand

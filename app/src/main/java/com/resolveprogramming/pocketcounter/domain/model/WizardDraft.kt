@@ -5,6 +5,11 @@ import java.time.LocalDate
 
 data class WizardDraft(
     val type: TransactionType? = null,
+    /**
+     * Always UNSIGNED and positive — [isStep2Valid] rejects anything else, and [type] carries the
+     * direction. Consumers that render it with a sign (AmountText derives +/− from the value, not
+     * from the type) must negate expenses themselves; see confirmReadyPresentation.
+     */
     val amount: BigDecimal? = null,
     val date: LocalDate? = null,
     val statusPayment: PaymentStatus = PaymentStatus.PAID,

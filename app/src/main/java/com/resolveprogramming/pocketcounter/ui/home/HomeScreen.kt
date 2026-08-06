@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -57,7 +56,7 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
 import com.resolveprogramming.pocketcounter.ui.home.components.ClassifyingSkeleton
-import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadyCard
+import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadySection
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
 import com.resolveprogramming.pocketcounter.ui.home.components.MonthNavBar
@@ -133,6 +132,9 @@ fun HomeContent(
         return
     }
 
+    // Indexed once per state change; the confirm-ready meta line resolves tag colors by context id.
+    val contextsById = remember(state.contexts) { state.contexts.associateBy { it.id } }
+
     Box(Modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
         PullToRefreshBox(
@@ -196,16 +198,21 @@ fun HomeContent(
                     item { ClassifyingSkeleton() }
                 }
 
+                // One lazy item, not one per card: the LazyColumn's spacedBy(12.dp) would otherwise
+                // force a 12dp gap between the section header and its stack that the section
+                // cannot close from the inside.
                 if (state.isCurrentMonth && state.confirmReady.isNotEmpty()) {
-                    items(state.confirmReady, key = { it.notificationId }) { item ->
-                        ConfirmReadyCard(
-                            item = item,
-                            isConfirming = item.notificationId in state.confirmingIds,
-                            tagName = { id -> state.tags[id]?.name },
-                            cardName = { id -> state.cards[id]?.name },
-                            onConfirm = { viewModel.confirm(item) },
-                            onReview = { onNavigate(Routes.wizard(item.notificationId)) },
-                            onIgnore = { viewModel.ignore(item) },
+                    item(key = "confirm-ready") {
+                        ConfirmReadySection(
+                            items = state.confirmReady,
+                            totalCount = state.confirmReady.size,
+                            confirmingIds = state.confirmingIds,
+                            cards = state.cards,
+                            tags = state.tags,
+                            contextsById = contextsById,
+                            onConfirm = viewModel::confirm,
+                            onReview = { onNavigate(Routes.wizard(it.notificationId)) },
+                            onIgnore = viewModel::ignore,
                         )
                     }
                 }
