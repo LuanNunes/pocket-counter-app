@@ -217,7 +217,7 @@ class LedgerMetaTest {
     }
 
     @Test
-    fun `ledgerMeta payment for CREDIT with an unknown card id is empty`() {
+    fun `ledgerMeta payment for CREDIT with an unknown card id keeps the method word`() {
         val meta = ledgerMeta(
             date = today,
             tagIds = emptyList(),
@@ -229,11 +229,12 @@ class LedgerMetaTest {
             today = today,
         )
 
-        assertEquals("", meta.payment)
+        // A deleted card must not silently erase the fact that this was a credit charge.
+        assertEquals("Crédito", meta.payment)
     }
 
     @Test
-    fun `ledgerMeta payment for CREDIT with no card id is empty`() {
+    fun `ledgerMeta payment for CREDIT with no card id keeps the method word`() {
         val meta = ledgerMeta(
             date = today,
             tagIds = emptyList(),
@@ -245,11 +246,11 @@ class LedgerMetaTest {
             today = today,
         )
 
-        assertEquals("", meta.payment)
+        assertEquals("Crédito", meta.payment)
     }
 
     @Test
-    fun `ledgerMeta payment for a non-credit method is empty`() {
+    fun `ledgerMeta payment for a non-credit method is the method word alone`() {
         val meta = ledgerMeta(
             date = today,
             tagIds = emptyList(),
@@ -261,7 +262,9 @@ class LedgerMetaTest {
             today = today,
         )
 
-        assertEquals("", meta.payment)
+        // Only the card name is CREDIT-specific; Pix/Débito/Dinheiro keep their label, as before
+        // this helper was shared out of TransacoesScreen.
+        assertEquals("Pix", meta.payment)
     }
 
     @Test

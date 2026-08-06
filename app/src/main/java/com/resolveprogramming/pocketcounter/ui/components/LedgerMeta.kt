@@ -65,16 +65,21 @@ fun ledgerMeta(
 }
 
 /**
- * "Crédito Nubank" — the payment slot only earns space on the line when it names a specific card.
- * A bare method word ("Pix", "Débito") is dropped: it competes with the tag for the one line that
- * has to stay unwrapped, and a card name is the only part the user can't infer from the row itself.
+ * The method word, plus the card name when a CREDIT charge resolves to a known card:
+ * "Crédito Nubank", "Crédito" when the card is unknown, "Pix" / "Débito" for everything else.
+ *
+ * The card name is appended only for CREDIT because that is the only method where "which one?" is a
+ * real question. Note this reads "Crédito Nubank" and not "Cartão Nubank" as Transações rendered it
+ * before this helper was shared — one fact had three spellings across the app, and the design spec's
+ * wording won.
  */
 private fun paymentLabel(
     method: PaymentMethod?,
     cardId: String?,
     cards: Map<String, CreditCard>,
 ): String {
-    method ?: return ""
-    val cardName = cardId?.let { cards[it]?.name } ?: return ""
-    return "${method.label()} $cardName"
+    val label = method?.label() ?: return ""
+    if (method != PaymentMethod.CREDIT) return label
+    val cardName = cardId?.let { cards[it]?.name } ?: return label
+    return "$label $cardName"
 }
