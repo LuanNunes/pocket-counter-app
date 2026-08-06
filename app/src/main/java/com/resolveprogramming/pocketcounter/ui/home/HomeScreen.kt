@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.navigation.Routes
 import com.resolveprogramming.pocketcounter.platform.capture.CapturePermissions
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.components.NotificationAccessDisclosureDialog
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
@@ -132,8 +133,14 @@ fun HomeContent(
         return
     }
 
-    // Indexed once per state change; the confirm-ready meta line resolves tag colors by context id.
-    val contextsById = remember(state.contexts) { state.contexts.associateBy { it.id } }
+    // Rebuilt only when a lookup changes, so the per-item meta builder stays memoizable.
+    val lookups = remember(state.cards, state.tags, state.contexts) {
+        LedgerLookups(
+            cards = state.cards,
+            tags = state.tags,
+            contexts = state.contexts.associateBy { it.id },
+        )
+    }
 
     Box(Modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
@@ -206,9 +213,7 @@ fun HomeContent(
                         ConfirmReadySection(
                             items = state.confirmReady,
                             confirmingIds = state.confirmingIds,
-                            cards = state.cards,
-                            tags = state.tags,
-                            contextsById = contextsById,
+                            lookups = lookups,
                             onConfirm = viewModel::confirm,
                             onReview = { onNavigate(Routes.wizard(it.notificationId)) },
                             onIgnore = viewModel::ignore,

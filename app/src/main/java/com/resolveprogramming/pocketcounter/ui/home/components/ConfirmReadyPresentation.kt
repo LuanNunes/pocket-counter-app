@@ -1,12 +1,12 @@
 package com.resolveprogramming.pocketcounter.ui.home.components
 
 import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
+import com.resolveprogramming.pocketcounter.ui.components.LedgerRow
 import com.resolveprogramming.pocketcounter.ui.components.ledgerMeta
 import java.math.BigDecimal
 import java.text.NumberFormat
@@ -29,24 +29,22 @@ data class ConfirmReadyPresentation(
 
 fun confirmReadyPresentation(
     item: ConfirmReadyItem,
-    cards: Map<String, CreditCard>,
-    tags: Map<String, Tag>,
-    contextsById: Map<String, TagContext>,
+    lookups: LedgerLookups,
     today: LocalDate = LocalDate.now(),
 ): ConfirmReadyPresentation {
     val draft = item.draft
     val date = draft.date ?: today
     val meta = ledgerMeta(
-        date = date,
-        tagIds = draft.tagIds,
-        paymentMethod = draft.paymentMethod,
-        cardId = draft.cardId,
-        cards = cards,
-        tags = tags,
-        contextsById = contextsById,
+        row = LedgerRow(
+            date = date,
+            tagIds = draft.tagIds,
+            paymentMethod = draft.paymentMethod,
+            cardId = draft.cardId,
+        ),
+        lookups = lookups,
         today = today,
     )
-    val title = resolveTitle(draft, item.notification.parsed.merchantRaw, tags)
+    val title = resolveTitle(draft, item.notification.parsed.merchantRaw, lookups.tags)
     val installmentsLabel = draft.installments?.takeIf { it > 1 }?.let { "$it×" }
     return ConfirmReadyPresentation(
         title = title,

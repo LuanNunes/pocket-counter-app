@@ -14,16 +14,10 @@ import java.time.LocalDate
 class LedgerMetaTest {
 
     private val ctxAlim = TagContext("c1", "Alimentação", 0xFF_AA_00_00L)
-    private val contexts = mapOf(ctxAlim.id to ctxAlim)
 
     private val tMercado = Tag("t-mercado", "Mercado", TransactionType.EXPENSE, idContext = "c1", color = 0xFF_11_22_33L)
     private val tSemCor = Tag("t-sem-cor", "Sem Cor", TransactionType.EXPENSE, idContext = "c1", color = null)
     private val tOrfao = Tag("t-orfao", "Órfão", TransactionType.EXPENSE, idContext = null, color = null)
-    private val tags = mapOf(
-        tMercado.id to tMercado,
-        tSemCor.id to tSemCor,
-        tOrfao.id to tOrfao,
-    )
 
     private val cardNubank = CreditCard(
         id = "card-1",
@@ -35,7 +29,16 @@ class LedgerMetaTest {
         limit = BigDecimal("5000"),
         billDay = 10,
     )
-    private val cards = mapOf(cardNubank.id to cardNubank)
+
+    private val lookups = LedgerLookups(
+        cards = mapOf(cardNubank.id to cardNubank),
+        tags = mapOf(
+            tMercado.id to tMercado,
+            tSemCor.id to tSemCor,
+            tOrfao.id to tOrfao,
+        ),
+        contexts = mapOf(ctxAlim.id to ctxAlim),
+    )
 
     // -- formatLedgerDate --
 
@@ -85,82 +88,48 @@ class LedgerMetaTest {
 
     private val today = LocalDate.of(2026, 6, 20)
 
+    private fun metaOf(
+        tagIds: List<String> = emptyList(),
+        paymentMethod: PaymentMethod? = null,
+        cardId: String? = null,
+        date: LocalDate = today,
+    ) = ledgerMeta(
+        row = LedgerRow(date = date, tagIds = tagIds, paymentMethod = paymentMethod, cardId = cardId),
+        lookups = lookups,
+        today = today,
+    )
+
     @Test
     fun `ledgerMeta date is formatted via formatLedgerDate`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf()
 
         assertEquals("Hoje", meta.date)
     }
 
     @Test
     fun `ledgerMeta tag color prefers the tag's own color`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = listOf(tMercado.id),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(tagIds = listOf(tMercado.id))
 
         assertEquals(tMercado.color, meta.tagColor)
     }
 
     @Test
     fun `ledgerMeta tag color falls back to the tag's context color when tag color is null`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = listOf(tSemCor.id),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(tagIds = listOf(tSemCor.id))
 
         assertEquals(ctxAlim.color, meta.tagColor)
     }
 
     @Test
     fun `ledgerMeta tag color is null when both tag and context color are missing`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = listOf(tOrfao.id),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(tagIds = listOf(tOrfao.id))
 
         assertNull(meta.tagColor)
     }
 
     @Test
     fun `ledgerMeta with a single tag reports the tag name and zero extra`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = listOf(tMercado.id),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(tagIds = listOf(tMercado.id))
 
         assertEquals(tMercado.name, meta.tagName)
         assertEquals(0, meta.extraTags)
@@ -168,16 +137,7 @@ class LedgerMetaTest {
 
     @Test
     fun `ledgerMeta with three tags reports the first tag name and two extra`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = listOf(tMercado.id, tSemCor.id, tOrfao.id),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(tagIds = listOf(tMercado.id, tSemCor.id, tOrfao.id))
 
         assertEquals(tMercado.name, meta.tagName)
         assertEquals(2, meta.extraTags)
@@ -185,16 +145,7 @@ class LedgerMetaTest {
 
     @Test
     fun `ledgerMeta with no tags reports null tag name and zero extra`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf()
 
         assertNull(meta.tagName)
         assertEquals(0, meta.extraTags)
@@ -202,32 +153,14 @@ class LedgerMetaTest {
 
     @Test
     fun `ledgerMeta payment for CREDIT with a known card is Credito plus the card name`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = PaymentMethod.CREDIT,
-            cardId = cardNubank.id,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(paymentMethod = PaymentMethod.CREDIT, cardId = cardNubank.id)
 
         assertEquals("Crédito Nubank", meta.payment)
     }
 
     @Test
     fun `ledgerMeta payment for CREDIT with an unknown card id keeps the method word`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = PaymentMethod.CREDIT,
-            cardId = "card-deleted",
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(paymentMethod = PaymentMethod.CREDIT, cardId = "card-deleted")
 
         // A deleted card must not silently erase the fact that this was a credit charge.
         assertEquals("Crédito", meta.payment)
@@ -235,32 +168,14 @@ class LedgerMetaTest {
 
     @Test
     fun `ledgerMeta payment for CREDIT with no card id keeps the method word`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = PaymentMethod.CREDIT,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(paymentMethod = PaymentMethod.CREDIT)
 
         assertEquals("Crédito", meta.payment)
     }
 
     @Test
     fun `ledgerMeta payment for a non-credit method is the method word alone`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = PaymentMethod.PIX,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf(paymentMethod = PaymentMethod.PIX)
 
         // Only the card name is CREDIT-specific; Pix/Débito/Dinheiro keep their label, as before
         // this helper was shared out of TransacoesScreen.
@@ -269,16 +184,7 @@ class LedgerMetaTest {
 
     @Test
     fun `ledgerMeta payment for a null payment method is empty`() {
-        val meta = ledgerMeta(
-            date = today,
-            tagIds = emptyList(),
-            paymentMethod = null,
-            cardId = null,
-            cards = cards,
-            tags = tags,
-            contextsById = contexts,
-            today = today,
-        )
+        val meta = metaOf()
 
         assertEquals("", meta.payment)
     }

@@ -61,17 +61,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
-import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
+import com.resolveprogramming.pocketcounter.ui.components.LedgerRow
 import com.resolveprogramming.pocketcounter.ui.components.MetaPaymentSlot
 import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
@@ -158,8 +157,13 @@ fun TransacoesContent(
                 }
                 // Indexed once per state change instead of rescanned per row per frame — the
                 // shared LedgerMeta builder looks cards/contexts up by id.
-                val cardsById = remember(state.cards) { state.cards.associateBy { it.id } }
-                val contextsById = remember(state.contexts) { state.contexts.associateBy { it.id } }
+                val lookups = remember(state.cards, state.tags, state.contexts) {
+                    LedgerLookups(
+                        cards = state.cards.associateBy { it.id },
+                        tags = state.tags,
+                        contexts = state.contexts.associateBy { it.id },
+                    )
+                }
                 when {
                     state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                         CircularProgressIndicator(color = PocketTheme.colors.accent)
@@ -175,7 +179,7 @@ fun TransacoesContent(
 
                     isLista -> LedgerCardList(
                         rows = state.listItems,
-                        meta = { txMeta(it, cardsById, state.tags, contextsById) },
+                        meta = { txMeta(it, lookups) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
@@ -183,7 +187,7 @@ fun TransacoesContent(
 
                     else -> CategoryCardList(
                         groups = state.ledgerGroups,
-                        meta = { txMeta(it, cardsById, state.tags, contextsById) },
+                        meta = { txMeta(it, lookups) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
@@ -633,19 +637,14 @@ private fun CategoryHeader(group: LedgerGroup) {
     }
 }
 
-private fun txMeta(
-    item: HistoryItem,
-    cardsById: Map<String, CreditCard>,
-    tags: Map<String, Tag>,
-    contextsById: Map<String, TagContext>,
-): LedgerMeta = ledgerMeta(
-    date = item.date,
-    tagIds = item.tagIds.orEmpty(),
-    paymentMethod = item.paymentMethod,
-    cardId = item.cardId,
-    cards = cardsById,
-    tags = tags,
-    contextsById = contextsById,
+private fun txMeta(item: HistoryItem, lookups: LedgerLookups): LedgerMeta = ledgerMeta(
+    row = LedgerRow(
+        date = item.date,
+        tagIds = item.tagIds.orEmpty(),
+        paymentMethod = item.paymentMethod,
+        cardId = item.cardId,
+    ),
+    lookups = lookups,
 )
 
 private val TX_CARD_SHAPE = RoundedCornerShape(16.dp)

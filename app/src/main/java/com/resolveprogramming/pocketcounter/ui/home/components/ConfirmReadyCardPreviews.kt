@@ -19,6 +19,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -41,15 +42,18 @@ private val previewCard = CreditCard(
     limit = BigDecimal("5000"),
     billDay = 10,
 )
-private val previewCards = mapOf(previewCard.id to previewCard)
 
 private val previewContext = TagContext("c1", "Saúde", 0xFF_2E_A0_6BL)
-private val previewContexts = mapOf(previewContext.id to previewContext)
 
 private val previewTag = Tag("t-farmacia", "Farmácia", TransactionType.EXPENSE, idContext = "c1")
-private val previewTags = mapOf(
-    previewTag.id to previewTag,
-    "t-extra" to Tag("t-extra", "Recorrente", TransactionType.EXPENSE, idContext = "c1"),
+
+private val previewLookups = LedgerLookups(
+    cards = mapOf(previewCard.id to previewCard),
+    tags = mapOf(
+        previewTag.id to previewTag,
+        "t-extra" to Tag("t-extra", "Recorrente", TransactionType.EXPENSE, idContext = "c1"),
+    ),
+    contexts = mapOf(previewContext.id to previewContext),
 )
 
 private fun previewItem(
@@ -102,9 +106,7 @@ private fun PreviewCard(item: ConfirmReadyItem, isConfirming: Boolean = false) {
                 item = item,
                 presentation = confirmReadyPresentation(
                     item = item,
-                    cards = previewCards,
-                    tags = previewTags,
-                    contextsById = previewContexts,
+                    lookups = previewLookups,
                     today = previewToday,
                 ),
                 isConfirming = isConfirming,

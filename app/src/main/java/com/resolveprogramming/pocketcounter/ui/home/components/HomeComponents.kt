@@ -68,12 +68,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
-import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.AutoSizeText
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
 import com.resolveprogramming.pocketcounter.ui.components.MetaPaymentSlot
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
@@ -613,9 +611,7 @@ private const val CONFIRM_READY_VISIBLE_CAP = 3
 fun ConfirmReadySection(
     items: List<ConfirmReadyItem>,
     confirmingIds: Set<String>,
-    cards: Map<String, CreditCard>,
-    tags: Map<String, Tag>,
-    contextsById: Map<String, TagContext>,
+    lookups: LedgerLookups,
     onConfirm: (ConfirmReadyItem) -> Unit,
     onReview: (ConfirmReadyItem) -> Unit,
     onIgnore: (ConfirmReadyItem) -> Unit,
@@ -650,7 +646,7 @@ fun ConfirmReadySection(
 
         items.take(CONFIRM_READY_VISIBLE_CAP).forEach { item ->
             key(item.notificationId) {
-                ConfirmReadyRow(item, confirmingIds, cards, tags, contextsById, onConfirm, onReview, onIgnore)
+                ConfirmReadyRow(item, confirmingIds, lookups, onConfirm, onReview, onIgnore)
             }
         }
 
@@ -663,7 +659,7 @@ fun ConfirmReadySection(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     hidden.forEach { item ->
                         key(item.notificationId) {
-                            ConfirmReadyRow(item, confirmingIds, cards, tags, contextsById, onConfirm, onReview, onIgnore)
+                            ConfirmReadyRow(item, confirmingIds, lookups, onConfirm, onReview, onIgnore)
                         }
                     }
                 }
@@ -681,9 +677,7 @@ fun ConfirmReadySection(
 private fun ConfirmReadyRow(
     item: ConfirmReadyItem,
     confirmingIds: Set<String>,
-    cards: Map<String, CreditCard>,
-    tags: Map<String, Tag>,
-    contextsById: Map<String, TagContext>,
+    lookups: LedgerLookups,
     onConfirm: (ConfirmReadyItem) -> Unit,
     onReview: (ConfirmReadyItem) -> Unit,
     onIgnore: (ConfirmReadyItem) -> Unit,
@@ -691,8 +685,8 @@ private fun ConfirmReadyRow(
     // Memoized: the builder allocates a NumberFormat and reads LocalDate.now() through its default
     // argument, so calling it straight from the composable body would make both happen on every
     // recomposition — and ConfirmReadySection recomposes on each confirmingIds change.
-    val presentation = remember(item, cards, tags, contextsById) {
-        confirmReadyPresentation(item, cards, tags, contextsById)
+    val presentation = remember(item, lookups) {
+        confirmReadyPresentation(item, lookups)
     }
     ConfirmReadyCard(
         item = item,

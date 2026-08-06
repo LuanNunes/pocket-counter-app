@@ -41,26 +41,36 @@ fun formatLedgerDate(date: LocalDate, today: LocalDate = LocalDate.now()): Strin
     return "%02d %s".format(date.dayOfMonth, month)
 }
 
+/** The indexed lookups a ledger row is resolved against. */
+data class LedgerLookups(
+    val cards: Map<String, CreditCard>,
+    val tags: Map<String, Tag>,
+    val contexts: Map<String, TagContext>,
+)
+
+/** The fields of a ledger row the meta line is derived from. */
+data class LedgerRow(
+    val date: LocalDate,
+    val tagIds: List<String>,
+    val paymentMethod: PaymentMethod?,
+    val cardId: String?,
+)
+
 fun ledgerMeta(
-    date: LocalDate,
-    tagIds: List<String>,
-    paymentMethod: PaymentMethod?,
-    cardId: String?,
-    cards: Map<String, CreditCard>,
-    tags: Map<String, Tag>,
-    contextsById: Map<String, TagContext>,
+    row: LedgerRow,
+    lookups: LedgerLookups,
     today: LocalDate = LocalDate.now(),
 ): LedgerMeta {
-    val first = tagIds.firstOrNull()?.let { tags[it] }
+    val first = row.tagIds.firstOrNull()?.let { lookups.tags[it] }
     // Tags rarely carry their own color; fall back to their context (category) color so the
     // pill dot is colored like the design instead of grey.
-    val tagColor = first?.color ?: first?.idContext?.let { contextsById[it]?.color }
+    val tagColor = first?.color ?: first?.idContext?.let { lookups.contexts[it]?.color }
     return LedgerMeta(
-        date = formatLedgerDate(date, today),
+        date = formatLedgerDate(row.date, today),
         tagName = first?.name,
         tagColor = tagColor,
-        extraTags = (tagIds.size - 1).coerceAtLeast(0),
-        payment = paymentLabel(paymentMethod, cardId, cards),
+        extraTags = (row.tagIds.size - 1).coerceAtLeast(0),
+        payment = paymentLabel(row.paymentMethod, row.cardId, lookups.cards),
     )
 }
 
