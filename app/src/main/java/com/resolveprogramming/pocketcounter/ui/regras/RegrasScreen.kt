@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
@@ -82,16 +81,6 @@ fun RegrasScreen(
                 ManageTopBar(
                     title = "Regras aprendidas",
                     onBack = onBack,
-                    actions = {
-                        if (state.rules.isNotEmpty()) {
-                            SquareIconButton(
-                                icon = Icons.AutoMirrored.Filled.MergeType,
-                                contentDescription = "Mesclar e limpar regras",
-                                enabled = !state.isMerging,
-                                onClick = viewModel::previewDedupe,
-                            )
-                        }
-                    },
                 )
                 val isEmpty = !state.isLoading && state.rules.isEmpty()
                 if (isEmpty) {
@@ -139,50 +128,6 @@ fun RegrasScreen(
         )
     }
 
-    state.dedupePreview?.let { preview ->
-        if (preview.isEmpty) {
-            AlertDialog(
-                onDismissRequest = viewModel::dismissDedupe,
-                title = { Text("Mesclar e limpar regras", color = PocketTheme.colors.text) },
-                text = {
-                    Text(
-                        dedupeMessage(preview),
-                        color = PocketTheme.colors.text2,
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = viewModel::dismissDedupe) {
-                        Text("Entendi", color = PocketTheme.colors.accent)
-                    }
-                },
-                containerColor = PocketTheme.colors.surface,
-            )
-            return@let
-        }
-
-        AlertDialog(
-            onDismissRequest = viewModel::dismissDedupe,
-            title = { Text("Mesclar e limpar regras", color = PocketTheme.colors.text) },
-            text = {
-                Text(
-                    dedupeMessage(preview),
-                    color = PocketTheme.colors.text2,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = viewModel::applyDedupe, enabled = !state.isMerging) {
-                    Text("Mesclar", color = PocketTheme.colors.accent)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissDedupe) {
-                    Text("Cancelar", color = PocketTheme.colors.text2)
-                }
-            },
-            containerColor = PocketTheme.colors.surface,
-        )
-    }
-
     state.editTarget?.let { rule ->
         RegraEditSheet(
             rule = rule,
@@ -194,37 +139,6 @@ fun RegrasScreen(
         )
     }
 }
-
-/**
- * Body copy for the merge dialog. A pass can delete duplicates, only compact redundant patterns on
- * rules that stay, or find nothing to do — the three outcomes read very differently to the user.
- *
- * The first case has to spell out that tags and payment method travel with the merge (newest wins),
- * not just the patterns: that is the part that can silently change how future notifications get
- * categorised, so it can't be left to the word "consolidando".
- */
-private fun dedupeMessage(preview: DedupePreview): String {
-    if (preview.deletedRules > 0 && preview.mergedRules > 0) {
-        val removed = countLabel(preview.deletedRules, "regra duplicada", "regras duplicadas")
-        val kept = countLabel(preview.mergedRules, "regra", "regras")
-        val removedRules = "da regra removida".takeIf { preview.deletedRules == 1 } ?: "das regras removidas"
-        return "Isto vai remover $removed, consolidando os padrões em $kept. " +
-            "As tags e o meio de pagamento $removedRules também são consolidados: " +
-            "prevalece o valor mais recente."
-    }
-    if (preview.deletedRules > 0) {
-        return "Isto vai remover ${countLabel(preview.deletedRules, "regra duplicada", "regras duplicadas")}. " +
-            "Os padrões já estão consolidados nas regras que permanecem."
-    }
-    if (preview.mergedRules > 0) {
-        return "Nenhuma regra duplicada. Isto vai limpar os padrões redundantes de " +
-            "${countLabel(preview.mergedRules, "regra", "regras")}."
-    }
-    return "Nenhuma regra duplicada nem padrão redundante para limpar."
-}
-
-private fun countLabel(count: Int, singular: String, plural: String): String =
-    "$count ${singular.takeIf { count == 1 } ?: plural}"
 
 @Composable
 private fun EmptyState() {
