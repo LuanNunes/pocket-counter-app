@@ -1,16 +1,19 @@
 package com.resolveprogramming.pocketcounter.domain.rules
 
 /**
- * Pattern algebra shared by [RuleTeachPlanner] and [RuleDedupePlanner], modelling the backend's
- * `matchType: "CONTAINS"` semantics: a rule fires when the notification text contains one of its
- * patterns.
+ * Pattern algebra used by [RuleTeachPlanner], modelling the backend's `matchType: "CONTAINS"`
+ * semantics: a rule fires when the notification text contains one of its patterns.
  *
  * Two comparisons live here on purpose, and the difference is about consequences, not taste:
  *  - [normalize] is loose (whitespace runs collapsed) and backs [matches], which only picks which
  *    rule a teach edits. Being loose there can at worst target a rule the user didn't expect.
  *  - [foldCase] is strict (whitespace preserved verbatim) and backs [covers]/[compact], which
- *    authorise DELETING a stored pattern. Being loose there drops patterns whose reach is not
- *    actually subsumed, and a dropped pattern can stop a rule from firing at all.
+ *    authorise DELETING a stored pattern from a rule being taught. Being loose there drops patterns
+ *    whose reach is not actually subsumed, and a dropped pattern can stop a rule from firing at all.
+ *
+ * [isCovered] and [overlap] express the same strict coverage relation without deleting anything.
+ * Neither has a caller yet: they are kept as the vocabulary for reporting that one rule is subsumed
+ * by another, which is what surfacing rule conflicts will need.
  */
 object RulePatterns {
 
