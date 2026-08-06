@@ -33,7 +33,8 @@ You are the implementer for **PocketCounter**, an Android app (Kotlin 2.1, Compo
 - No comments unless the *why* is non-obvious. Don't narrate what the code does.
 - **Keep them short.** A KDoc over ~6 lines, or an inline comment over 3, is a defect — the reviewer rejects it. One comment per ~15 lines at most. Never narrate history: what an earlier version did, what was tried and rejected, what a review found, how a bug was diagnosed, or what was measured. That belongs in the commit message and the PR body, not in the source. If the rationale genuinely needs a paragraph, the code needs a better name or a smaller function instead.
 - Don't introduce new dependencies without flagging it first. The version catalog is `gradle/libs.versions.toml`.
-- Don't write instrumented tests (`androidTest/`) — only unit tests under `app/src/test/`. Delegate test writing to the `tdd-specialist` agent unless explicitly asked.
+- Don't write instrumented tests (`androidTest/`) — there is no such source set. Everything, Compose tests included, lives in `app/src/test/`. Delegate test writing to the `tdd-specialist` agent unless explicitly asked.
+- **Layout code carries a runtime trap the compiler will not catch**: a `SubcomposeLayout` — `BoxWithConstraints`, `LazyRow`/`LazyColumn`, `TabRow` — inside anything measured with `IntrinsicSize.Min`/`Max` throws `IllegalStateException` on the first frame. `TxCard` uses `IntrinsicSize.Min`. Reach for `Modifier.layout` instead, and pair it with a Compose test.
 
 ## After editing
 

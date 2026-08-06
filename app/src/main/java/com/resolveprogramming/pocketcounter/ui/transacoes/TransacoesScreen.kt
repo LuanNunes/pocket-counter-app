@@ -61,17 +61,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
-import com.resolveprogramming.pocketcounter.domain.model.Tag
-import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
+import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
+import com.resolveprogramming.pocketcounter.ui.components.LedgerRow
+import com.resolveprogramming.pocketcounter.ui.components.MetaPaymentSlot
 import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
@@ -81,12 +81,10 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
 import com.resolveprogramming.pocketcounter.ui.components.SquareIconButton
+import com.resolveprogramming.pocketcounter.ui.components.TagPill
+import com.resolveprogramming.pocketcounter.ui.components.ledgerMeta
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.theme.pocketCardShadow
-import com.resolveprogramming.pocketcounter.ui.wizard.label
-import java.time.LocalDate
-import java.time.format.TextStyle
-import java.util.Locale
 
 @Composable
 fun TransacoesContent(
@@ -157,6 +155,15 @@ fun TransacoesContent(
                     if (item.statusPayment == PaymentStatus.PAID) viewModel.markPending(item.id)
                     else viewModel.markPaid(item.id)
                 }
+                // Indexed once per state change instead of rescanned per row per frame — the
+                // shared LedgerMeta builder looks cards/contexts up by id.
+                val lookups = remember(state.cards, state.tags, state.contexts) {
+                    LedgerLookups(
+                        cards = state.cards.associateBy { it.id },
+                        tags = state.tags,
+                        contexts = state.contexts.associateBy { it.id },
+                    )
+                }
                 when {
                     state.isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                         CircularProgressIndicator(color = PocketTheme.colors.accent)
@@ -172,7 +179,7 @@ fun TransacoesContent(
 
                     isLista -> LedgerCardList(
                         rows = state.listItems,
-                        meta = { txMeta(it, state.cards, state.tags, state.contexts) },
+                        meta = { txMeta(it, lookups) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
@@ -180,7 +187,7 @@ fun TransacoesContent(
 
                     else -> CategoryCardList(
                         groups = state.ledgerGroups,
-                        meta = { txMeta(it, state.cards, state.tags, state.contexts) },
+                        meta = { txMeta(it, lookups) },
                         onRowClick = viewModel::openDetail,
                         onToggleStatus = onToggleStatus,
                         onTogglePin = viewModel::toggleFixo,
@@ -541,7 +548,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 @Composable
 private fun LedgerCardList(
     rows: List<HistoryItem>,
-    meta: (HistoryItem) -> TxMeta,
+    meta: (HistoryItem) -> LedgerMeta,
     onRowClick: (HistoryItem) -> Unit,
     onToggleStatus: (HistoryItem) -> Unit,
     onTogglePin: (HistoryItem) -> Unit,
@@ -568,7 +575,7 @@ private fun LedgerCardList(
 @Composable
 private fun CategoryCardList(
     groups: List<LedgerGroup>,
-    meta: (HistoryItem) -> TxMeta,
+    meta: (HistoryItem) -> LedgerMeta,
     onRowClick: (HistoryItem) -> Unit,
     onToggleStatus: (HistoryItem) -> Unit,
     onTogglePin: (HistoryItem) -> Unit,
@@ -630,57 +637,22 @@ private fun CategoryHeader(group: LedgerGroup) {
     }
 }
 
-/** Resolved secondary-line data for a row: its date, leading tag chip, +N badge, and a payment label. */
-private data class TxMeta(
-    val date: String,
-    val tagName: String?,
-    val tagColor: Long?,
-    val extraTags: Int,
-    val payment: String,
+private fun txMeta(item: HistoryItem, lookups: LedgerLookups): LedgerMeta = ledgerMeta(
+    row = LedgerRow(
+        date = item.date,
+        tagIds = item.tagIds.orEmpty(),
+        paymentMethod = item.paymentMethod,
+        cardId = item.cardId,
+    ),
+    lookups = lookups,
 )
-
-private fun txMeta(
-    item: HistoryItem,
-    cards: List<CreditCard>,
-    tags: Map<String, Tag>,
-    contexts: List<TagContext>,
-): TxMeta {
-    val payment = run {
-        if (item.paymentMethod != PaymentMethod.CREDIT) return@run item.paymentMethod?.label().orEmpty()
-        val cardName = item.cardId?.let { id -> cards.firstOrNull { it.id == id }?.name }
-        "Cartão $cardName".takeIf { cardName != null } ?: "Crédito"
-    }
-    val tagIds = item.tagIds.orEmpty()
-    val first = tagIds.firstOrNull()?.let { tags[it] }
-    // Tags rarely carry their own color; fall back to their context (category) color so the
-    // chip dot is colored like the design instead of grey.
-    val tagColor = first?.color ?: contexts.firstOrNull { it.id == first?.idContext }?.color
-    return TxMeta(
-        date = formatTxDate(item.date),
-        tagName = first?.name,
-        tagColor = tagColor,
-        extraTags = (tagIds.size - 1).coerceAtLeast(0),
-        payment = payment,
-    )
-}
-
-private val txDateLocale = Locale("pt", "BR")
-
-/** Short row date: "Hoje" / "Ontem" / "04 jun". */
-private fun formatTxDate(date: LocalDate): String {
-    val today = LocalDate.now()
-    if (date == today) return "Hoje"
-    if (date == today.minusDays(1)) return "Ontem"
-    val month = date.month.getDisplayName(TextStyle.SHORT, txDateLocale).trimEnd('.').lowercase(txDateLocale)
-    return "%02d %s".format(date.dayOfMonth, month)
-}
 
 private val TX_CARD_SHAPE = RoundedCornerShape(16.dp)
 
 @Composable
 private fun TxCard(
     item: HistoryItem,
-    meta: TxMeta,
+    meta: LedgerMeta,
     onClick: () -> Unit,
     onToggleStatus: () -> Unit,
     onTogglePin: () -> Unit,
@@ -790,7 +762,7 @@ private fun PinCell(pinned: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TxMetaRow(meta: TxMeta) {
+private fun TxMetaRow(meta: LedgerMeta) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -803,7 +775,7 @@ private fun TxMetaRow(meta: TxMeta) {
         )
         meta.tagName?.let { tag ->
             Text(text = "·", style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.text3)
-            TagChip(name = tag, color = meta.tagColor)
+            TagPill(name = tag, color = meta.tagColor)
             if (meta.extraTags > 0) {
                 Text(
                     text = "+${meta.extraTags}",
@@ -812,46 +784,7 @@ private fun TxMetaRow(meta: TxMeta) {
                 )
             }
         }
-        if (meta.payment.isNotBlank()) {
-            Text(text = "·", style = PocketTheme.typography.bodyXs, color = PocketTheme.colors.text3)
-            Text(
-                text = meta.payment,
-                style = PocketTheme.typography.bodyXs,
-                color = PocketTheme.colors.text3,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        }
-    }
-}
-
-@Composable
-private fun TagChip(name: String, color: Long?) {
-    Row(
-        modifier = Modifier
-            .clip(PocketTheme.shapes.pill)
-            .background(PocketTheme.colors.surface2, PocketTheme.shapes.pill)
-            .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.pill)
-            .padding(start = 7.dp, end = 9.dp, top = 2.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .background(
-                    color?.let { Color(it) } ?: PocketTheme.colors.text3,
-                    PocketTheme.shapes.pill,
-                ),
-        )
-        Text(
-            text = name,
-            style = PocketTheme.typography.bodyXs,
-            color = PocketTheme.colors.text2,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        MetaPaymentSlot(payment = meta.payment)
     }
 }
 

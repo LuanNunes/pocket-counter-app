@@ -1,5 +1,12 @@
 package com.resolveprogramming.pocketcounter.ui.home.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,6 +30,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.NotificationsOff
@@ -32,6 +42,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,9 +56,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,12 +71,16 @@ import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.AutoSizeText
+import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
+import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
+import com.resolveprogramming.pocketcounter.ui.components.MetaPaymentSlot
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
+import com.resolveprogramming.pocketcounter.ui.components.TagPill
+import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
-import com.resolveprogramming.pocketcounter.ui.wizard.label
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.util.Locale
@@ -572,59 +597,232 @@ fun FlashEffect(flashId: String?, flashNonce: Int, reducedMotion: Boolean, onCon
 }
 
 /**
- * A pending notification the classifier recognized confidently enough to confirm in one tap. Shows the
- * pre-filled title/amount + a payment/tag preview, a primary "Confirmar" (per-card spinner while its
- * confirm is in flight) and a "Revisar" fallback that opens the wizard.
+ * View cap only. Never align HomeViewModel.CONFIRM_READY_CLASSIFY_CAP to it: that one shrinks
+ * `ready`, and pendingReviewCount = pending - ready, so the "para revisar" banner would inflate.
+ */
+private const val CONFIRM_READY_VISIBLE_CAP = 3
+
+/**
+ * The "Reconhecidos automaticamente" stack: one tap writes a card to the ledger, un-undoably, so
+ * each shows valor, nome, data and tag. No spec surface — the handoff has AUTO notifications never
+ * surfacing at all.
+ */
+@Composable
+fun ConfirmReadySection(
+    items: List<ConfirmReadyItem>,
+    confirmingIds: Set<String>,
+    lookups: LedgerLookups,
+    onConfirm: (ConfirmReadyItem) -> Unit,
+    onReview: (ConfirmReadyItem) -> Unit,
+    onIgnore: (ConfirmReadyItem) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val hidden = items.drop(CONFIRM_READY_VISIBLE_CAP)
+    val reducedMotion = LocalReducedMotion.current
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp),
+                tint = PocketTheme.colors.accent,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "Reconhecidos automaticamente",
+                style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                color = PocketTheme.colors.accent,
+            )
+            Spacer(Modifier.width(6.dp))
+            // The total, not the visible count — collapsing the stack must not look like the
+            // classifier recognized fewer things than it did.
+            Text(
+                text = "· ${items.size}",
+                style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                color = PocketTheme.colors.text3,
+            )
+        }
+
+        items.take(CONFIRM_READY_VISIBLE_CAP).forEach { item ->
+            key(item.notificationId) {
+                ConfirmReadyRow(item, confirmingIds, lookups, onConfirm, onReview, onIgnore)
+            }
+        }
+
+        if (hidden.isNotEmpty()) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = EnterTransition.None.takeIf { reducedMotion } ?: (expandVertically() + fadeIn()),
+                exit = ExitTransition.None.takeIf { reducedMotion } ?: (shrinkVertically() + fadeOut()),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    hidden.forEach { item ->
+                        key(item.notificationId) {
+                            ConfirmReadyRow(item, confirmingIds, lookups, onConfirm, onReview, onIgnore)
+                        }
+                    }
+                }
+            }
+            ConfirmReadyExpander(
+                hiddenCount = hidden.size,
+                expanded = expanded,
+                onToggle = { expanded = !expanded },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConfirmReadyRow(
+    item: ConfirmReadyItem,
+    confirmingIds: Set<String>,
+    lookups: LedgerLookups,
+    onConfirm: (ConfirmReadyItem) -> Unit,
+    onReview: (ConfirmReadyItem) -> Unit,
+    onIgnore: (ConfirmReadyItem) -> Unit,
+) {
+    // Memoized: the builder allocates a NumberFormat and reads LocalDate.now() through its default
+    // argument, so calling it straight from the composable body would make both happen on every
+    // recomposition — and ConfirmReadySection recomposes on each confirmingIds change.
+    val presentation = remember(item, lookups) {
+        confirmReadyPresentation(item, lookups)
+    }
+    ConfirmReadyCard(
+        item = item,
+        presentation = presentation,
+        isConfirming = item.notificationId in confirmingIds,
+        onConfirm = { onConfirm(item) },
+        onReview = { onReview(item) },
+        onIgnore = { onIgnore(item) },
+    )
+}
+
+@Composable
+private fun ConfirmReadyExpander(hiddenCount: Int, expanded: Boolean, onToggle: () -> Unit) {
+    val label = "Ver menos".takeIf { expanded } ?: "Ver mais $hiddenCount reconhecidos"
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(PocketTheme.shapes.chip)
+            .clickable(onClick = onToggle)
+            .semantics {
+                role = Role.Button
+                stateDescription = "Expandido".takeIf { expanded } ?: "Recolhido"
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = label,
+            style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
+            color = PocketTheme.colors.accent,
+        )
+        Spacer(Modifier.width(4.dp))
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowUp.takeIf { expanded } ?: Icons.Filled.KeyboardArrowDown,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = PocketTheme.colors.accent,
+        )
+    }
+}
+
+/**
+ * Render-only; everything is resolved in [presentation]. The body must stay non-`clickable` and
+ * visually distinct from the Transações row: that row navigates, this one writes.
  */
 @Composable
 fun ConfirmReadyCard(
     item: ConfirmReadyItem,
+    presentation: ConfirmReadyPresentation,
     isConfirming: Boolean,
-    tagName: (String) -> String?,
-    cardName: (String) -> String?,
     onConfirm: () -> Unit,
     onReview: () -> Unit,
     onIgnore: () -> Unit,
 ) {
     val colors = PocketTheme.colors
-    val draft = item.draft
-    // A title must read as a name. A stored merchant with no letters ("29" from an old, pre-fix parse)
-    // is junk — fall back to the recognized tag, then a neutral label, so the card never shows nonsense.
-    val title = listOfNotNull(draft.name, item.notification.parsed.merchantRaw)
-        .firstOrNull { text -> text.isNotBlank() && text.any(Char::isLetter) }
-        ?: draft.tagIds.firstNotNullOfOrNull(tagName)
-        ?: "Lançamento"
-    val meta = buildList {
-        draft.paymentMethod?.let { method ->
-            val card = draft.cardId?.let(cardName)
-            add(if (card != null) "${method.label()} · $card" else method.label())
-        }
-        draft.tagIds.mapNotNull(tagName).takeIf { it.isNotEmpty() }?.let { add(it.joinToString(", ")) }
-    }.joinToString("  ·  ")
-
-    PocketCard {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    PocketCard(
+        elevated = true,
+        // spacing.pad, not a literal 16.dp: it tracks the user's density preference
+        // (COMPACT 12 / COMFORTABLE 16 / COZY 20) and hard-coding would opt this card out.
+        contentPadding = PaddingValues(
+            horizontal = PocketTheme.spacing.pad,
+            vertical = PocketTheme.spacing.gap,
+        ),
+    ) {
+        Column {
+            // Merged on the info block ONLY. Merging the whole card would swallow Confirmar,
+            // Revisar and Ignorar into a single unactionable node.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = presentation.contentDescription
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = presentation.title,
+                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    presentation.signedAmount?.let { amount ->
+                        Spacer(Modifier.width(8.dp))
+                        AmountText(
+                            amount = amount,
+                            type = item.draft.type,
+                            showSign = true,
+                            style = PocketTheme.typography.monoBody.copy(
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                        )
+                    }
+                }
+                Spacer(Modifier.size(3.dp))
+                ConfirmReadyMetaRow(
+                    meta = presentation.meta,
+                    installmentsLabel = presentation.installmentsLabel,
+                )
+            }
+            Spacer(Modifier.size(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
-                    Icon(
-                        imageVector = Icons.Filled.AutoAwesome,
-                        contentDescription = null,
-                        modifier = Modifier.size(13.dp),
-                        tint = colors.accent,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "Reconhecido automaticamente",
-                        style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.accent,
-                    )
-                }
-                // Top-right dismiss: the learned "skip this suggestion" affordance. 48dp target
-                // (IconButton default), muted so it stays subordinate to Confirmar/Revisar.
+                // heightIn from the CALLER: PocketButton's SMALL sets heightIn(min = 36.dp), and a
+                // size modifier coerces into the incoming constraints, so 36 inside [48, ∞) yields
+                // 48. Raising it inside PocketButton would silently resize Transações too.
+                PocketButton(
+                    text = presentation.confirmLabel.takeUnless { isConfirming } ?: "Confirmando…",
+                    onClick = onConfirm,
+                    variant = PocketButtonVariant.PRIMARY,
+                    size = PocketButtonSize.SMALL,
+                    enabled = !isConfirming,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp),
+                    leading = confirmSpinner(colors.accentInk).takeIf { isConfirming },
+                )
+                PocketButton(
+                    text = "Revisar",
+                    onClick = onReview,
+                    variant = PocketButtonVariant.SOFT,
+                    size = PocketButtonSize.SMALL,
+                    enabled = !isConfirming,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                // The learned "skip this suggestion" affordance, muted so it stays subordinate to
+                // Confirmar/Revisar. 48dp target comes from IconButton.
                 IconButton(
                     onClick = onIgnore,
                     enabled = !isConfirming,
@@ -633,63 +831,58 @@ fun ConfirmReadyCard(
                         imageVector = Icons.Filled.Close,
                         contentDescription = "Ignorar sugestão",
                         modifier = Modifier.size(18.dp),
-                        tint = colors.text3.copy(alpha = if (isConfirming) 0.4f else 1f),
+                        tint = colors.text3.copy(alpha = 0.4f.takeIf { isConfirming } ?: 1f),
                     )
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        }
+    }
+}
+
+private fun confirmSpinner(color: Color): @Composable () -> Unit = {
+    CircularProgressIndicator(
+        modifier = Modifier.size(14.dp),
+        strokeWidth = 2.dp,
+        color = color,
+    )
+}
+
+/**
+ * `14 jun · ● Farmácia · Crédito Nubank` on one line that must never wrap. Drop priority comes from
+ * declaration order: the date is unweighted, the pill ellipsizes, the payment goes first.
+ */
+@Composable
+private fun ConfirmReadyMetaRow(meta: LedgerMeta, installmentsLabel: String?) {
+    val colors = PocketTheme.colors
+    val bodyXs = PocketTheme.typography.bodyXs
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Text(text = meta.date, style = bodyXs, color = colors.text3, maxLines = 1)
+        installmentsLabel?.let {
+            Text(
+                text = it,
+                style = bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.text3,
+                maxLines = 1,
+            )
+        }
+        Text(text = "·", style = bodyXs, color = colors.text3)
+        meta.tagName?.let { tag ->
+            TagPill(name = tag, color = meta.tagColor)
+            if (meta.extraTags > 0) {
                 Text(
-                    text = title,
-                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.text,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                draft.amount?.let { amount ->
-                    Spacer(Modifier.width(12.dp))
-                    AmountText(
-                        amount = amount,
-                        type = draft.type,
-                        showSign = true,
-                        style = PocketTheme.typography.monoBody,
-                    )
-                }
-            }
-            if (meta.isNotEmpty()) {
-                Text(text = meta, style = PocketTheme.typography.bodyXs, color = colors.text3)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PocketButton(
-                    text = "Confirmar".takeUnless { isConfirming } ?: "Confirmando…",
-                    onClick = onConfirm,
-                    variant = PocketButtonVariant.PRIMARY,
-                    size = PocketButtonSize.SMALL,
-                    enabled = !isConfirming,
-                    modifier = Modifier.weight(1f),
-                    leading = if (isConfirming) {
-                        {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp,
-                                color = colors.accentInk,
-                            )
-                        }
-                    } else {
-                        null
-                    },
-                )
-                PocketButton(
-                    text = "Revisar",
-                    onClick = onReview,
-                    variant = PocketButtonVariant.SOFT,
-                    size = PocketButtonSize.SMALL,
-                    enabled = !isConfirming,
+                    text = "+${meta.extraTags}",
+                    style = bodyXs.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.text3,
                 )
             }
         }
+        // Plain text, never a TagPill: a pill with a grey dot reads as a real category.
+        if (meta.tagName == null) {
+            Text(text = "sem categoria", style = bodyXs, color = colors.text3, maxLines = 1)
+        }
+        MetaPaymentSlot(payment = meta.payment)
     }
 }

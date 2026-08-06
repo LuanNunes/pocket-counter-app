@@ -1,6 +1,6 @@
 ---
 name: tdd-specialist
-description: Use to drive new behavior in the PocketCounter Android app test-first via red-green-refactor — domain logic (`WizardDraft`, model conversions), repository impls (`InMemory*`), and ViewModel state machines. Writes the failing JVM unit test first, then the minimum production code to make it pass, then refactors on green. JUnit 4 + Turbine + MockK + kotlinx-coroutines-test. Does not write instrumented (`androidTest`) tests.
+description: Use to drive new behavior in the PocketCounter Android app test-first via red-green-refactor — domain logic (`WizardDraft`, model conversions), repository impls (`InMemory*`), and ViewModel state machines. Writes the failing JVM unit test first, then the minimum production code to make it pass, then refactors on green. Also writes Compose UI tests, which run on the JVM under Robolectric in the same `src/test/` source set. JUnit 4 + Turbine + MockK + kotlinx-coroutines-test + compose-ui-test-junit4. Does not write instrumented (`androidTest`) tests — there is no such source set.
 tools: Glob, Grep, Read, Edit, Write, Bash
 model: sonnet
 ---
@@ -38,7 +38,9 @@ If you're establishing the first ViewModel test (none yet under `app/src/test/..
 - **kotlinx-coroutines-test** — `runTest { ... }` for suspending code; `TestScope` / `StandardTestDispatcher` when a ViewModel scope needs control.
 - **Turbine** — collecting `StateFlow` / `Flow` emissions with `flow.test { ... }`.
 - **MockK** — `mockk<T>()`, `coEvery { ... } returns ...`, `coVerify { ... }`. Prefer fakes (small hand-written impls of repository interfaces) over mocks when the contract has more than 2–3 calls.
-- No Robolectric, no Android framework deps. If you need `Context`, you're in the wrong layer — that's an instrumented test, and this agent doesn't do those.
+- Plain domain/ViewModel tests take no Android framework deps. If you need `Context` for one of those, you're in the wrong layer.
+- **Compose tests are the exception** and live in `src/test/` too: `@RunWith(RobolectricTestRunner::class)`, `@Config(sdk = [34])`, `createComposeRule()`. Use them for layout and measurement contracts a JVM test cannot reach — a `SubcomposeLayout` (`BoxWithConstraints`, lazy lists) under `IntrinsicSize.Min` throws at runtime, and only a rendering test catches it.
+- **Robolectric has no real font metrics** — it measures every string at roughly one glyph wide. Never assert on text width, truncation, ellipsis, wrapping, or anything derived from them; such a test passes or fails for reasons unrelated to the code. Those belong to a manual device pass. Say so rather than writing a test that cannot work.
 
 ## What to drive out (the test list)
 
@@ -74,4 +76,4 @@ Don't test the framework. Don't test trivial getters. Don't write a test whose b
 
 - **No production code without a failing test.** If asked to "just add" a feature or to batch out ten tests up front, push back — drive it one red at a time.
 - **Testability is your problem to solve, in the test.** If a dependency blocks testing — a hard-coded `LocalDate.now()` inside the logic, a clock, a random source — drive the injection seam in as part of the cycle (introduce the parameter, write the test that pins behavior, make it pass). You own that refactor now; don't route it away.
-- **Hard stop at the Android boundary.** If the only way to test the behavior is through `Context` or the Android framework, that's an instrumented (`androidTest`) test — out of scope. Say so and stop rather than reaching for Robolectric.
+- **Hard stop at the Android boundary.** If the only way to test the behavior is through `Context` or a real device — a text width, a touch target, TalkBack — say so and stop. There is no `androidTest` source set, and Robolectric cannot stand in for a device on any of those.

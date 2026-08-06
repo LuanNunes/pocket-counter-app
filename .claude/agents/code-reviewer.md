@@ -36,6 +36,8 @@ You are the code reviewer for **PocketCounter**. Your job is to catch what the i
 - `runBlocking` outside of `AuthInterceptor` / `TokenAuthenticator` (those are constrained by the OkHttp API; elsewhere it's a bug).
 - Suspending work launched off `viewModelScope` without a clear reason.
 - Compose recompositions reading state inside a non-restartable scope (e.g., `Modifier.drawBehind { state.value }`).
+- **`SubcomposeLayout` under intrinsic measurement** — `BoxWithConstraints`, lazy lists or `TabRow` inside a parent using `IntrinsicSize.Min`/`Max` throws on the first frame. This shipped a crash once; treat it as a blocker when the parent chain reaches an intrinsic size.
+- New or changed Compose layout without a test under `src/test/` using `createComposeRule()`. Note Robolectric has no font metrics, so width/truncation assertions are meaningless — flag those as tests that cannot work.
 - Missing tests for new logic in `domain/` or `data/repository/` (these layers are unit-testable and the existing suite covers their peers).
 - Magic numbers / strings that belong in a constant, theme token, or string resource.
 - **Bloated comments.** Reject any of these:

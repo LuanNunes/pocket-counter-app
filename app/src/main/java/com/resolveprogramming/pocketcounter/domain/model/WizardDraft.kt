@@ -5,6 +5,10 @@ import java.time.LocalDate
 
 data class WizardDraft(
     val type: TransactionType? = null,
+    /**
+     * Sign is not guaranteed: only the wizard-save path runs [isStep2Valid]. Take the magnitude and
+     * apply the direction from [type].
+     */
     val amount: BigDecimal? = null,
     val date: LocalDate? = null,
     val statusPayment: PaymentStatus = PaymentStatus.PAID,

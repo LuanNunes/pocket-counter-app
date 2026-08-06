@@ -199,4 +199,42 @@ class RulePatternsTest {
 
         assertEquals(listOf("Uber"), result)
     }
+
+    // -------------------------------------------------------------------------
+    // sameSubject
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `sameSubject_isSymmetric`() {
+        assertEquals(RulePatterns.sameSubject("Uber", "UBER EATS"), RulePatterns.sameSubject("UBER EATS", "Uber"))
+        assertTrue(RulePatterns.sameSubject("Uber", "UBER EATS"))
+        assertTrue(RulePatterns.sameSubject("UBER EATS", "Uber"))
+    }
+
+    @Test
+    fun `sameSubject_returnsTrue_forWhitespaceVariants`() {
+        assertTrue(RulePatterns.sameSubject("DL *UberRides", "DL     *UberRides"))
+    }
+
+    @Test
+    fun `sameSubject_returnsTrue_whenOneNormalizedFormContainsTheOther`() {
+        assertTrue(RulePatterns.sameSubject("Uber", "UBER EATS"))
+    }
+
+    @Test
+    fun `sameSubject_returnsFalse_forAGatewayPrefixAgainstAnUnrelatedMerchant`() {
+        assertFalse(RulePatterns.sameSubject("Ifd*", "PADARIA DE TESTE"))
+    }
+
+    @Test
+    fun `sameSubject_returnsFalse_forTwoOrdinaryUnrelatedStrings`() {
+        assertFalse(RulePatterns.sameSubject("COMPRA", "RAPPI"))
+    }
+
+    @Test
+    fun `sameSubject_returnsFalse_whenEitherSideIsBlank`() {
+        assertFalse(RulePatterns.sameSubject("", "Uber"))
+        assertFalse(RulePatterns.sameSubject("Uber", ""))
+        assertFalse(RulePatterns.sameSubject("   ", "   "))
+    }
 }
