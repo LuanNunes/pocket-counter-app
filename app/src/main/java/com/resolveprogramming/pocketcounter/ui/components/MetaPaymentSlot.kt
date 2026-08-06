@@ -1,27 +1,35 @@
 package com.resolveprogramming.pocketcounter.ui.components
 
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 /**
  * "· Crédito Nubank" — drawn whole or not at all. It is the drop-first element of a line that must
  * not wrap, and both ellipsis and `weight` leave a stub as narrow as the separator itself.
+ *
+ * Measured with `Modifier.layout`, not `BoxWithConstraints`: rows sit inside `IntrinsicSize.Min`,
+ * and asking a `SubcomposeLayout` for intrinsics throws.
  */
 @Composable
 fun RowScope.MetaPaymentSlot(payment: String) {
     if (payment.isBlank()) return
-    val text = "· $payment"
-    val style = PocketTheme.typography.bodyXs
-    val measurer = rememberTextMeasurer()
-    BoxWithConstraints(modifier = Modifier.weight(1f, fill = false)) {
-        val needed = measurer.measure(AnnotatedString(text), style, maxLines = 1).size.width
-        if (needed > constraints.maxWidth) return@BoxWithConstraints
-        Text(text = text, style = style, color = PocketTheme.colors.text3, maxLines = 1)
-    }
+    Text(
+        text = "· $payment",
+        style = PocketTheme.typography.bodyXs,
+        color = PocketTheme.colors.text3,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .weight(1f, fill = false)
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(Constraints())
+                if (placeable.width > constraints.maxWidth) return@layout layout(0, 0) {}
+                layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+            },
+    )
 }
