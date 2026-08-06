@@ -1,16 +1,21 @@
 package com.resolveprogramming.pocketcounter.domain.rules
 
 /**
- * Pattern algebra shared by [RuleTeachPlanner] and [RuleDedupePlanner], modelling the backend's
- * `matchType: "CONTAINS"` semantics: a rule fires when the notification text contains one of its
- * patterns.
+ * Pattern algebra shared by [RuleTeachPlanner], [RuleDedupePlanner] and [TeachPatternSanitizer],
+ * modelling the backend's `matchType: "CONTAINS"` semantics: a rule fires when the notification text
+ * contains one of its patterns.
  *
  * Two comparisons live here on purpose, and the difference is about consequences, not taste:
- *  - [normalize] is loose (whitespace runs collapsed) and backs [matches], which only picks which
- *    rule a teach edits. Being loose there can at worst target a rule the user didn't expect.
+ *  - [normalize] is loose (whitespace runs collapsed) and backs [matches] and [sameSubject], which
+ *    together only pick which rule a teach edits. Being loose there can at worst target a rule the
+ *    user didn't expect.
  *  - [foldCase] is strict (whitespace preserved verbatim) and backs [covers]/[compact], which
  *    authorise DELETING a stored pattern. Being loose there drops patterns whose reach is not
  *    actually subsumed, and a dropped pattern can stop a rule from firing at all.
+ *
+ * [isGatewayMarker] is the odd one out: a lexical classification rather than a comparison. It gates
+ * [sameSubject] and backs [TeachPatternSanitizer], and neither the loose nor the strict rationale
+ * applies to it.
  */
 object RulePatterns {
 
@@ -20,8 +25,8 @@ object RulePatterns {
      * Loose comparison: trimmed, lowercased, whitespace runs collapsed to one space.
      *
      * Collapsing whitespace assumes the backend's CONTAINS is whitespace-insensitive, which we can't
-     * verify from here. Only [matches] may rely on that assumption, because a wrong answer there
-     * changes which rule is taught, never what is stored.
+     * verify from here. Only [matches] and [sameSubject] may rely on that assumption, because a wrong
+     * answer there changes which rule is taught, never what is stored.
      */
     fun normalize(raw: String): String = raw.trim().lowercase().replace(WHITESPACE_RUN, " ")
 
@@ -37,6 +42,50 @@ object RulePatterns {
     fun matches(pattern: String, text: String): Boolean {
         if (pattern.isBlank()) return false
         return normalize(text).contains(normalize(pattern))
+    }
+
+    /**
+     * True when [raw] contains a '*' and no letter follows its LAST occurrence.
+     *
+     * That is the whole predicate — deliberately position-independent, not anchored to a prefix. It
+     * catches the bare payment-gateway markers the corpus carries ("Ifd*", "Dl *", "Rp3bank*"), which
+     * name the acquirer that routed the charge rather than the merchant that took the money, and are
+     * therefore the same "subject" as every merchant behind them. Anchoring it to a prefix would miss
+     * "Rp3bank*" exactly the way `BrNotificationParser.ACQUIRER_PREFIX_REGEX` does — see [sameSubject].
+     *
+     * It also fires on strings that merely look like that: a merchant ending in '*', or an acquirer
+     * descriptor with a numeric merchant id ("PAG*123456"). Both over-rejections are inert — the
+     * candidate is dropped and at worst no rule is learned, or the rule stops being a teach target and
+     * a fresh one is created instead. The false negative it prevents is destructive re-tagging, so the
+     * asymmetry points the right way on purpose.
+     */
+    fun isGatewayMarker(raw: String): Boolean {
+        val lastStar = raw.lastIndexOf('*')
+        return lastStar >= 0 && raw.drop(lastStar + 1).none { it.isLetter() }
+    }
+
+    /**
+     * True when [a] and [b] name the same thing: either normalized form contains the other, and
+     * neither is a bare gateway marker. Blank on either side is never a subject.
+     *
+     * Built on the loose [normalize], like [matches] and unlike [covers]: this only narrows which rule
+     * a teach targets, and "DL *UberRides" / "DL     *UberRides" have to read as one subject even
+     * though neither is a strict substring of the other.
+     *
+     * The [isGatewayMarker] guard is what separates a merchant from the acquirer in front of it, and it
+     * has to live HERE rather than rely on the taught pattern arriving pre-stripped. Containment alone
+     * says "Dl *" and "Dl *UberRides" are one subject — a gateway prefix is a literal prefix of every
+     * merchant behind it — so a pattern that kept its prefix would re-elect the gateway's rule and
+     * re-tag every merchant it ever matched. `BrNotificationParser` strips only SOME of these
+     * (alphanumerics glued directly to the star, six or fewer), leaving "Dl *", "Mp *" and "Rp3bank*"
+     * intact, and correctness of the rule set must not hinge on that regex's exact bounds.
+     */
+    fun sameSubject(a: String, b: String): Boolean {
+        if (a.isBlank() || b.isBlank()) return false
+        if (isGatewayMarker(a) || isGatewayMarker(b)) return false
+        val left = normalize(a)
+        val right = normalize(b)
+        return left.contains(right) || right.contains(left)
     }
 
     /**

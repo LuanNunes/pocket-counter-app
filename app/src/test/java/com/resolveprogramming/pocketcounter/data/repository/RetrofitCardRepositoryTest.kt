@@ -672,6 +672,28 @@ class RetrofitCardRepositoryTest {
         }
     }
 
+    @Test
+    fun `classifyPurchase requests but does not create a rule when the item name sanitizes to a bare gateway marker`() = runTest {
+        // "Ifd*" is a bare gateway marker: TeachPatternSanitizer.clean rejects it (no non-broadening
+        // stripped form exists), so the early-return branch must fire before the rule POST.
+        val categorized = Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "cat1")
+        coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
+            TransactionItemDto(id = "it1", idTransaction = "inv1", name = "Ifd*", amount = BigDecimal("50.00")),
+        )
+        coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
+
+        val result = repo.classifyPurchase(
+            invoiceId = "inv1",
+            itemId = "it1",
+            tags = listOf(categorized),
+            learnRule = true,
+            card = card,
+        )
+
+        assertEquals(Result.success(ClassifyOutcome(ruleRequested = true, ruleCreated = false)), result)
+        coVerify(exactly = 0) { classificationRuleApi.create(any()) }
+    }
+
     // -------------------------------------------------------------------------
     // addCard
     // -------------------------------------------------------------------------

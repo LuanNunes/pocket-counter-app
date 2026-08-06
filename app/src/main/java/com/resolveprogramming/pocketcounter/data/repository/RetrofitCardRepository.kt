@@ -16,6 +16,7 @@ import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -145,11 +146,16 @@ class RetrofitCardRepository @Inject constructor(
             return@runCatching ClassifyOutcome(ruleRequested = true, ruleCreated = false)
         }
 
+        // Key on the merchant, not the date-stamped item name — a pattern like
+        // "<merchant> · 2026-05-28" would never CONTAINS-match a future purchase.
+        val (cleanName, _) = splitTrailingDate(existing.name)
+        // A bare gateway marker ("Ifd*") as an item name would mint a rule matching every merchant
+        // behind that acquirer, and being the oldest match it would then win every classification.
+        // This is the second teach entry point; the wizard's goes through the same sanitizer.
+        val pattern = TeachPatternSanitizer.clean(cleanName.takeIf { it.isNotBlank() } ?: existing.name)
+            ?: return@runCatching ClassifyOutcome(ruleRequested = true, ruleCreated = false)
+
         val ruleCreated = runCatching {
-            // Key on the merchant, not the date-stamped item name — a pattern like
-            // "<merchant> · 2026-05-28" would never CONTAINS-match a future purchase.
-            val (cleanName, _) = splitTrailingDate(existing.name)
-            val pattern = cleanName.takeIf { it.isNotBlank() } ?: existing.name
             val dto = ClassificationRuleDto(
                 patterns = listOf(pattern),
                 matchType = "CONTAINS",

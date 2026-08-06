@@ -125,16 +125,161 @@ class RuleTeachPlannerTest {
     }
 
     // -------------------------------------------------------------------------
-    // Update: a SUGGEST rule whose patterns match the notification text — pattern appended
+    // Update: a SUGGEST rule whose patterns match the notification text — pattern compacted
     // -------------------------------------------------------------------------
 
     @Test
-    fun `plan_ruleMatchingNotification_returnsUpdate_withPatternAppended`() {
-        val existingRule = makeRule(id = "rule-1", patterns = listOf("IFOOD"))
+    fun `plan_ruleMatchingNotification_returnsUpdate_withPatternCompacted`() {
+        // "IFOOD CLUB" is subject-related to "IFOOD" (Fix 1's targeting requirement), but also
+        // covered by it, so compact drops the taught pattern instead of appending it — "pattern
+        // appended" is no longer reachable for a genuinely new merchant, only compaction is.
+        val existingRule = makeRule(id = "rule-1", patterns = listOf("IFOOD"), tags = listOf(makeTag(id = "tag-1")))
 
         val result = RuleTeachPlanner.plan(
             existing = listOf(existingRule),
-            notificationText = "Compra IFOOD aprovada R$ 49,90",
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
+            type = TransactionType.EXPENSE,
+            paymentMethod = null,
+            cardId = null,
+            tags = listOf(makeTag(id = "tag-2")),
+        )
+
+        assertTrue(result is TeachPlan.Update)
+        val updated = (result as TeachPlan.Update).rule
+        assertEquals("rule-1", updated.id)
+        assertEquals(listOf("IFOOD"), updated.patterns)
+    }
+
+    @Test
+    fun `plan_picksOldestMatchingRule_whenSeveralMatchTheNotification`() {
+        // Both rules are subject-related to the taught pattern; among those ELIGIBLE targets, list
+        // order (backend creation order, oldest first) decides — not text-match strength.
+        val olderRule = makeRule(id = "rule-oldest", patterns = listOf("IFOOD"), tags = listOf(makeTag(id = "tag-1")))
+        val newerRule = makeRule(id = "rule-newer", patterns = listOf("IFOOD CLUB"), tags = listOf(makeTag(id = "tag-1")))
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(olderRule, newerRule),
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
+            type = TransactionType.EXPENSE,
+            paymentMethod = null,
+            cardId = null,
+            tags = listOf(makeTag(id = "tag-2")),
+        )
+
+        val updated = (result as TeachPlan.Update).rule
+        assertEquals("rule-oldest", updated.id)
+        assertEquals(listOf("IFOOD"), updated.patterns)
+    }
+
+    // -------------------------------------------------------------------------
+    // Fix 1: a gateway-prefix pattern matching the notification TEXT is not enough — the matched
+    // pattern must also be the same SUBJECT as the taught pattern. Otherwise teaching an unrelated
+    // merchant behind the same payment gateway hijacks the gateway's rule and re-tags every merchant
+    // that rule has ever matched.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `plan_gatewayPrefixMatchesNotificationText_butSubjectDiffers_returnsCreate_notUpdate`() {
+        val ifoodRule = makeRule(id = "rule-ifood", patterns = listOf("Ifd*", "Ifood"))
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(ifoodRule),
+            notificationText = "Compra IFD*PADARIA DE TESTE aprovada R$ 49,90",
+            pattern = "PADARIA DE TESTE",
+            type = TransactionType.EXPENSE,
+            paymentMethod = null,
+            cardId = null,
+            tags = listOf(makeTag()),
+        )
+
+        assertTrue(result is TeachPlan.Create)
+        val created = (result as TeachPlan.Create).rule
+        assertEquals(listOf("PADARIA DE TESTE"), created.patterns)
+    }
+
+    @Test
+    fun `plan_taughtPatternStillCarriesTheGatewayPrefix_returnsCreate_notUpdate`() {
+        // The taught pattern is NOT pre-stripped here, and must not need to be. BrNotificationParser's
+        // ACQUIRER_PREFIX_REGEX (^[\p{L}\p{N}]{1,6}\*) only strips alphanumerics glued straight to the
+        // star, so "Mp *" survives into the taught pattern. Plain containment would then call "Mp *"
+        // and "Mp *SHUKAI SUSHI" the same subject — a gateway prefix is a literal prefix of every
+        // merchant behind it — re-electing the gateway rule, and compact would drop the narrow pattern
+        // so ONLY the tags change: the production symptom, bit for bit.
+        val gatewayRule = makeRule(id = "rule-gateway", patterns = listOf("Mp *"))
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(gatewayRule),
+            notificationText = "Compra Mp *SHUKAI SUSHI aprovada R$ 49,90",
+            pattern = "Mp *SHUKAI SUSHI",
+            type = TransactionType.EXPENSE,
+            paymentMethod = null,
+            cardId = null,
+            tags = listOf(makeTag()),
+        )
+
+        assertTrue(result is TeachPlan.Create)
+        val created = (result as TeachPlan.Create).rule
+        assertEquals(listOf("Mp *SHUKAI SUSHI"), created.patterns)
+    }
+
+    @Test
+    fun `plan_conjunctionMustBeEvaluatedOnTheSamePattern_notAsTwoIndependentAnyChecks`() {
+        // Regression pin: "Ifd*" matches the notification TEXT, and "PADARIA" (a different pattern on
+        // the SAME rule) is subject-related to the taught pattern — but neither condition holds on the
+        // SAME pattern. A wrongly split predicate,
+        // `rule.patterns.any { matches } && rule.patterns.any { sameSubject }`, would treat those two
+        // independent truths as sufficient and re-elect this rule, reopening the hijack this fix closes.
+        val rule = makeRule(id = "rule-mixed", patterns = listOf("Ifd*", "PADARIA"))
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(rule),
+            notificationText = "Compra IFD*OUTRA LOJA aprovada R$ 49,90",
+            pattern = "PADARIA DE TESTE",
+            type = TransactionType.EXPENSE,
+            paymentMethod = null,
+            cardId = null,
+            tags = listOf(makeTag()),
+        )
+
+        assertTrue(result is TeachPlan.Create)
+    }
+
+    @Test
+    fun `plan_oldestMatchingRuleIsSubjectUnrelated_newerSubjectRelatedRuleIsTargetedInstead`() {
+        val olderRule = makeRule(id = "rule-oldest", patterns = listOf("Ifd*"))
+        val newerRule = makeRule(id = "rule-newer", patterns = listOf("PADARIA"))
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(olderRule, newerRule),
+            notificationText = "Compra IFD*PADARIA DE TESTE aprovada R$ 49,90",
+            pattern = "PADARIA DE TESTE",
+            type = TransactionType.EXPENSE,
+            paymentMethod = null,
+            cardId = null,
+            tags = listOf(makeTag(id = "tag-2")),
+        )
+
+        assertTrue(result is TeachPlan.Update)
+        val updated = (result as TeachPlan.Update).rule
+        assertEquals("rule-newer", updated.id)
+        // "PADARIA" already covers the taught pattern, so compact drops it: an Update keeps the
+        // broadest pattern of the subject rather than growing the list.
+        assertEquals(listOf("PADARIA"), updated.patterns)
+    }
+
+    @Test
+    fun `plan_ordinaryPatternMatchesNotificationText_butSubjectDiffers_returnsCreate_notUpdate`() {
+        // Non-gateway form of the hijack this branch fixes: "COMPRA" is a common word, not a bare
+        // gateway marker, so isGatewayMarker never fires here — only the containment leg of
+        // sameSubject stands between an ordinary common-word pattern and absorbing every teach behind
+        // it. The rule's pattern DOES match the notification text; that must not be enough on its own.
+        val commonWordRule = makeRule(id = "rule-compra", patterns = listOf("COMPRA"))
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(commonWordRule),
+            notificationText = "Compra RAPPI aprovada R$ 49,90",
             pattern = "RAPPI",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
@@ -142,30 +287,9 @@ class RuleTeachPlannerTest {
             tags = listOf(makeTag()),
         )
 
-        assertTrue(result is TeachPlan.Update)
-        val updated = (result as TeachPlan.Update).rule
-        assertEquals("rule-1", updated.id)
-        assertEquals(listOf("IFOOD", "RAPPI"), updated.patterns)
-    }
-
-    @Test
-    fun `plan_picksOldestMatchingRule_whenSeveralMatchTheNotification`() {
-        val olderRule = makeRule(id = "rule-oldest", patterns = listOf("IFOOD"))
-        val newerRule = makeRule(id = "rule-newer", patterns = listOf("COMPRA"))
-
-        val result = RuleTeachPlanner.plan(
-            existing = listOf(olderRule, newerRule),
-            notificationText = "Compra IFOOD aprovada R$ 49,90",
-            pattern = "UBER EATS",
-            type = TransactionType.EXPENSE,
-            paymentMethod = null,
-            cardId = null,
-            tags = listOf(makeTag()),
-        )
-
-        val updated = (result as TeachPlan.Update).rule
-        assertEquals("rule-oldest", updated.id)
-        assertEquals(listOf("IFOOD", "UBER EATS"), updated.patterns)
+        assertTrue(result is TeachPlan.Create)
+        val created = (result as TeachPlan.Create).rule
+        assertEquals(listOf("RAPPI"), created.patterns)
     }
 
     // -------------------------------------------------------------------------
@@ -183,8 +307,8 @@ class RuleTeachPlannerTest {
 
         val result = RuleTeachPlanner.plan(
             existing = listOf(existingRule),
-            notificationText = "Compra IFOOD aprovada R$ 49,90",
-            pattern = "RAPPI",
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = PaymentMethod.CREDIT,
             cardId = "card-y",
@@ -207,12 +331,12 @@ class RuleTeachPlannerTest {
 
         val result = RuleTeachPlanner.plan(
             existing = listOf(existingRule),
-            notificationText = "Compra IFOOD aprovada R$ 49,90",
-            pattern = "RAPPI",
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
             cardId = null,
-            tags = listOf(makeTag()),
+            tags = listOf(makeTag(id = "tag-2")),
         )
 
         val updated = (result as TeachPlan.Update).rule
@@ -246,16 +370,19 @@ class RuleTeachPlannerTest {
 
     @Test
     fun `an IGNORE rule matching the notification is not a teach target`() {
+        // Subject-related to the taught pattern (IFOOD / IFOOD CLUB) on purpose: with unrelated
+        // filler data (SPAM/IFOOD) this would return Create for the wrong reason (subject mismatch)
+        // and prove nothing about the ACTION filter in isolation.
         val ignoreRule = makeRule(
             id = "ignore-rule",
-            patterns = listOf("SPAM"),
+            patterns = listOf("IFOOD"),
             action = RuleAction.IGNORE,
         )
 
         val result = RuleTeachPlanner.plan(
             existing = listOf(ignoreRule),
-            notificationText = "Compra SPAM aprovada R$ 49,90",
-            pattern = "IFOOD",
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
             cardId = null,
@@ -264,7 +391,7 @@ class RuleTeachPlannerTest {
 
         assertTrue(result is TeachPlan.Create)
         val created = (result as TeachPlan.Create).rule
-        assertEquals(listOf("IFOOD"), created.patterns)
+        assertEquals(listOf("IFOOD CLUB"), created.patterns)
     }
 
     // -------------------------------------------------------------------------
@@ -318,26 +445,28 @@ class RuleTeachPlannerTest {
 
         val result = RuleTeachPlanner.plan(
             existing = listOf(rule),
-            notificationText = "Compra IFOOD aprovada R$ 49,90",
-            pattern = "RAPPI",
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
             cardId = null,
-            tags = listOf(makeTag()),
+            tags = listOf(makeTag(id = "tag-2")),
         )
 
         assertEquals("rule-1", (result as TeachPlan.Update).rule.id)
     }
 
     // -------------------------------------------------------------------------
-    // Root cause 4 regression: a rule sharing the taught tag's context must NOT be chosen as
-    // target when its patterns don't actually match the notification text.
+    // Root cause 4 regression: a rule whose patterns don't actually match the notification text must
+    // NOT be chosen as target — even when it is subject-related to the taught pattern. Tightened to
+    // isolate the text-match leg: "Uber Eats" and "Uber" ARE the same subject (sameSubject would say
+    // true), so this can only pass because the text-match conjunct independently fails.
     // -------------------------------------------------------------------------
 
     @Test
     fun `plan_sameContext_butPatternsDontMatchNotification_returnsCreate_notUpdate`() {
         val foodTag = makeTag(id = "tag-food", idContext = "ctx-food")
-        val existingRule = makeRule(id = "rule-ifood", patterns = listOf("IFOOD"), tags = listOf(foodTag))
+        val existingRule = makeRule(id = "rule-uber-eats", patterns = listOf("Uber Eats"), tags = listOf(foodTag))
 
         val result = RuleTeachPlanner.plan(
             existing = listOf(existingRule),

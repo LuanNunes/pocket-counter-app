@@ -17,21 +17,33 @@ object RuleTeachPlanner {
     /**
      * Decides how teaching [pattern] out of [notificationText] should mutate the rule set.
      *
-     * The target is the FIRST active SUGGEST rule in [existing] whose patterns match
-     * [notificationText]. [existing] is assumed to be in backend creation order (oldest first), so
-     * that rule is by definition the one classify applied to this notification — classify runs
-     * exactly one rule and the oldest match wins — which makes it the only rule whose correction the
-     * user will actually see next time. Rules that merely share the taught tags' context are not
-     * targets: same category, different merchant. IGNORE and deactivated rules are never targets —
-     * classify skips them, so teaching one would silently do nothing. No match → a fresh rule.
+     * The target is the FIRST active SUGGEST rule in [existing] carrying a SINGLE pattern that both
+     * [RulePatterns.matches] [notificationText] and is the same subject ([RulePatterns.sameSubject])
+     * as [pattern]. Both conditions on the same pattern: the live corpus stores payment-gateway
+     * prefixes ("Ifd*", "Dl *", "Mp *") as patterns, which match every notification behind that
+     * gateway, so a text match alone would let any merchant billed through iFood absorb itself into
+     * the iFood rule and re-tag everything that rule ever applied to. Rules that merely share the
+     * taught tags' context are not targets either: same category, different merchant. IGNORE and
+     * deactivated rules are never targets — classify skips them, so teaching one would silently do
+     * nothing. No target → a fresh rule.
      *
-     * Known consequence of overwriting tags instead of unioning them: teaching a SUB-MERCHANT of an
-     * existing rule re-tags the whole merchant. Teaching "UBER EATS" while a rule matches "Uber"
-     * targets that rule, [RulePatterns.compact] drops the narrower new pattern as already covered,
-     * and the taught tags replace the old ones — so Uber rides start being tagged as Uber Eats. The
-     * escape hatch is deleting the rule in Regras and teaching the two merchants separately; a union
-     * would instead make a wrong tag impossible to remove through the wizard, which is how the rule
-     * set drifted in the first place.
+     * [existing] is assumed to be in backend creation order (oldest first), which orders the ELIGIBLE
+     * targets only; it no longer identifies the rule classify applied. When the rule classify applied
+     * matched via an unrelated pattern, teaching now creates a fresh rule that classify will NOT apply
+     * — the older gateway-prefix rule still wins the one-rule-per-notification race until it is
+     * narrowed or deleted in Regras. Those "born dead" rules are backend-owned (precedence lives
+     * there); the app must not strip patterns off another user's rule to make room, and there is
+     * deliberately no `TeachPlan.Split`.
+     *
+     * Known consequence of overwriting tags instead of unioning them: an Update can still re-tag more
+     * than the taught merchant. With the subject constraint it can only keep the broadest pattern of
+     * ONE subject — teaching "UBER EATS" onto a rule matching "Uber" targets it, [RulePatterns.compact]
+     * drops the narrower new pattern as already covered, and the taught tags replace the old ones, so
+     * Uber rides start being tagged as Uber Eats — or add a whitespace variant of a pattern already
+     * there. Genuinely new merchants now arrive via [TeachPlan.Create] instead. The escape hatch is
+     * still deleting the rule in Regras and teaching the two merchants separately; a union would
+     * instead make a wrong tag impossible to remove through the wizard, which is how the rule set
+     * drifted in the first place.
      */
     fun plan(
         existing: List<ClassificationRule>,
@@ -45,7 +57,9 @@ object RuleTeachPlanner {
         val target = existing.firstOrNull { rule ->
             rule.action == RuleAction.SUGGEST &&
                 rule.active != false &&
-                rule.patterns.any { RulePatterns.matches(it, notificationText) }
+                rule.patterns.any {
+                    RulePatterns.matches(it, notificationText) && RulePatterns.sameSubject(it, pattern)
+                }
         } ?: return TeachPlan.Create(
             ClassificationRule.learned(pattern, type, paymentMethod, cardId, tags),
         )

@@ -1041,6 +1041,36 @@ class WizardViewModelTest {
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
     }
 
+    @Test
+    fun `ignore with learn accepts a bare gateway prefix as pattern`() = runTest {
+        // The SUGGEST path rejects a bare gateway prefix ("Ifd*") because it would absorb every
+        // merchant behind the acquirer into one rule's tags. The IGNORE path must NOT: silencing a
+        // whole acquirer is the user's actual intent, and an IGNORE rule carries no tags and is never
+        // a teach target, so its breadth can't mis-tag anything.
+        val base = makeNotification(id = "notif-1")
+        val notification = base.copy(
+            text = "Compra IFD*APROVADO R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = "Ifd*"),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(learn = true, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { it.action == RuleAction.IGNORE && it.patterns == listOf("Ifd*") && it.tags.isEmpty() },
+            )
+        }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
     // -------------------------------------------------------------------------
     // updateName()
     // -------------------------------------------------------------------------
@@ -1572,7 +1602,10 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `learnRuleIfRequested_ruleMatchingNotificationExists_callsUpdate_withPatternAppended_notCreate`() = runTest {
+    fun `learnRuleIfRequested_ruleMatchingNotificationExists_callsUpdate_withPatternCompacted_notCreate`() = runTest {
+        // "RAPPI" and "RAPPI DELIVERY" are the same subject, so the taught pattern is now eligible to
+        // target this rule (Fix 1's sameSubject requirement) — this pins that an Update plan routes to
+        // repository.update, not create.
         val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI DELIVERY aprovada R$ 49,90")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -1581,11 +1614,13 @@ class WizardViewModelTest {
         val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
 
-        // Existing rule's pattern actually matches the notification text → TeachPlanner will Update
+        // Existing rule's pattern actually matches the notification text → TeachPlanner will Update.
+        // Tag id differs from the taught tag id, otherwise the plan collapses to NoOp and neither
+        // repository call fires.
         val existingRule = makeExistingRule(
             id = "rule-existing",
-            patterns = listOf("COMPRA"),
-            tags = listOf(categoryTag),
+            patterns = listOf("RAPPI"),
+            tags = listOf(makeCategoryTag(id = "tag-other", idContext = "ctx-food")),
         )
         coEvery { classificationRuleRepository.getAll() } returns Result.success(listOf(existingRule))
 
@@ -1607,11 +1642,48 @@ class WizardViewModelTest {
             classificationRuleRepository.update(
                 match { rule ->
                     rule.id == "rule-existing" &&
-                        rule.patterns == listOf("COMPRA", "RAPPI DELIVERY")
+                        rule.patterns == listOf("RAPPI")
                 },
             )
         }
         coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_draftMerchantIsAGatewayPrefix_fallsThroughToParsedMerchantRaw_callsCreate`() = runTest {
+        // draft.merchant ("IFD*") is a bare gateway prefix and gets rejected; learnPattern must fall
+        // through to notification.parsed.merchantRaw ("PADARIA DE TESTE") instead.
+        val base = makeNotification(id = "notif-1")
+        val notification = base.copy(
+            text = "Compra IFD*PADARIA DE TESTE aprovada R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = "PADARIA DE TESTE"),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+        vm.updateName("IFD*")
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { rule -> rule.patterns == listOf("PADARIA DE TESTE") },
+            )
+        }
     }
 
     @Test

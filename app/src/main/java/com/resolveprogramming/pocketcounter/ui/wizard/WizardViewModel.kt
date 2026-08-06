@@ -31,6 +31,7 @@ import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import com.resolveprogramming.pocketcounter.domain.notification.PaymentMethodResolver
 import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPlan
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -495,10 +496,14 @@ class WizardViewModel @Inject constructor(
      * Creates an IGNORE-action classification rule so the backend auto-ignores future notifications
      * matching the same merchant pattern. Carries only the pattern (no tags/type). Best-effort: a
      * missing pattern or a create failure is swallowed and the ignore still proceeds.
+     *
+     * Unlike the SUGGEST path this accepts a bare gateway marker ("Ifd*"): silencing a whole acquirer
+     * is a legitimate thing to ask for, and an IGNORE rule has no tags to overwrite and is never a
+     * teach target, so its breadth can't corrupt anyone's classification.
      */
     private suspend fun learnIgnoreRule() {
         val notification = _state.value.notification ?: return
-        val pattern = learnPattern(_state.value.draft, notification) ?: return
+        val pattern = learnPattern(_state.value.draft, notification, allowGatewayMarker = true) ?: return
         runCatching {
             classificationRuleRepository.create(
                 ClassificationRule(
@@ -533,9 +538,12 @@ class WizardViewModel @Inject constructor(
     /**
      * Merges or creates a learned classification rule when the user enabled "Aprender este padrão".
      *
-     * [RuleTeachPlanner] targets the rule classify actually applied to THIS notification (the oldest
-     * SUGGEST rule whose patterns match its text), so a correction edits what the user just saw go
-     * wrong instead of minting a near-duplicate beside it. The taught payment method and card ride
+     * [RuleTeachPlanner] targets the oldest active SUGGEST rule holding a pattern that both matches
+     * this notification's text AND names the same merchant as the taught pattern, so a correction
+     * edits the rule the user just saw go wrong instead of minting a near-duplicate beside it — or
+     * hijacking the payment gateway's rule when the two only share a "Ifd*"-style prefix. The rule the
+     * backend actually applied may therefore be left alone; see [RuleTeachPlanner.plan] for why that
+     * is preferred over rewriting someone else's rule. The taught payment method and card ride
      * along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing to derive them from,
      * and a merchant's method is a property of the merchant. Best-effort — failures are swallowed.
      */
@@ -594,17 +602,33 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * The CONTAINS pattern for a learned rule: the first merchant-ish candidate (edited merchant, then
-     * parsed merchant, then payment hint) that is actually a substring of the notification text — a
-     * pattern that doesn't appear in the message could never match a future notification.
+     * The CONTAINS pattern for a learned rule, SUGGEST or IGNORE alike.
+     *
+     * Only the candidate ORDER is decided here, because it is policy about draft fields: the merchant
+     * the user just edited beats the parsed one, which beats the payment hint. [TeachPatternSanitizer]
+     * owns the rest — trimming trailing punctuation, rejecting bare payment-gateway prefixes ("Ifd*",
+     * "Mp *") that would match every merchant behind the gateway unless [allowGatewayMarker], and
+     * requiring the survivor to occur in the notification text (case-insensitively, like the rest of
+     * `RulePatterns`) since a pattern absent from the message could never match a future one. The
+     * candidate is stored verbatim, not as the slice of text it matched.
+     *
+     * A rejected candidate falls through to the next one; null means no candidate qualified and the
+     * caller skips the teach entirely rather than storing a dangerous pattern.
      */
-    private fun learnPattern(draft: WizardDraft, notification: NotificationItem): String? =
-        listOfNotNull(
-            draft.merchant?.takeIf { it.isNotBlank() },
-            notification.parsed.merchantRaw?.takeIf { it.isNotBlank() },
-            notification.parsed.paymentHint?.takeIf { it.isNotBlank() },
-        ).map { it.trim() }
-            .firstOrNull { it.isNotBlank() && notification.text.contains(it, ignoreCase = true) }
+    private fun learnPattern(
+        draft: WizardDraft,
+        notification: NotificationItem,
+        allowGatewayMarker: Boolean = false,
+    ): String? =
+        TeachPatternSanitizer.choose(
+            candidates = listOf(
+                draft.merchant,
+                notification.parsed.merchantRaw,
+                notification.parsed.paymentHint,
+            ),
+            notificationText = notification.text,
+            allowGatewayMarker = allowGatewayMarker,
+        )
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
         if (!draft.isFixo) return
