@@ -91,6 +91,25 @@ data class ClassificationRuleDto(
     val action: String? = null,
 )
 
+/**
+ * Answer to POST/PUT of a rule. The server collapses patterns that are redundant against others in the
+ * SAME rule, so [patterns] is what it actually stored — which can be shorter than what was sent.
+ */
+@Serializable
+data class ClassificationRuleWriteResultDto(
+    val id: String,
+    val patterns: List<String> = emptyList(),
+    val droppedPatterns: List<DroppedRulePatternDto> = emptyList(),
+)
+
+@Serializable
+data class DroppedRulePatternDto(
+    val pattern: String,
+    val reason: String,          // "DUPLICATE" | "DOMINATED"
+    val supersededBy: String,    // a pattern still present in ClassificationRuleWriteResultDto.patterns
+    val message: String,         // localized server-side, like StatementSkippedRowDto.reason
+)
+
 @Serializable
 data class TransactionItemDto(
     val id: String? = null,

@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.data.remote.api
 import com.resolveprogramming.pocketcounter.data.remote.dto.AssistantAskRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.AssistantAskResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleWriteResultDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifiedRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyRequestDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
@@ -103,13 +104,13 @@ interface InvoiceItemApi {
 
 interface ClassificationRuleApi {
     @POST("api/v1/classification-rules")
-    suspend fun create(@Body dto: ClassificationRuleDto): String
+    suspend fun create(@Body dto: ClassificationRuleDto): ClassificationRuleWriteResultDto
 
     @GET("api/v1/classification-rules")
     suspend fun getAll(): List<ClassificationRuleDto>
 
     @PUT("api/v1/classification-rules/{id}")
-    suspend fun update(@Path("id") id: String, @Body dto: ClassificationRuleDto): String
+    suspend fun update(@Path("id") id: String, @Body dto: ClassificationRuleDto): ClassificationRuleWriteResultDto
 
     @DELETE("api/v1/classification-rules/{id}")
     suspend fun delete(@Path("id") id: String)
