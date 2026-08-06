@@ -6,11 +6,8 @@ import java.time.LocalDate
 data class WizardDraft(
     val type: TransactionType? = null,
     /**
-     * Normally UNSIGNED and positive — [isStep2Valid] rejects anything else and [type] carries the
-     * direction. That validation only gates the wizard-save path, though: a draft built for a
-     * pending-transaction match skips it entirely, so the sign that arrives cannot be trusted.
-     * Consumers that render it with a sign (AmountText derives +/− from the value, not from the
-     * type) must take the magnitude and apply the sign from [type]; see confirmReadyPresentation.
+     * Sign is not guaranteed: only the wizard-save path runs [isStep2Valid]. Take the magnitude and
+     * apply the direction from [type].
      */
     val amount: BigDecimal? = null,
     val date: LocalDate? = null,

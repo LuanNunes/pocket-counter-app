@@ -226,10 +226,7 @@ class ConfirmReadyPresentationTest {
 
     @Test
     fun `contentDescription carries no minus sign of either codepoint`() {
-        // Both codepoints on purpose. AmountText emits U+2212 for display, but the spoken string is
-        // built from NumberFormat, which emits the ASCII hyphen U+002D ("-R$ 129,90") — so asserting
-        // only on U+2212 passes even when a signed amount leaks in, which is the bug this guards.
-        // The direction belongs in the word "despesa", never in a glyph TalkBack has to interpret.
+        // Both codepoints: AmountText prints U+2212, NumberFormat the ASCII hyphen.
         val presentation = confirmReadyPresentation(
             item(draft(type = TransactionType.EXPENSE, amount = BigDecimal("129.90"))),
             cards, tags, contexts, today,

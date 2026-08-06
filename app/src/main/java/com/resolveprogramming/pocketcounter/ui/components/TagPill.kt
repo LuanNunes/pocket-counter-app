@@ -18,11 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 /**
- * The read-only category pill on a ledger row's secondary line: a colored dot plus the tag name.
- *
- * It takes neither `onClick` nor `Modifier` on purpose. On a one-tap-confirm card every tappable
- * element is a distinct commitment, so non-tappability is guaranteed by the API surface instead of
- * by remembering not to wrap it at each call site.
+ * Read-only category pill for a ledger row. Takes no `onClick` or `Modifier` on purpose: it sits on
+ * a one-tap-confirm card, so non-tappability is enforced by the API rather than by each call site.
  */
 @Composable
 fun TagPill(name: String, color: Long?) {

@@ -61,14 +61,8 @@ fun confirmReadyPresentation(
 }
 
 /**
- * [WizardDraft.amount] is normally unsigned while AmountText derives its +/− from the value's sign,
- * so an expense has to be negated here or the card renders "+ R$ 129,90" in expense red.
- *
- * Normalised through [BigDecimal.abs] rather than trusting the sign that arrives, because the sign
- * is NOT guaranteed on the path this card serves: `isConfirmReady` short-circuits to true for a
- * pending-transaction match without ever calling `isStep2Valid`, and the amount reaches the draft
- * straight off the wire. A negative one would otherwise be negated back into a positive and render
- * "+ R$ 50,00" in expense red — the same bug this function exists to fix, mirrored.
+ * AmountText takes its +/− from the value's sign, so the direction has to be applied here. The
+ * incoming sign is untrusted: the pending-match path never runs `isStep2Valid`.
  */
 private fun signedAmount(draft: WizardDraft): BigDecimal? {
     val magnitude = draft.amount?.abs() ?: return null

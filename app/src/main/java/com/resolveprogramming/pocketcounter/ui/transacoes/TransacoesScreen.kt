@@ -72,6 +72,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.effectiveTagIds
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
+import com.resolveprogramming.pocketcounter.ui.components.MetaPaymentSlot
 import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
@@ -784,20 +785,7 @@ private fun TxMetaRow(meta: LedgerMeta) {
                 )
             }
         }
-        if (meta.payment.isNotBlank()) {
-            // Separator and label are ONE Text on purpose. Split in two, the "·" is unweighted and
-            // the label is weighted — and a Row measures weighted children with whatever the
-            // unweighted ones left over. On a full line that remainder is zero, so the label
-            // vanished while the "·" kept its place, leaving rows ending in a dangling separator.
-            Text(
-                text = "· ${meta.payment}",
-                style = PocketTheme.typography.bodyXs,
-                color = PocketTheme.colors.text3,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        }
+        MetaPaymentSlot(payment = meta.payment)
     }
 }
 

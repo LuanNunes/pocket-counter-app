@@ -64,15 +64,7 @@ fun ledgerMeta(
     )
 }
 
-/**
- * The method word, plus the card name when a CREDIT charge resolves to a known card:
- * "Crédito Nubank", "Crédito" when the card is unknown, "Pix" / "Débito" for everything else.
- *
- * The card name is appended only for CREDIT because that is the only method where "which one?" is a
- * real question. Note this reads "Crédito Nubank" and not "Cartão Nubank" as Transações rendered it
- * before this helper was shared — one fact had three spellings across the app, and the design spec's
- * wording won.
- */
+/** "Crédito Nubank", "Crédito" when the card is unknown, "Pix" otherwise. Only CREDIT names a card. */
 private fun paymentLabel(
     method: PaymentMethod?,
     cardId: String?,

@@ -75,6 +75,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
 import com.resolveprogramming.pocketcounter.ui.components.AutoSizeText
 import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
+import com.resolveprogramming.pocketcounter.ui.components.MetaPaymentSlot
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonSize
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
@@ -598,25 +599,15 @@ fun FlashEffect(flashId: String?, flashNonce: Int, reducedMotion: Boolean, onCon
 }
 
 /**
- * How many recognized cards Home shows inline before the rest go behind the expander.
- *
- * This is a VIEW cap and is deliberately NOT coupled to HomeViewModel.CONFIRM_READY_CLASSIFY_CAP,
- * which bounds how many pending notifications get classified. Lowering that one to match this would
- * shrink `ready`, and since pendingReviewCount = (pending.size - ready.size), it would silently
- * inflate the "para revisar" banner with items that were never actually reviewed.
+ * View cap only. Never align HomeViewModel.CONFIRM_READY_CLASSIFY_CAP to it: that one shrinks
+ * `ready`, and pendingReviewCount = pending - ready, so the "para revisar" banner would inflate.
  */
 private const val CONFIRM_READY_VISIBLE_CAP = 3
 
 /**
- * The "Reconhecidos automaticamente" stack: pending notifications the classifier matched
- * confidently enough to write to the ledger in one tap.
- *
- * Spec deviation, recorded here because `handoff/` is gitignored and cannot hold the rationale:
- * `handoff/design_handoff_android_final/specs/core-app/README.md:355` says AUTO notifications never
- * appear in "Para revisar" at all, so this component has no spec surface to follow. It also departs
- * from the redesign's decluttering direction on purpose — the review banner only has to answer "how
- * much is left to teach?", whereas each card here authorizes one specific, un-undoable ledger
- * write, so it has to show enough (valor, nome, data, tag) to be checked before it is authorized.
+ * The "Reconhecidos automaticamente" stack: one tap writes a card to the ledger, un-undoably, so
+ * each shows valor, nome, data and tag. No spec surface — the handoff has AUTO notifications never
+ * surfacing at all.
  */
 @Composable
 fun ConfirmReadySection(
@@ -745,13 +736,8 @@ private fun ConfirmReadyExpander(hiddenCount: Int, expanded: Boolean, onToggle: 
 }
 
 /**
- * One recognized notification, confirmable in a single un-undoable tap — so it has to show the four
- * fields the user would check on a receipt: valor, nome, data, tag.
- *
- * Render-only: everything it draws is already resolved in [presentation]. Two ambiguity guards are
- * load-bearing here — the card body carries NO `clickable` (only the two buttons and the dismiss ✕
- * commit anything), and the elevated/borderless/20dp-radius container stays visually distinct from
- * the bordered/flat/16dp Transações row, because that row navigates while this one writes.
+ * Render-only; everything is resolved in [presentation]. The body must stay non-`clickable` and
+ * visually distinct from the Transações row: that row navigates, this one writes.
  */
 @Composable
 fun ConfirmReadyCard(
@@ -868,12 +854,8 @@ private fun confirmSpinner(color: Color): @Composable () -> Unit = {
 }
 
 /**
- * `14 jun · ● Farmácia · Crédito Nubank`, on one line that must never wrap.
- *
- * Drop priority is enforced by modifier placement rather than by branching: the date takes no
- * weight and no ellipsis so it is always whole, the pill is intrinsically sized and ellipsizes
- * internally, and only the payment label carries `weight(1f, fill = false)` — so it is the one
- * thing that can shrink.
+ * `14 jun · ● Farmácia · Crédito Nubank` on one line that must never wrap. Drop priority comes from
+ * declaration order: the date is unweighted, the pill ellipsizes, the payment goes first.
  */
 @Composable
 private fun ConfirmReadyMetaRow(meta: LedgerMeta, installmentsLabel: String?) {
@@ -907,19 +889,6 @@ private fun ConfirmReadyMetaRow(meta: LedgerMeta, installmentsLabel: String?) {
         if (meta.tagName == null) {
             Text(text = "sem categoria", style = bodyXs, color = colors.text3, maxLines = 1)
         }
-        if (meta.payment.isNotBlank()) {
-            // Separator and label are ONE Text on purpose — see TxMetaRow. Split in two, the "·" is
-            // unweighted and the label is weighted, and a Row gives weighted children only what the
-            // unweighted ones left over. At zero remainder the label vanishes while the "·" keeps
-            // its place, and the line ends in a dangling separator.
-            Text(
-                text = "· ${meta.payment}",
-                style = bodyXs,
-                color = colors.text3,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        }
+        MetaPaymentSlot(payment = meta.payment)
     }
 }
