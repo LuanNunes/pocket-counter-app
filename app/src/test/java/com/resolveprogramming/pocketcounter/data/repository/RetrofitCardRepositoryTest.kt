@@ -137,6 +137,7 @@ import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleWriteResultDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleTagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
@@ -542,7 +543,7 @@ class RetrofitCardRepositoryTest {
         )
 
         coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
-        coEvery { classificationRuleApi.create(any()) } returns "rule-id-new"
+        coEvery { classificationRuleApi.create(any()) } returns ClassificationRuleWriteResultDto(id = "rule-id-new")
 
         val result = repo.classifyPurchase(
             invoiceId = "inv1",
@@ -641,7 +642,7 @@ class RetrofitCardRepositoryTest {
         val uncategorized = Tag(id = "t2", name = "geral", kind = TransactionType.EXPENSE, idContext = null)
 
         coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
-        coEvery { classificationRuleApi.create(any()) } returns "rule-new"
+        coEvery { classificationRuleApi.create(any()) } returns ClassificationRuleWriteResultDto(id = "rule-new")
 
         val result = repo.classifyPurchase(
             invoiceId = "inv1",
