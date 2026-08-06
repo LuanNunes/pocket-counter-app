@@ -11,9 +11,7 @@ package com.resolveprogramming.pocketcounter.domain.rules
  *    authorise DELETING a stored pattern from a rule being taught. Being loose there drops patterns
  *    whose reach is not actually subsumed, and a dropped pattern can stop a rule from firing at all.
  *
- * [isCovered] and [overlap] express the same strict coverage relation without deleting anything.
- * Neither has a caller yet: they are kept as the vocabulary for reporting that one rule is subsumed
- * by another, which is what surfacing rule conflicts will need.
+ * [isCovered] and [overlap] have no caller yet — kept for reporting that one rule subsumes another.
  */
 object RulePatterns {
 
