@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.data.repository
 
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleWriteResultDto
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
@@ -35,7 +36,7 @@ class RetrofitClassificationRuleRepositoryTest {
 
     @Test
     fun `update PUTs the serialized rule under its id`() = runTest {
-        coEvery { api.update(any(), any()) } returns "rule-1"
+        coEvery { api.update(any(), any()) } returns ClassificationRuleWriteResultDto(id = "rule-1")
 
         val result = repo.update(rule("rule-1"))
 
