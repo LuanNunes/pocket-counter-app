@@ -225,13 +225,55 @@ class ConfirmReadyPresentationTest {
     }
 
     @Test
-    fun `contentDescription never contains the AmountText minus glyph`() {
+    fun `contentDescription carries no minus sign of either codepoint`() {
+        // Both codepoints on purpose. AmountText emits U+2212 for display, but the spoken string is
+        // built from NumberFormat, which emits the ASCII hyphen U+002D ("-R$ 129,90") — so asserting
+        // only on U+2212 passes even when a signed amount leaks in, which is the bug this guards.
+        // The direction belongs in the word "despesa", never in a glyph TalkBack has to interpret.
         val presentation = confirmReadyPresentation(
             item(draft(type = TransactionType.EXPENSE, amount = BigDecimal("129.90"))),
             cards, tags, contexts, today,
         )
 
-        assertFalse(presentation.contentDescription.contains('−'))
+        assertFalse(presentation.contentDescription.contains('\u2212'))
+        assertFalse(presentation.contentDescription.contains('-'))
+        assertTrue(presentation.contentDescription.contains("despesa de"))
+    }
+
+    @Test
+    fun `contentDescription carries no minus sign when the incoming amount is already negative`() {
+        // isConfirmReady short-circuits to true for a pending-transaction match without calling
+        // isStep2Valid, so the amount is not guaranteed unsigned on the path this card serves.
+        val presentation = confirmReadyPresentation(
+            item(draft(type = TransactionType.EXPENSE, amount = BigDecimal("-129.90"))),
+            cards, tags, contexts, today,
+        )
+
+        assertFalse(presentation.contentDescription.contains('-'))
+    }
+
+    @Test
+    fun `signedAmount is negative for an EXPENSE whose incoming amount is already negative`() {
+        // Negating a value that already carries its sign would flip it back to positive and render
+        // "+ R$ 129,90" in expense red — the mirror of the bug signedAmount exists to fix.
+        val presentation = confirmReadyPresentation(
+            item(draft(type = TransactionType.EXPENSE, amount = BigDecimal("-129.90"))),
+            cards, tags, contexts, today,
+        )
+
+        assertEquals(BigDecimal("-129.90"), presentation.signedAmount)
+    }
+
+    @Test
+    fun `installmentsLabel is null for a single installment`() {
+        // The gate exists for exactly this value: "1×" is noise on a line that must not wrap.
+        val presentation = confirmReadyPresentation(
+            item(draft(installments = 1)),
+            cards, tags, contexts, today,
+        )
+
+        assertNull(presentation.installmentsLabel)
+        assertFalse(presentation.contentDescription.contains("vezes"))
     }
 
     @Test

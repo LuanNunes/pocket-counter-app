@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -620,7 +621,6 @@ private const val CONFIRM_READY_VISIBLE_CAP = 3
 @Composable
 fun ConfirmReadySection(
     items: List<ConfirmReadyItem>,
-    totalCount: Int,
     confirmingIds: Set<String>,
     cards: Map<String, CreditCard>,
     tags: Map<String, Tag>,
@@ -651,7 +651,7 @@ fun ConfirmReadySection(
             // The total, not the visible count — collapsing the stack must not look like the
             // classifier recognized fewer things than it did.
             Text(
-                text = "· $totalCount",
+                text = "· ${items.size}",
                 style = PocketTheme.typography.bodyXs.copy(fontWeight = FontWeight.SemiBold),
                 color = PocketTheme.colors.text3,
             )
@@ -697,9 +697,15 @@ private fun ConfirmReadyRow(
     onReview: (ConfirmReadyItem) -> Unit,
     onIgnore: (ConfirmReadyItem) -> Unit,
 ) {
+    // Memoized: the builder allocates a NumberFormat and reads LocalDate.now() through its default
+    // argument, so calling it straight from the composable body would make both happen on every
+    // recomposition — and ConfirmReadySection recomposes on each confirmingIds change.
+    val presentation = remember(item, cards, tags, contextsById) {
+        confirmReadyPresentation(item, cards, tags, contextsById)
+    }
     ConfirmReadyCard(
         item = item,
-        presentation = confirmReadyPresentation(item, cards, tags, contextsById),
+        presentation = presentation,
         isConfirming = item.notificationId in confirmingIds,
         onConfirm = { onConfirm(item) },
         onReview = { onReview(item) },
@@ -761,7 +767,10 @@ fun ConfirmReadyCard(
         elevated = true,
         // spacing.pad, not a literal 16.dp: it tracks the user's density preference
         // (COMPACT 12 / COMFORTABLE 16 / COZY 20) and hard-coding would opt this card out.
-        contentPadding = PaddingValues(horizontal = PocketTheme.spacing.pad, vertical = 12.dp),
+        contentPadding = PaddingValues(
+            horizontal = PocketTheme.spacing.pad,
+            vertical = PocketTheme.spacing.gap,
+        ),
     ) {
         Column {
             // Merged on the info block ONLY. Merging the whole card would swallow Confirmar,
@@ -791,9 +800,8 @@ fun ConfirmReadyCard(
                             amount = amount,
                             type = item.draft.type,
                             showSign = true,
-                            style = PocketTheme.typography.monoSm.copy(
+                            style = PocketTheme.typography.monoBody.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp,
                             ),
                         )
                     }

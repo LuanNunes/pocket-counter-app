@@ -205,7 +205,6 @@ fun HomeContent(
                     item(key = "confirm-ready") {
                         ConfirmReadySection(
                             items = state.confirmReady,
-                            totalCount = state.confirmReady.size,
                             confirmingIds = state.confirmingIds,
                             cards = state.cards,
                             tags = state.tags,
