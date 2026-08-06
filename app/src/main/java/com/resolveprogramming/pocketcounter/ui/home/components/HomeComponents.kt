@@ -908,9 +908,12 @@ private fun ConfirmReadyMetaRow(meta: LedgerMeta, installmentsLabel: String?) {
             Text(text = "sem categoria", style = bodyXs, color = colors.text3, maxLines = 1)
         }
         if (meta.payment.isNotBlank()) {
-            Text(text = "·", style = bodyXs, color = colors.text3)
+            // Separator and label are ONE Text on purpose — see TxMetaRow. Split in two, the "·" is
+            // unweighted and the label is weighted, and a Row gives weighted children only what the
+            // unweighted ones left over. At zero remainder the label vanishes while the "·" keeps
+            // its place, and the line ends in a dangling separator.
             Text(
-                text = meta.payment,
+                text = "· ${meta.payment}",
                 style = bodyXs,
                 color = colors.text3,
                 maxLines = 1,
