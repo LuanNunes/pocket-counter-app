@@ -17,21 +17,22 @@ object RuleTeachPlanner {
     /**
      * Decides how teaching [pattern] out of [notificationText] should mutate the rule set.
      *
-     * The target is the FIRST active SUGGEST rule in [existing] whose patterns match
-     * [notificationText]. [existing] is assumed to be in backend creation order (oldest first), so
-     * that rule is by definition the one classify applied to this notification — classify runs
-     * exactly one rule and the oldest match wins — which makes it the only rule whose correction the
-     * user will actually see next time. Rules that merely share the taught tags' context are not
-     * targets: same category, different merchant. IGNORE and deactivated rules are never targets —
-     * classify skips them, so teaching one would silently do nothing. No match → a fresh rule.
+     * The target is the first active SUGGEST rule in [existing] (assumed to be in backend creation
+     * order, oldest first) carrying a SINGLE pattern that both [RulePatterns.matches]
+     * [notificationText] and is [RulePatterns.sameSubject] as [pattern]. Both conditions on the same
+     * pattern: gateway prefixes ("Ifd*", "Mp *") match every notification behind that acquirer, so a
+     * text match alone lets any merchant billed through it absorb itself into the acquirer's rule.
+     * IGNORE and deactivated rules are skipped by classify, so teaching one would do nothing.
      *
-     * Known consequence of overwriting tags instead of unioning them: teaching a SUB-MERCHANT of an
-     * existing rule re-tags the whole merchant. Teaching "UBER EATS" while a rule matches "Uber"
-     * targets that rule, [RulePatterns.compact] drops the narrower new pattern as already covered,
-     * and the taught tags replace the old ones — so Uber rides start being tagged as Uber Eats. The
-     * escape hatch is deleting the rule in Regras and teaching the two merchants separately; a union
-     * would instead make a wrong tag impossible to remove through the wizard, which is how the rule
-     * set drifted in the first place.
+     * A [TeachPlan.Create] can be born dead: an older gateway rule still wins classify's
+     * one-rule-per-notification race until it is narrowed or deleted in Regras. Precedence is
+     * backend-owned and the app must not strip patterns off another rule to make room, hence no
+     * `TeachPlan.Split`.
+     *
+     * Tags are overwritten, not unioned, so an Update still re-tags the whole subject: teaching
+     * "UBER EATS" onto a rule matching "Uber" makes Uber rides read as Uber Eats. The escape hatch is
+     * deleting the rule in Regras; a union would instead make a wrong tag impossible to remove
+     * through the wizard, which is how the rule set drifted in the first place.
      */
     fun plan(
         existing: List<ClassificationRule>,
@@ -45,7 +46,9 @@ object RuleTeachPlanner {
         val target = existing.firstOrNull { rule ->
             rule.action == RuleAction.SUGGEST &&
                 rule.active != false &&
-                rule.patterns.any { RulePatterns.matches(it, notificationText) }
+                rule.patterns.any {
+                    RulePatterns.matches(it, notificationText) && RulePatterns.sameSubject(it, pattern)
+                }
         } ?: return TeachPlan.Create(
             ClassificationRule.learned(pattern, type, paymentMethod, cardId, tags),
         )

@@ -1041,6 +1041,82 @@ class WizardViewModelTest {
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
     }
 
+    @Test
+    fun `ignore with learn accepts a bare gateway prefix as pattern`() = runTest {
+        val base = makeNotification(id = "notif-1")
+        val notification = base.copy(
+            text = "Compra IFD*APROVADO R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = "Ifd*"),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(learn = true, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { it.action == RuleAction.IGNORE && it.patterns == listOf("Ifd*") && it.tags.isEmpty() },
+            )
+        }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    @Test
+    fun `ignore with learn keeps the payment hint as pattern when no merchant candidate exists`() = runTest {
+        val base = makeNotification(id = "notif-1", paymentHint = "final 3685")
+        val notification = base.copy(
+            text = "Compra aprovada no cartão final 3685 R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = null),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(learn = true, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { it.action == RuleAction.IGNORE && it.patterns == listOf("final 3685") && it.tags.isEmpty() },
+            )
+        }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    @Test
+    fun `ignore with learn refuses a bare card-word payment hint`() = runTest {
+        // "conta" is emitted for the INCOME phrase "crédito em conta" too, so an IGNORE rule keyed on
+        // it would drop incoming money out of the review queue.
+        val base = makeNotification(id = "notif-1", paymentHint = "conta")
+        val notification = base.copy(
+            text = "Crédito em conta R$ 1.200,00",
+            parsed = base.parsed.copy(merchantRaw = null),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(learn = true, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
     // -------------------------------------------------------------------------
     // updateName()
     // -------------------------------------------------------------------------
@@ -1572,7 +1648,7 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `learnRuleIfRequested_ruleMatchingNotificationExists_callsUpdate_withPatternAppended_notCreate`() = runTest {
+    fun `learnRuleIfRequested_ruleMatchingNotificationExists_callsUpdate_withPatternCompacted_notCreate`() = runTest {
         val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI DELIVERY aprovada R$ 49,90")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -1581,11 +1657,12 @@ class WizardViewModelTest {
         val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
 
-        // Existing rule's pattern actually matches the notification text → TeachPlanner will Update
+        // Tag id differs from the taught one, otherwise the plan collapses to NoOp and neither
+        // repository call fires.
         val existingRule = makeExistingRule(
             id = "rule-existing",
-            patterns = listOf("COMPRA"),
-            tags = listOf(categoryTag),
+            patterns = listOf("RAPPI"),
+            tags = listOf(makeCategoryTag(id = "tag-other", idContext = "ctx-food")),
         )
         coEvery { classificationRuleRepository.getAll() } returns Result.success(listOf(existingRule))
 
@@ -1607,10 +1684,141 @@ class WizardViewModelTest {
             classificationRuleRepository.update(
                 match { rule ->
                     rule.id == "rule-existing" &&
-                        rule.patterns == listOf("COMPRA", "RAPPI DELIVERY")
+                        rule.patterns == listOf("RAPPI")
                 },
             )
         }
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_draftMerchantIsAGatewayPrefix_fallsThroughToParsedMerchantRaw_callsCreate`() = runTest {
+        val base = makeNotification(id = "notif-1")
+        val notification = base.copy(
+            text = "Compra IFD*PADARIA DE TESTE aprovada R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = "PADARIA DE TESTE"),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+        vm.updateName("IFD*")
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { rule -> rule.patterns == listOf("PADARIA DE TESTE") },
+            )
+        }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_noMerchantCandidates_paymentHintIsCartao_doesNotCreateRule`() = runTest {
+        // With no merchant candidate left, the hint is all that could reach the rule — and "cartão"
+        // would match nearly every card notification.
+        val base = makeNotification(id = "notif-1", paymentHint = "cartão")
+        val notification = base.copy(
+            text = "Compra aprovada no cartão R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = null),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_noMerchantCandidates_paymentHintIsFinalDigits_doesNotCreateRule`() = runTest {
+        // A SUGGEST rule keyed on one card's last digits would claim every purchase on that card.
+        val base = makeNotification(id = "notif-1", paymentHint = "final 3685")
+        val notification = base.copy(
+            text = "Compra aprovada no cartão final 3685 R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = null),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+    }
+
+    @Test
+    fun `learnRuleIfRequested_draftMerchantIsGatewayPrefix_doesNotFallThroughToPaymentHint`() = runTest {
+        val base = makeNotification(id = "notif-1", paymentHint = "cartão")
+        val notification = base.copy(
+            // "Ifd*" MUST occur in the text, or the containment filter drops it first and the gateway
+            // rejection is never what causes the fall-through.
+            text = "Compra Ifd* aprovada no cartão R$ 49,90",
+            parsed = base.parsed.copy(merchantRaw = null),
+        )
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
+        coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
+
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.toggleTag("tag-cat")
+        vm.toggleLearnRule(true)
+        vm.updateName("Ifd*")
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
         coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
     }
 

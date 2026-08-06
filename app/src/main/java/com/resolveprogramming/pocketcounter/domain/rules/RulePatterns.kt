@@ -1,12 +1,14 @@
 package com.resolveprogramming.pocketcounter.domain.rules
 
 /**
- * Pattern algebra used by [RuleTeachPlanner], modelling the backend's `matchType: "CONTAINS"`
- * semantics: a rule fires when the notification text contains one of its patterns.
+ * Pattern algebra shared by [RuleTeachPlanner] and [TeachPatternSanitizer], modelling the backend's
+ * `matchType: "CONTAINS"` semantics: a rule fires when the notification text contains one of its
+ * patterns.
  *
  * Two comparisons live here on purpose, and the difference is about consequences, not taste:
- *  - [normalize] is loose (whitespace runs collapsed) and backs [matches], which only picks which
- *    rule a teach edits. Being loose there can at worst target a rule the user didn't expect.
+ *  - [normalize] is loose (whitespace runs collapsed) and backs [matches] and [sameSubject], which
+ *    together only pick which rule a teach edits. Being loose there can at worst target a rule the
+ *    user didn't expect.
  *  - [foldCase] is strict (whitespace preserved verbatim) and backs [covers]/[compact], which
  *    authorise DELETING a stored pattern from a rule being taught. Being loose there drops patterns
  *    whose reach is not actually subsumed, and a dropped pattern can stop a rule from firing at all.
@@ -21,8 +23,8 @@ object RulePatterns {
      * Loose comparison: trimmed, lowercased, whitespace runs collapsed to one space.
      *
      * Collapsing whitespace assumes the backend's CONTAINS is whitespace-insensitive, which we can't
-     * verify from here. Only [matches] may rely on that assumption, because a wrong answer there
-     * changes which rule is taught, never what is stored.
+     * verify from here. Only [matches] and [sameSubject] may rely on that assumption, because a wrong
+     * answer there changes which rule is taught, never what is stored.
      */
     fun normalize(raw: String): String = raw.trim().lowercase().replace(WHITESPACE_RUN, " ")
 
@@ -38,6 +40,36 @@ object RulePatterns {
     fun matches(pattern: String, text: String): Boolean {
         if (pattern.isBlank()) return false
         return normalize(text).contains(normalize(pattern))
+    }
+
+    /**
+     * True when [raw] holds a '*' with no letter after its LAST occurrence — bare payment-gateway
+     * markers ("Ifd*", "Dl *", "Rp3bank*"), which name the acquirer that routed the charge rather
+     * than the merchant that took the money.
+     *
+     * Position-independent on purpose, not anchored to a prefix: anchoring would miss "Rp3bank*" the
+     * way `BrNotificationParser.ACQUIRER_PREFIX_REGEX` does. Over-rejecting a lookalike ("PAG*123456")
+     * only costs a learned rule; under-rejecting re-tags every merchant behind the gateway.
+     */
+    fun isGatewayMarker(raw: String): Boolean {
+        val lastStar = raw.lastIndexOf('*')
+        return lastStar >= 0 && raw.drop(lastStar + 1).none { it.isLetter() }
+    }
+
+    /**
+     * True when [a] and [b] name the same thing: either normalized form contains the other, and
+     * neither is a bare gateway marker. Built on the loose [normalize], like [matches].
+     *
+     * The [isGatewayMarker] guard has to live here rather than assume the taught pattern arrived
+     * pre-stripped: `BrNotificationParser` leaves "Dl *", "Mp *" and "Rp3bank*" intact, and
+     * containment alone makes a gateway prefix the same subject as every merchant behind it.
+     */
+    fun sameSubject(a: String, b: String): Boolean {
+        if (a.isBlank() || b.isBlank()) return false
+        if (isGatewayMarker(a) || isGatewayMarker(b)) return false
+        val left = normalize(a)
+        val right = normalize(b)
+        return left.contains(right) || right.contains(left)
     }
 
     /**
