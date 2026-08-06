@@ -497,11 +497,8 @@ class WizardViewModel @Inject constructor(
      * matching the same merchant pattern. Carries only the pattern (no tags/type). Best-effort: a
      * missing pattern or a create failure is swallowed and the ignore still proceeds.
      *
-     * Unlike the SUGGEST path this accepts the broad patterns — a bare gateway marker ("Ifd*") and,
-     * failing every merchant candidate, the parsed payment hint ("final 3685", "cartão", "conta").
-     * Silencing a whole acquirer or card is a legitimate thing to ask for, and an IGNORE rule has no
-     * tags to overwrite and is never a teach target, so its breadth can't corrupt anyone's
-     * classification.
+     * Broad patterns the SUGGEST path refuses are accepted here: silencing a whole acquirer or card
+     * is a legitimate ask, and a rule with no tags and no teach targeting can't mis-tag anything.
      */
     private suspend fun learnIgnoreRule() {
         val notification = _state.value.notification ?: return
@@ -541,13 +538,11 @@ class WizardViewModel @Inject constructor(
      * Merges or creates a learned classification rule when the user enabled "Aprender este padrão".
      *
      * [RuleTeachPlanner] targets the oldest active SUGGEST rule holding a pattern that both matches
-     * this notification's text AND names the same merchant as the taught pattern, so a correction
-     * edits the rule the user just saw go wrong instead of minting a near-duplicate beside it — or
-     * hijacking the payment gateway's rule when the two only share a "Ifd*"-style prefix. The rule the
-     * backend actually applied may therefore be left alone; see [RuleTeachPlanner.plan] for why that
-     * is preferred over rewriting someone else's rule. The taught payment method and card ride
-     * along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing to derive them from,
-     * and a merchant's method is a property of the merchant. Best-effort — failures are swallowed.
+     * this notification and names the same merchant as the taught one, so a correction edits the rule
+     * the user saw go wrong instead of a gateway's — see [RuleTeachPlanner.plan]. The taught payment
+     * method and card ride along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing
+     * to derive them from, and a merchant's method is a property of the merchant. Best-effort —
+     * failures are swallowed.
      */
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
@@ -604,33 +599,11 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * The CONTAINS pattern for a learned rule, SUGGEST or IGNORE alike.
+     * The CONTAINS pattern for a learned rule. Candidate order is decided here — the merchant the
+     * user edited beats the parsed one; [TeachPatternSanitizer] decides what survives.
      *
-     * Which candidates are offered, and in what order, is decided here: the merchant the user just
-     * edited beats the parsed one. [TeachPatternSanitizer] owns the rest — trimming trailing
-     * punctuation, rejecting bare payment-gateway prefixes ("Ifd*", "Mp *") that would match every
-     * merchant behind the gateway (unless [forIgnoreRule]), and requiring the survivor to occur in
-     * the notification text (case-insensitively, like the rest of `RulePatterns`) since a pattern
-     * absent from the message could never match a future one. The candidate is stored verbatim, not
-     * as the slice of text it matched.
-     *
-     * [forIgnoreRule] gates both broadenings the IGNORE path is entitled to, and only that path:
-     * keeping bare gateway markers, and offering the parsed payment hint as a last-resort candidate.
-     *
-     * The hint is a closed set of three shapes — a "final NNNN" card suffix, the literal "cartão", or
-     * the literal "conta" — and none of them ever names a merchant, which is why SUGGEST never sees
-     * it: a rule keyed on "cartão" would match nearly every card notification and, being the oldest
-     * such match, would claim and mis-tag all of them.
-     *
-     * Even for IGNORE only the "final NNNN" shape survives, because only it identifies anything. The
-     * bare words are rejected via [CARD_HINT_WORDS], the same constant and the same reasoning that
-     * stops [learnPaymentMethodIfMarked] poisoning the method dictionary. "conta" is the dangerous
-     * one: the parser emits it for any text carrying that word, which includes the INCOME phrase
-     * "crédito em conta", so an IGNORE rule keyed on it would silently drop incoming-money
-     * notifications out of the review queue — and being oldest, preempt every SUGGEST rule for them.
-     *
-     * A rejected candidate falls through to the next one; null means no candidate qualified and the
-     * caller skips the teach entirely rather than storing a dangerous pattern.
+     * The payment hint never names a merchant, so it is offered on the IGNORE path only: a SUGGEST
+     * rule keyed on it would claim and mis-tag every notification of that card.
      */
     private fun learnPattern(
         draft: WizardDraft,
@@ -647,7 +620,11 @@ class WizardViewModel @Inject constructor(
             allowGatewayMarker = forIgnoreRule,
         )
 
-    /** The parsed payment hint, unless it is a bare card word that identifies nothing. */
+    /**
+     * The parsed payment hint, minus the bare card words of [CARD_HINT_WORDS]. "conta" is why: the
+     * parser emits it for the INCOME phrase "crédito em conta", so an IGNORE rule keyed on it would
+     * swallow incoming-money notifications.
+     */
     private fun identifyingPaymentHint(notification: NotificationItem): String? =
         notification.parsed.paymentHint
             ?.takeIf { PaymentMethodResolver.normalizeKey(it) !in CARD_HINT_WORDS }

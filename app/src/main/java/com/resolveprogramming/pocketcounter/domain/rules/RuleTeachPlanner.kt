@@ -17,33 +17,22 @@ object RuleTeachPlanner {
     /**
      * Decides how teaching [pattern] out of [notificationText] should mutate the rule set.
      *
-     * The target is the FIRST active SUGGEST rule in [existing] carrying a SINGLE pattern that both
-     * [RulePatterns.matches] [notificationText] and is the same subject ([RulePatterns.sameSubject])
-     * as [pattern]. Both conditions on the same pattern: the live corpus stores payment-gateway
-     * prefixes ("Ifd*", "Dl *", "Mp *") as patterns, which match every notification behind that
-     * gateway, so a text match alone would let any merchant billed through iFood absorb itself into
-     * the iFood rule and re-tag everything that rule ever applied to. Rules that merely share the
-     * taught tags' context are not targets either: same category, different merchant. IGNORE and
-     * deactivated rules are never targets — classify skips them, so teaching one would silently do
-     * nothing. No target → a fresh rule.
+     * The target is the first active SUGGEST rule in [existing] (assumed to be in backend creation
+     * order, oldest first) carrying a SINGLE pattern that both [RulePatterns.matches]
+     * [notificationText] and is [RulePatterns.sameSubject] as [pattern]. Both conditions on the same
+     * pattern: gateway prefixes ("Ifd*", "Mp *") match every notification behind that acquirer, so a
+     * text match alone lets any merchant billed through it absorb itself into the acquirer's rule.
+     * IGNORE and deactivated rules are skipped by classify, so teaching one would do nothing.
      *
-     * [existing] is assumed to be in backend creation order (oldest first), which orders the ELIGIBLE
-     * targets only; it no longer identifies the rule classify applied. When the rule classify applied
-     * matched via an unrelated pattern, teaching now creates a fresh rule that classify will NOT apply
-     * — the older gateway-prefix rule still wins the one-rule-per-notification race until it is
-     * narrowed or deleted in Regras. Those "born dead" rules are backend-owned (precedence lives
-     * there); the app must not strip patterns off another user's rule to make room, and there is
-     * deliberately no `TeachPlan.Split`.
+     * A [TeachPlan.Create] can be born dead: an older gateway rule still wins classify's
+     * one-rule-per-notification race until it is narrowed or deleted in Regras. Precedence is
+     * backend-owned and the app must not strip patterns off another rule to make room, hence no
+     * `TeachPlan.Split`.
      *
-     * Known consequence of overwriting tags instead of unioning them: an Update can still re-tag more
-     * than the taught merchant. With the subject constraint it can only keep the broadest pattern of
-     * ONE subject — teaching "UBER EATS" onto a rule matching "Uber" targets it, [RulePatterns.compact]
-     * drops the narrower new pattern as already covered, and the taught tags replace the old ones, so
-     * Uber rides start being tagged as Uber Eats — or add a whitespace variant of a pattern already
-     * there. Genuinely new merchants now arrive via [TeachPlan.Create] instead. The escape hatch is
-     * still deleting the rule in Regras and teaching the two merchants separately; a union would
-     * instead make a wrong tag impossible to remove through the wizard, which is how the rule set
-     * drifted in the first place.
+     * Tags are overwritten, not unioned, so an Update still re-tags the whole subject: teaching
+     * "UBER EATS" onto a rule matching "Uber" makes Uber rides read as Uber Eats. The escape hatch is
+     * deleting the rule in Regras; a union would instead make a wrong tag impossible to remove
+     * through the wizard, which is how the rule set drifted in the first place.
      */
     fun plan(
         existing: List<ClassificationRule>,

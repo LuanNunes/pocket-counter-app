@@ -73,8 +73,7 @@ class TeachPatternSanitizerTest {
 
     @Test
     fun `clean_stripsTheSpaceLeftBehindByTrailingPunctuation`() {
-        // RulePatterns.covers is whitespace-strict, so "Padaria " and "Padaria" would never compact
-        // into each other and the rule would accumulate near-duplicate patterns forever.
+        // RulePatterns.covers is whitespace-strict: "Padaria " and "Padaria" never compact together.
         assertEquals("Padaria", TeachPatternSanitizer.clean("Padaria -"))
     }
 
@@ -123,9 +122,6 @@ class TeachPatternSanitizerTest {
 
     @Test
     fun `choose_matchesCaseInsensitively_andStoresTheCandidateVerbatim`() {
-        // Deliberate semantic: containment is case-INsensitive (matching the rest of RulePatterns,
-        // which folds case), and the survivor is stored exactly as the candidate spelled it — never
-        // rewritten to the slice of text it matched.
         val result = TeachPatternSanitizer.choose(
             candidates = listOf("padaria de teste"),
             notificationText = "Compra IFD*PADARIA DE TESTE aprovada R$ 49,90",

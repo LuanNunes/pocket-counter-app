@@ -130,9 +130,6 @@ class RuleTeachPlannerTest {
 
     @Test
     fun `plan_ruleMatchingNotification_returnsUpdate_withPatternCompacted`() {
-        // "IFOOD CLUB" is subject-related to "IFOOD" (Fix 1's targeting requirement), but also
-        // covered by it, so compact drops the taught pattern instead of appending it — "pattern
-        // appended" is no longer reachable for a genuinely new merchant, only compaction is.
         val existingRule = makeRule(id = "rule-1", patterns = listOf("IFOOD"), tags = listOf(makeTag(id = "tag-1")))
 
         val result = RuleTeachPlanner.plan(
@@ -153,8 +150,7 @@ class RuleTeachPlannerTest {
 
     @Test
     fun `plan_picksOldestMatchingRule_whenSeveralMatchTheNotification`() {
-        // Both rules are subject-related to the taught pattern; among those ELIGIBLE targets, list
-        // order (backend creation order, oldest first) decides — not text-match strength.
+        // Both rules are eligible targets, so list order (backend creation order) decides.
         val olderRule = makeRule(id = "rule-oldest", patterns = listOf("IFOOD"), tags = listOf(makeTag(id = "tag-1")))
         val newerRule = makeRule(id = "rule-newer", patterns = listOf("IFOOD CLUB"), tags = listOf(makeTag(id = "tag-1")))
 
@@ -174,10 +170,8 @@ class RuleTeachPlannerTest {
     }
 
     // -------------------------------------------------------------------------
-    // Fix 1: a gateway-prefix pattern matching the notification TEXT is not enough — the matched
-    // pattern must also be the same SUBJECT as the taught pattern. Otherwise teaching an unrelated
-    // merchant behind the same payment gateway hijacks the gateway's rule and re-tags every merchant
-    // that rule has ever matched.
+    // Matching the notification text is not enough: the matched pattern must also be the same
+    // subject as the taught one, or teaching a merchant hijacks its payment gateway's rule.
     // -------------------------------------------------------------------------
 
     @Test
@@ -201,12 +195,8 @@ class RuleTeachPlannerTest {
 
     @Test
     fun `plan_taughtPatternStillCarriesTheGatewayPrefix_returnsCreate_notUpdate`() {
-        // The taught pattern is NOT pre-stripped here, and must not need to be. BrNotificationParser's
-        // ACQUIRER_PREFIX_REGEX (^[\p{L}\p{N}]{1,6}\*) only strips alphanumerics glued straight to the
-        // star, so "Mp *" survives into the taught pattern. Plain containment would then call "Mp *"
-        // and "Mp *SHUKAI SUSHI" the same subject — a gateway prefix is a literal prefix of every
-        // merchant behind it — re-electing the gateway rule, and compact would drop the narrow pattern
-        // so ONLY the tags change: the production symptom, bit for bit.
+        // The taught pattern keeps its prefix on purpose: BrNotificationParser leaves "Mp *" alone, so
+        // targeting must not depend on the pattern arriving pre-stripped.
         val gatewayRule = makeRule(id = "rule-gateway", patterns = listOf("Mp *"))
 
         val result = RuleTeachPlanner.plan(
@@ -226,11 +216,8 @@ class RuleTeachPlannerTest {
 
     @Test
     fun `plan_conjunctionMustBeEvaluatedOnTheSamePattern_notAsTwoIndependentAnyChecks`() {
-        // Regression pin: "Ifd*" matches the notification TEXT, and "PADARIA" (a different pattern on
-        // the SAME rule) is subject-related to the taught pattern — but neither condition holds on the
-        // SAME pattern. A wrongly split predicate,
-        // `rule.patterns.any { matches } && rule.patterns.any { sameSubject }`, would treat those two
-        // independent truths as sufficient and re-elect this rule, reopening the hijack this fix closes.
+        // "Ifd*" matches the text and "PADARIA" is the same subject, but neither holds on one pattern:
+        // `patterns.any { matches } && patterns.any { sameSubject }` would wrongly elect this rule.
         val rule = makeRule(id = "rule-mixed", patterns = listOf("Ifd*", "PADARIA"))
 
         val result = RuleTeachPlanner.plan(
@@ -264,17 +251,13 @@ class RuleTeachPlannerTest {
         assertTrue(result is TeachPlan.Update)
         val updated = (result as TeachPlan.Update).rule
         assertEquals("rule-newer", updated.id)
-        // "PADARIA" already covers the taught pattern, so compact drops it: an Update keeps the
-        // broadest pattern of the subject rather than growing the list.
         assertEquals(listOf("PADARIA"), updated.patterns)
     }
 
     @Test
     fun `plan_ordinaryPatternMatchesNotificationText_butSubjectDiffers_returnsCreate_notUpdate`() {
-        // Non-gateway form of the hijack this branch fixes: "COMPRA" is a common word, not a bare
-        // gateway marker, so isGatewayMarker never fires here — only the containment leg of
-        // sameSubject stands between an ordinary common-word pattern and absorbing every teach behind
-        // it. The rule's pattern DOES match the notification text; that must not be enough on its own.
+        // "COMPRA" is no gateway marker, so only sameSubject's containment leg keeps a common-word
+        // pattern from absorbing every teach behind it.
         val commonWordRule = makeRule(id = "rule-compra", patterns = listOf("COMPRA"))
 
         val result = RuleTeachPlanner.plan(
@@ -370,9 +353,8 @@ class RuleTeachPlannerTest {
 
     @Test
     fun `an IGNORE rule matching the notification is not a teach target`() {
-        // Subject-related to the taught pattern (IFOOD / IFOOD CLUB) on purpose: with unrelated
-        // filler data (SPAM/IFOOD) this would return Create for the wrong reason (subject mismatch)
-        // and prove nothing about the ACTION filter in isolation.
+        // Subject-related on purpose: unrelated fixtures would return Create for the wrong reason and
+        // prove nothing about the action filter.
         val ignoreRule = makeRule(
             id = "ignore-rule",
             patterns = listOf("IFOOD"),
@@ -457,10 +439,8 @@ class RuleTeachPlannerTest {
     }
 
     // -------------------------------------------------------------------------
-    // Root cause 4 regression: a rule whose patterns don't actually match the notification text must
-    // NOT be chosen as target — even when it is subject-related to the taught pattern. Tightened to
-    // isolate the text-match leg: "Uber Eats" and "Uber" ARE the same subject (sameSubject would say
-    // true), so this can only pass because the text-match conjunct independently fails.
+    // A rule whose patterns don't match the notification text is never a target, even when it is
+    // the same subject as the taught pattern — which "Uber Eats"/"Uber" is, to isolate that leg.
     // -------------------------------------------------------------------------
 
     @Test

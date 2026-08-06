@@ -12,10 +12,6 @@ package com.resolveprogramming.pocketcounter.domain.rules
  *  - [foldCase] is strict (whitespace preserved verbatim) and backs [covers]/[compact], which
  *    authorise DELETING a stored pattern. Being loose there drops patterns whose reach is not
  *    actually subsumed, and a dropped pattern can stop a rule from firing at all.
- *
- * [isGatewayMarker] is the odd one out: a lexical classification rather than a comparison. It gates
- * [sameSubject] and backs [TeachPatternSanitizer], and neither the loose nor the strict rationale
- * applies to it.
  */
 object RulePatterns {
 
@@ -45,19 +41,13 @@ object RulePatterns {
     }
 
     /**
-     * True when [raw] contains a '*' and no letter follows its LAST occurrence.
+     * True when [raw] holds a '*' with no letter after its LAST occurrence — bare payment-gateway
+     * markers ("Ifd*", "Dl *", "Rp3bank*"), which name the acquirer that routed the charge rather
+     * than the merchant that took the money.
      *
-     * That is the whole predicate — deliberately position-independent, not anchored to a prefix. It
-     * catches the bare payment-gateway markers the corpus carries ("Ifd*", "Dl *", "Rp3bank*"), which
-     * name the acquirer that routed the charge rather than the merchant that took the money, and are
-     * therefore the same "subject" as every merchant behind them. Anchoring it to a prefix would miss
-     * "Rp3bank*" exactly the way `BrNotificationParser.ACQUIRER_PREFIX_REGEX` does — see [sameSubject].
-     *
-     * It also fires on strings that merely look like that: a merchant ending in '*', or an acquirer
-     * descriptor with a numeric merchant id ("PAG*123456"). Both over-rejections are inert — the
-     * candidate is dropped and at worst no rule is learned, or the rule stops being a teach target and
-     * a fresh one is created instead. The false negative it prevents is destructive re-tagging, so the
-     * asymmetry points the right way on purpose.
+     * Position-independent on purpose, not anchored to a prefix: anchoring would miss "Rp3bank*" the
+     * way `BrNotificationParser.ACQUIRER_PREFIX_REGEX` does. Over-rejecting a lookalike ("PAG*123456")
+     * only costs a learned rule; under-rejecting re-tags every merchant behind the gateway.
      */
     fun isGatewayMarker(raw: String): Boolean {
         val lastStar = raw.lastIndexOf('*')
@@ -66,19 +56,11 @@ object RulePatterns {
 
     /**
      * True when [a] and [b] name the same thing: either normalized form contains the other, and
-     * neither is a bare gateway marker. Blank on either side is never a subject.
+     * neither is a bare gateway marker. Built on the loose [normalize], like [matches].
      *
-     * Built on the loose [normalize], like [matches] and unlike [covers]: this only narrows which rule
-     * a teach targets, and "DL *UberRides" / "DL     *UberRides" have to read as one subject even
-     * though neither is a strict substring of the other.
-     *
-     * The [isGatewayMarker] guard is what separates a merchant from the acquirer in front of it, and it
-     * has to live HERE rather than rely on the taught pattern arriving pre-stripped. Containment alone
-     * says "Dl *" and "Dl *UberRides" are one subject — a gateway prefix is a literal prefix of every
-     * merchant behind it — so a pattern that kept its prefix would re-elect the gateway's rule and
-     * re-tag every merchant it ever matched. `BrNotificationParser` strips only SOME of these
-     * (alphanumerics glued directly to the star, six or fewer), leaving "Dl *", "Mp *" and "Rp3bank*"
-     * intact, and correctness of the rule set must not hinge on that regex's exact bounds.
+     * The [isGatewayMarker] guard has to live here rather than assume the taught pattern arrived
+     * pre-stripped: `BrNotificationParser` leaves "Dl *", "Mp *" and "Rp3bank*" intact, and
+     * containment alone makes a gateway prefix the same subject as every merchant behind it.
      */
     fun sameSubject(a: String, b: String): Boolean {
         if (a.isBlank() || b.isBlank()) return false

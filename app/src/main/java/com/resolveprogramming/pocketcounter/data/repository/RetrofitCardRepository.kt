@@ -150,8 +150,7 @@ class RetrofitCardRepository @Inject constructor(
         // "<merchant> · 2026-05-28" would never CONTAINS-match a future purchase.
         val (cleanName, _) = splitTrailingDate(existing.name)
         // A bare gateway marker ("Ifd*") as an item name would mint a rule matching every merchant
-        // behind that acquirer, and being the oldest match it would then win every classification.
-        // This is the second teach entry point; the wizard's goes through the same sanitizer.
+        // behind that acquirer, and being the oldest match it would win every classification.
         val pattern = TeachPatternSanitizer.clean(cleanName.takeIf { it.isNotBlank() } ?: existing.name)
             ?: return@runCatching ClassifyOutcome(ruleRequested = true, ruleCreated = false)
 

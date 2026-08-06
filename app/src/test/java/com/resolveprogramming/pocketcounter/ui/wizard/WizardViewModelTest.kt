@@ -1043,10 +1043,6 @@ class WizardViewModelTest {
 
     @Test
     fun `ignore with learn accepts a bare gateway prefix as pattern`() = runTest {
-        // The SUGGEST path rejects a bare gateway prefix ("Ifd*") because it would absorb every
-        // merchant behind the acquirer into one rule's tags. The IGNORE path must NOT: silencing a
-        // whole acquirer is the user's actual intent, and an IGNORE rule carries no tags and is never
-        // a teach target, so its breadth can't mis-tag anything.
         val base = makeNotification(id = "notif-1")
         val notification = base.copy(
             text = "Compra IFD*APROVADO R$ 49,90",
@@ -1073,9 +1069,6 @@ class WizardViewModelTest {
 
     @Test
     fun `ignore with learn keeps the payment hint as pattern when no merchant candidate exists`() = runTest {
-        // The IGNORE path is where breadth is the user's actual intent (mirrors the gateway-marker
-        // exception above): with no merchant/merchantRaw candidate, notification.parsed.paymentHint
-        // ("final 3685") must still be offered here, unlike on the SUGGEST path.
         val base = makeNotification(id = "notif-1", paymentHint = "final 3685")
         val notification = base.copy(
             text = "Compra aprovada no cartão final 3685 R$ 49,90",
@@ -1102,11 +1095,8 @@ class WizardViewModelTest {
 
     @Test
     fun `ignore with learn refuses a bare card-word payment hint`() = runTest {
-        // "conta" is the dangerous shape and the reason CARD_HINT_WORDS gates the hint even for
-        // IGNORE. BrNotificationParser emits it for ANY text carrying the word, which includes the
-        // INCOME phrase "crédito em conta" — so a rule keyed on it would silently drop incoming-money
-        // notifications out of the review queue, and being the oldest match, preempt every SUGGEST
-        // rule for them. Unlike a gateway marker, it names nothing the user could recognise.
+        // "conta" is emitted for the INCOME phrase "crédito em conta" too, so an IGNORE rule keyed on
+        // it would drop incoming money out of the review queue.
         val base = makeNotification(id = "notif-1", paymentHint = "conta")
         val notification = base.copy(
             text = "Crédito em conta R$ 1.200,00",
@@ -1124,7 +1114,6 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
-        // Ignoring THIS notification still works — only the rule is refused.
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
     }
 
@@ -1660,9 +1649,6 @@ class WizardViewModelTest {
 
     @Test
     fun `learnRuleIfRequested_ruleMatchingNotificationExists_callsUpdate_withPatternCompacted_notCreate`() = runTest {
-        // "RAPPI" and "RAPPI DELIVERY" are the same subject, so the taught pattern is now eligible to
-        // target this rule (Fix 1's sameSubject requirement) — this pins that an Update plan routes to
-        // repository.update, not create.
         val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI DELIVERY aprovada R$ 49,90")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -1671,8 +1657,7 @@ class WizardViewModelTest {
         val categoryTag = makeCategoryTag(id = "tag-cat", idContext = "ctx-food")
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
 
-        // Existing rule's pattern actually matches the notification text → TeachPlanner will Update.
-        // Tag id differs from the taught tag id, otherwise the plan collapses to NoOp and neither
+        // Tag id differs from the taught one, otherwise the plan collapses to NoOp and neither
         // repository call fires.
         val existingRule = makeExistingRule(
             id = "rule-existing",
@@ -1708,8 +1693,6 @@ class WizardViewModelTest {
 
     @Test
     fun `learnRuleIfRequested_draftMerchantIsAGatewayPrefix_fallsThroughToParsedMerchantRaw_callsCreate`() = runTest {
-        // draft.merchant ("IFD*") is a bare gateway prefix and gets rejected; learnPattern must fall
-        // through to notification.parsed.merchantRaw ("PADARIA DE TESTE") instead.
         val base = makeNotification(id = "notif-1")
         val notification = base.copy(
             text = "Compra IFD*PADARIA DE TESTE aprovada R$ 49,90",
@@ -1745,10 +1728,8 @@ class WizardViewModelTest {
 
     @Test
     fun `learnRuleIfRequested_noMerchantCandidates_paymentHintIsCartao_doesNotCreateRule`() = runTest {
-        // With draft.merchant and merchantRaw both absent, only notification.parsed.paymentHint
-        // ("cartão") would survive TeachPatternSanitizer today — but paymentHint is a closed set of
-        // card-hint words ("final NNNN" / "cartão" / "conta"), never a merchant, and "cartão" alone
-        // would match nearly every card notification. It must not be offered as a SUGGEST candidate.
+        // With no merchant candidate left, the hint is all that could reach the rule — and "cartão"
+        // would match nearly every card notification.
         val base = makeNotification(id = "notif-1", paymentHint = "cartão")
         val notification = base.copy(
             text = "Compra aprovada no cartão R$ 49,90",
@@ -1779,8 +1760,7 @@ class WizardViewModelTest {
 
     @Test
     fun `learnRuleIfRequested_noMerchantCandidates_paymentHintIsFinalDigits_doesNotCreateRule`() = runTest {
-        // Same as above with the "final NNNN" hint shape: a SUGGEST rule keyed on one card's last
-        // digits would claim every purchase on that card.
+        // A SUGGEST rule keyed on one card's last digits would claim every purchase on that card.
         val base = makeNotification(id = "notif-1", paymentHint = "final 3685")
         val notification = base.copy(
             text = "Compra aprovada no cartão final 3685 R$ 49,90",
@@ -1811,14 +1791,10 @@ class WizardViewModelTest {
 
     @Test
     fun `learnRuleIfRequested_draftMerchantIsGatewayPrefix_doesNotFallThroughToPaymentHint`() = runTest {
-        // This is the exact path the branch opened: rejecting "Ifd*" as a bare gateway prefix now
-        // lets the fall-through reach notification.parsed.paymentHint, which must never be a SUGGEST
-        // candidate regardless of how it was reached.
         val base = makeNotification(id = "notif-1", paymentHint = "cartão")
         val notification = base.copy(
-            // "Ifd*" MUST occur in the text: otherwise the sanitizer's containment filter drops that
-            // candidate on its own, the gateway rejection is never the reason for the fall-through,
-            // and this test would still pass with RulePatterns.isGatewayMarker deleted entirely.
+            // "Ifd*" MUST occur in the text, or the containment filter drops it first and the gateway
+            // rejection is never what causes the fall-through.
             text = "Compra Ifd* aprovada no cartão R$ 49,90",
             parsed = base.parsed.copy(merchantRaw = null),
         )

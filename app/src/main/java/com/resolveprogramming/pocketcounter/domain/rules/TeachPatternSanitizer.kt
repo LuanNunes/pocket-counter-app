@@ -1,28 +1,20 @@
 package com.resolveprogramming.pocketcounter.domain.rules
 
 /**
- * Turns the merchant-ish candidates a wizard save can offer into the one CONTAINS pattern worth
- * storing on a rule, or nothing at all.
- *
- * The bar is deliberately high because a stored pattern is permanent leverage: it decides, for every
- * future notification, which single rule the backend applies. A pattern that is too broad quietly
- * absorbs unrelated merchants, and the corpus already carries the scars — payment-gateway prefixes
- * like "Ifd*" or "Mp *" match everything billed through that gateway.
+ * Turns the merchant-ish candidates a teach can offer into the one CONTAINS pattern worth storing on
+ * a rule, or nothing at all. A pattern that is too broad quietly absorbs unrelated merchants, since
+ * the backend applies a single rule per notification.
  */
 object TeachPatternSanitizer {
 
     private val TRAILING_PUNCTUATION = charArrayOf('.', ',', ';', ':', '-')
 
     /**
-     * The first candidate that survives [clean] and appears — case-insensitively — in
-     * [notificationText]. Nulls and rejected candidates fall through to the next candidate rather than
-     * aborting the teach, so an over-broad edited merchant still lets the parsed one through.
+     * The first candidate that survives [clean] and occurs in [notificationText]. A rejected candidate
+     * falls through to the next rather than aborting the teach; ordering is the caller's policy.
      *
-     * Ordering is the caller's policy — this only filters.
-     *
-     * [allowGatewayMarker] opts out of the gateway rejection for the IGNORE path only, where matching a
-     * whole acquirer is the user's actual intent: an IGNORE rule carries no tags and is never a teach
-     * target, so its breadth silences notifications instead of mis-tagging transactions.
+     * [allowGatewayMarker] is for the IGNORE path only: an IGNORE rule carries no tags and is never a
+     * teach target, so silencing a whole acquirer can't mis-tag anything.
      */
     fun choose(
         candidates: List<String?>,
@@ -34,19 +26,13 @@ object TeachPatternSanitizer {
             .firstOrNull { notificationText.contains(it, ignoreCase = true) }
 
     /**
-     * Trims, drops trailing punctuation, and — unless [allowGatewayMarker] — rejects bare payment-
-     * gateway prefixes via [RulePatterns.isGatewayMarker].
+     * Gateway prefixes are rejected, never shortened: stripping the '*' off "Ifd*" yields "Ifd", which
+     * is broader still.
      *
-     * Rejected rather than cleaned. Stripping the '*' off "Ifd*" yields "Ifd", which is BROADER — still
-     * every iFood notification, now also anything else containing those letters. There is no shorter
-     * form of a gateway prefix that means the merchant.
-     *
-     * Only TRAILING characters are removed: no interior edits, no case folding, no whitespace
-     * collapsing. Per [RulePatterns], a stored pattern has to stay a substring of real notification
-     * text, since we can't verify how whitespace-sensitive the backend's CONTAINS is. The closing
-     * [String.trim] matters for the same reason [RulePatterns.covers] is whitespace-strict: "Padaria "
-     * and "Padaria" never compact into each other, so a stray trailing space accumulates near-duplicate
-     * patterns on the rule forever.
+     * Only TRAILING characters are removed — no interior edits, no case folding, no whitespace
+     * collapsing — so the result stays a literal substring of the notification text, which is what the
+     * backend's CONTAINS needs. The closing trim keeps "Padaria " from piling up beside "Padaria",
+     * since [RulePatterns.covers] is whitespace-strict and would never compact the two.
      */
     internal fun clean(raw: String, allowGatewayMarker: Boolean = false): String? {
         val trimmed = raw.trim().trimEnd(*TRAILING_PUNCTUATION).trim()

@@ -228,8 +228,6 @@ class RulePatternsTest {
 
     @Test
     fun `sameSubject_returnsFalse_forTwoOrdinaryUnrelatedStrings`() {
-        // Neither blank, neither a gateway marker, neither containing the other: the containment leg
-        // itself must say false here, not just the blank/gateway guards ahead of it.
         assertFalse(RulePatterns.sameSubject("COMPRA", "RAPPI"))
     }
 
