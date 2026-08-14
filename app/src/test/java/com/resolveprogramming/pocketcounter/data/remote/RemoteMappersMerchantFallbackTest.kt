@@ -69,6 +69,33 @@ class RemoteMappersMerchantFallbackTest {
     }
 
     @Test
+    fun `a truncated stored merchant is healed from the text`() {
+        val item = notification(
+            text = "Débito em SUPERMERCADO Extra R$ 75,00",
+            parsedMerchant = "SUPERMERCADO E",
+        ).toDomain()
+
+        assertEquals("SUPERMERCADO", item.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `a stored merchant that ends at a word boundary is left untouched`() {
+        // "Itau" occurs in the default text as "no seu Itau final 4842" — a word boundary, so the
+        // heal must not fire. It has to differ from what a fresh parse would return ("UberRides"),
+        // otherwise an always-heal implementation would pass this test too.
+        val item = notification(parsedMerchant = "Itau").toDomain()
+
+        assertEquals("Itau", item.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `a stored merchant absent from the text is left untouched`() {
+        val item = notification(parsedMerchant = "PetShop Amigo").toDomain()
+
+        assertEquals("PetShop Amigo", item.parsed.merchantRaw)
+    }
+
+    @Test
     fun `classify heals before tokenizing so the MERCHANT chip is produced`() {
         val base = notification(parsedMerchant = null).toDomain()
         val response = ClassifyResponseDto(
