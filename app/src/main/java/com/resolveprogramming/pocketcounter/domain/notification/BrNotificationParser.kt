@@ -46,6 +46,16 @@ object BrNotificationParser {
         return ParseResult(isFinancial = amount != null, parsed = parsed)
     }
 
+    /**
+     * Read-side heal for stored parses that predate a parser fix. It has to happen on read because
+     * the backend stores the parsed* fields verbatim and exposes no notification-update endpoint,
+     * so already-captured rows can never be backfilled.
+     */
+    fun healMerchant(parsed: ParsedNotification, text: String): ParsedNotification {
+        if (!parsed.merchantRaw.isNullOrBlank()) return parsed
+        return parsed.copy(merchantRaw = parseMerchant(text))
+    }
+
     private fun parseAmount(text: String): BigDecimal? {
         val match = AMOUNT_REGEX.find(text) ?: return null
         return NotificationTokenizer.parseBrAmount(match.value)
@@ -87,21 +97,36 @@ object BrNotificationParser {
         PARCEL_VALUE_REGEX.containsMatchIn(text.lowercase())
 
     /**
-     * Merchant extraction, tried most-specific first:
-     *  1. Card format "... final NNNN - <merchant> valor ..." (the dominant credit-card push). The
-     *     merchant is the delimited descriptor (e.g. "DL*UberRides", "IFD*IFOOD CLUB") and may carry
-     *     lowercase, so it can't be captured by the uppercase-run heuristic below.
-     *  2. Card format "... aprovada em <merchant> para o cartão ...".
-     *  3. Fallback heuristic: an UPPERCASE-led run after "compra em"/"em".
+     * Merchant extraction, tried most-specific first: card "final NNNN - <merchant> valor", card
+     * "aprovada em <merchant> para", the generic UPPERCASE-led run, then the loose Itaú-style
+     * "em <merchant>, dd/MM" pattern last — its `[^,\n]` capture is bounded only by the next comma,
+     * so it readily over-captures (e.g. trailing context words) and must lose to a tighter pattern
+     * whenever one also matches.
      *
-     * The numeric-mask guard in [cleanMerchant] stops the fallback from capturing a date's day digits
-     * (e.g. "em 29/06" → "29"), which would normalize to nothing and make a learned rule un-matchable.
+     * Priority resolves before match position: a later match of a higher-priority pattern must
+     * never lose to an earlier match of a lower-priority one. That's why only the em-comma-date
+     * pattern retries past a match whose capture fails validation ([Regex.findAll] + a `guard`); the
+     * other three stop at their first match ([Regex.find], no guard) — walking one of them past an
+     * invalid match risks reaching an unrelated later clause (e.g. a bank footer's "Avise em ITAU")
+     * before this function ever falls through to the next pattern in priority order.
      */
     private fun parseMerchant(text: String): String? =
-        (CARD_FINAL_MERCHANT_REGEX.find(text)?.groupValues?.get(1)
-            ?: APROVADA_EM_MERCHANT_REGEX.find(text)?.groupValues?.get(1)
-            ?: MERCHANT_REGEX.find(text)?.groupValues?.get(1))
-            ?.let(::cleanMerchant)
+        MERCHANT_PATTERNS.firstNotNullOfOrNull { (pattern, guard) -> extractMerchant(pattern, text, guard) }
+
+    private fun extractMerchant(pattern: Regex, text: String, guard: ((String) -> Boolean)?): String? {
+        if (guard == null) return pattern.find(text)?.groupValues?.get(1)?.let(::cleanMerchant)
+        return pattern.findAll(text).firstNotNullOfOrNull { match ->
+            match.groupValues[1].takeIf(guard)?.let(::cleanMerchant)
+        }
+    }
+
+    // Applied only to the em-comma-date pattern, the loosest of the four (a bare "em <text>, dd/MM",
+    // no business keyword to anchor it) and the only one retried via findAll — a rejected candidate
+    // there can safely fall through to a later match because of the `, dd/MM` anchor plus this guard;
+    // the other three keep a single find() so a rejected/short match doesn't walk further into the
+    // text (see the bank-footer hazard in parseMerchant's KDoc).
+    private fun isPlausibleMerchant(raw: String): Boolean =
+        raw.split(WHITESPACE_REGEX).none { word -> word.trim('.', ',', ';', ':', '-').lowercase() in NON_MERCHANT_WORDS }
 
     private fun cleanMerchant(raw: String): String? {
         // Drop the card-acquirer prefix ("DL*UberRides" → "UberRides", "IFD*IFOOD CLUB" → "IFOOD CLUB")
@@ -200,10 +225,38 @@ object BrNotificationParser {
         RegexOption.IGNORE_CASE,
     )
 
+    // Itaú push: "... em DL*UberRides, 08/08 as 18:53 ...". The prefix's case-insensitivity is an
+    // inline (?i:...) group, not RegexOption.IGNORE_CASE — the option would also make \p{Lu} match
+    // lowercase and evaporate the digit/lowercase-context guard on the capture's first char.
+    private val EM_COMMA_DATE_MERCHANT_REGEX = Regex(
+        """(?i:\bem)\s+(?!R\$)(\p{Lu}[^,\n]{1,59}),\s*\d{1,2}/\d{1,2}\b""",
+    )
+
     // Prefix is case-insensitive ((?i:...)); the merchant capture stays case-sensitive so it only
     // grabs an UPPERCASE-led run and stops at the first lowercase-led context word ("aprovada", "em").
     private val MERCHANT_REGEX = Regex(
         """(?i:\bcompra\s+em|\bem)\s+(?!R\$)([\p{Lu}\d][\p{Lu}\d&.*\-]*(?:\s+(?!R\$)[\p{Lu}\d][\p{Lu}\d&.*\-]*)*)""",
+    )
+
+    private val WHITESPACE_REGEX = Regex("""\s+""")
+
+    // Words that make a capture rejected if ANY of them is present — see [isPlausibleMerchant]. Not
+    // connectors ("de", "da", "do", "com", "para", "pelo"...): real BR merchant names use those
+    // ("Padaria da Esquina", "Bar do Zé"), so they'd blank out the population this pattern exists
+    // for. Case is folded via lowercase(); accents are not, so both forms are listed explicitly.
+    private val NON_MERCHANT_WORDS = setOf(
+        "no", "na", "nos", "nas", "seu", "sua", "em", "as", "às", "valor", "compra", "pagamento",
+        "aprovada", "aprovado", "parcela", "parcelas", "vezes", "final", "cartao", "cartão",
+        "conta", "corrente", "credito", "crédito", "debito", "débito",
+        "janeiro", "fevereiro", "março", "marco", "abril", "maio", "junho", "julho",
+        "agosto", "setembro", "outubro", "novembro", "dezembro",
+    )
+
+    private val MERCHANT_PATTERNS: List<Pair<Regex, ((String) -> Boolean)?>> = listOf(
+        CARD_FINAL_MERCHANT_REGEX to null,
+        APROVADA_EM_MERCHANT_REGEX to null,
+        MERCHANT_REGEX to null,
+        EM_COMMA_DATE_MERCHANT_REGEX to ::isPlausibleMerchant,
     )
 
     private val DATE_REGEX = Regex("""\b(\d{2})/(\d{2})(/\d{4})?\b""")

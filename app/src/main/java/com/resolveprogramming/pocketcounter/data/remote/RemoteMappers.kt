@@ -27,6 +27,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import java.math.BigDecimal
 import java.time.Instant
@@ -238,6 +239,15 @@ internal object RemoteMappers {
     fun NotificationDto.toDomain(): NotificationItem {
         val received = receivedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
         val localTime = received?.atZone(ZoneId.systemDefault())
+        val parsed = ParsedNotification(
+            type = parseType(parsedType),
+            amount = parsedAmount,
+            date = parseDate(parsedDate),
+            merchantRaw = parsedMerchant,
+            paymentHint = parsedPaymentHint,
+            installments = parsedInstallments,
+            installmentValue = parsedInstallmentValue,
+        )
         return NotificationItem(
             id = id,
             app = app,
@@ -248,15 +258,7 @@ internal object RemoteMappers {
             text = text,
             status = NotificationStatus.AUTO.takeIf { status.uppercase() == "CLASSIFIED" }
                 ?: NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = parseType(parsedType),
-                amount = parsedAmount,
-                date = parseDate(parsedDate),
-                merchantRaw = parsedMerchant,
-                paymentHint = parsedPaymentHint,
-                installments = parsedInstallments,
-                installmentValue = parsedInstallmentValue,
-            ),
+            parsed = BrNotificationParser.healMerchant(parsed, text),
             suggestions = ClassificationSuggestion(
                 tagIds = emptyList(),
                 paymentMethod = null,
@@ -272,7 +274,7 @@ internal object RemoteMappers {
      * source/tag suggestions and pre-assigned source-text tokens.
      */
     fun ClassifyResponseDto.toClassified(base: NotificationItem): ClassifiedNotification {
-        val parsedDomain = ParsedNotification(
+        val unhealed = ParsedNotification(
             type = parseType(parsed.type),
             amount = parsed.amount,
             date = parseDate(parsed.date),
@@ -281,6 +283,8 @@ internal object RemoteMappers {
             installments = parsed.installments,
             installmentValue = parsed.installmentValue,
         )
+        // The response rebuilds `parsed` from storage, so it must be healed too.
+        val parsedDomain = BrNotificationParser.healMerchant(unhealed, base.text)
         val enriched = base.copy(
             status = parseStatus(status),
             parsed = parsedDomain,

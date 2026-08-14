@@ -482,6 +482,238 @@ class BrNotificationParserTest {
         assertEquals("GOOGLE YouTub", result.parsed.merchantRaw)
     }
 
+    // -------------------------------------------------------------------------
+    // Merchant parsing — Itaú push ("... em <merchant>, dd/MM as HH:MM ...")
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parse merchant from em-comma-date format keeps mixed case and strips the prefix`() {
+        val result = BrNotificationParser.parse(
+            "29040 Compra aprovada de R$ 23,97 em DL*UberRides, 08/08 as 18:53 no seu Itau final 4842.",
+            NOW,
+        )
+
+        assertEquals("UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from em-comma-date format spans a mixed-case multi-word merchant`() {
+        // Mixed case (not all-uppercase) so this can only pass via the em-comma-date pattern,
+        // not the generic uppercase-run fallback.
+        val result = BrNotificationParser.parse(
+            "12345 Compra aprovada de R$ 89,90 em IFD*iFood Clube, 08/08 as 12:01 no seu Itau final 4842.",
+            NOW,
+        )
+
+        assertEquals("iFood Clube", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from em-comma-date format never starts at the amount`() {
+        // The first "em" (before "Loja X") is rejected because "R$ 23,97" carries its own comma:
+        // the capture can't reach a ", dd/MM" before it, so the second "em" (before the real
+        // merchant) is tried instead.
+        val result = BrNotificationParser.parse(
+            "em Loja X de R$ 23,97 em DL*UberRides, 08/08",
+            NOW,
+        )
+
+        assertEquals("UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from em-comma-date format ignores a lowercase context phrase`() {
+        // "em seu cartao, 08/08" names no merchant; only an uppercase-led run may be captured.
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 23,97 em seu cartao, 08/08 as 18:53.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from em-comma-date format ignores a digit-led phrase`() {
+        // "em 2 parcelas, 08/08" names no merchant; a digit-led capture must not be allowed.
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 10,00 em 2 parcelas, 08/08.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from em-comma-date format is rejected when the capture exceeds the length cap`() {
+        // Acquirer-prefixed and mixed-case, so only the em-comma-date pattern can match at all — the
+        // generic pattern's single find() stops at "MP*U" (mixed case breaks the uppercase run) and
+        // cleans to null, with no retry. The em-comma-date capture itself (55 chars, within its own
+        // 59-char regex cap) strips to "Uma Loja De Nome Absurdamente Comprido Demais Assim" (51
+        // chars), over cleanMerchant's 40-char cap, so the whole parse yields no merchant.
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 10,00 em MP*Uma Loja De Nome Absurdamente Comprido Demais Assim, 08/08.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant prefers the card final-dash-valor format over a later em-comma-date phrase`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 10,00 em Outra Loja, 08/08 no seu Itau final 3685 - DL*UberRides valor RS 26,74.",
+            NOW,
+        )
+
+        assertEquals("UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant from em-comma-date format does not span a newline`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 10,00 em Uma Loja\n, 08/08 as 18:53.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant prefers the generic uppercase run over a swallowing em-comma-date capture`() {
+        // "da Itau Filial" has no banned word, so the word guard can't save this one — only trying
+        // the generic pattern before the em-comma-date one keeps the merchant from being swallowed.
+        // (The generic pattern still stops cleanly at "da": its capture requires an uppercase/digit
+        // first char, and "da" is lowercase.)
+        val result = BrNotificationParser.parse(
+            "Compra em LOJA XPTO da Itau Filial, 08/08 as 10:00 R$ 10,00",
+            NOW,
+        )
+
+        assertEquals("LOJA XPTO", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant rejects an em-comma-date capture containing non-merchant context words`() {
+        // "Uber Rides" is the real merchant here, but it's embedded in context words the capture
+        // can't isolate ("aprovada", "no", "cartao", "final") — missing beats a junk merchant that
+        // would become a stored rule pattern.
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 23,97 em Uber Rides aprovada no cartao final 4842, 08/08",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant rejects conta as an em-comma-date capture`() {
+        // The parser emits "conta" for the income phrase "credito em conta" elsewhere in the app;
+        // it must not also surface as a merchant.
+        val result = BrNotificationParser.parse(
+            "Pagamento de R$ 100,00 debitado em Conta, 08/08.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant rejects conta corrente as an em-comma-date capture`() {
+        val result = BrNotificationParser.parse(
+            "Credito de R$ 250,00 em Conta Corrente, 08/08 as 10:00.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant rejects a month name as an em-comma-date capture`() {
+        val result = BrNotificationParser.parse(
+            "Itau: Sua fatura fecha em Agosto, 08/08. Valor R$ 1.234,56",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant rejects a stored word only after its own trailing punctuation is trimmed`() {
+        // Raw capture is "Conta." (period included) — the guard must trim it before comparing,
+        // or "conta." escapes the NON_MERCHANT_WORDS lookup entirely.
+        val result = BrNotificationParser.parse(
+            "Pagamento de R$ 50,00 em Conta., 08/08.",
+            NOW,
+        )
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant keeps a connector word inside a real BR merchant name`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 15,00 em Padaria da Esquina, 08/08 as 10:00.",
+            NOW,
+        )
+
+        assertEquals("Padaria da Esquina", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant keeps a connector word in an acquirer-prefixed BR merchant name`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 45,00 em MP*Bar do Ze, 08/08 as 11:00.",
+            NOW,
+        )
+
+        assertEquals("Bar do Ze", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant keeps a connector word followed by a company suffix`() {
+        val result = BrNotificationParser.parse(
+            "Compra aprovada de R$ 60,00 em Casa do Norte Ltda, 08/08 as 12:00.",
+            NOW,
+        )
+
+        assertEquals("Casa do Norte Ltda", result.parsed.merchantRaw)
+    }
+
+    // -------------------------------------------------------------------------
+    // Merchant parsing — bank footer / CTA text must not beat the real merchant
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parse merchant does not let a bank footer CTA beat the real merchant via a single-word footer`() {
+        val result = BrNotificationParser.parse(
+            "29040 Compra aprovada de R$ 23,97 em DL*UberRides, 08/08 as 18:53 no seu Itau final 4842. " +
+                "Nao foi voce? Avise em ITAU",
+            NOW,
+        )
+
+        assertEquals("UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant does not let a bank footer CTA beat the real merchant via a multi-word footer`() {
+        val result = BrNotificationParser.parse(
+            "12345 Compra aprovada de R$ 45,00 em IFD*iFood, 08/08 as 12:01. Nao reconhece? Bloqueie em ITAU APP",
+            NOW,
+        )
+
+        assertEquals("iFood", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant does not let a bank footer CTA on the next line beat the real merchant`() {
+        val result = BrNotificationParser.parse(
+            "29040 Compra aprovada de R$ 23,97 em DL*UberRides, 08/08 as 18:53\nItau: acompanhe em MEUS CARTOES",
+            NOW,
+        )
+
+        assertEquals("UberRides", result.parsed.merchantRaw)
+    }
+
     @Test
     fun `parse merchant is never a pure number`() {
         // A bare "em <date>" must not yield a numeric merchant.
