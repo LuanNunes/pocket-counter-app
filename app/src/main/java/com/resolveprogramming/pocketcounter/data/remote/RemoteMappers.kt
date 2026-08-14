@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationRequestDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.ParsedNotificationDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CarryForwardResultDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.RecurringSeriesDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
@@ -239,15 +240,6 @@ internal object RemoteMappers {
     fun NotificationDto.toDomain(): NotificationItem {
         val received = receivedAt?.let { runCatching { Instant.parse(it) }.getOrNull() }
         val localTime = received?.atZone(ZoneId.systemDefault())
-        val parsed = ParsedNotification(
-            type = parseType(parsedType),
-            amount = parsedAmount,
-            date = parseDate(parsedDate),
-            merchantRaw = parsedMerchant,
-            paymentHint = parsedPaymentHint,
-            installments = parsedInstallments,
-            installmentValue = parsedInstallmentValue,
-        )
         return NotificationItem(
             id = id,
             app = app,
@@ -258,7 +250,7 @@ internal object RemoteMappers {
             text = text,
             status = NotificationStatus.AUTO.takeIf { status.uppercase() == "CLASSIFIED" }
                 ?: NotificationStatus.NEEDS_REVIEW,
-            parsed = BrNotificationParser.healMerchant(parsed, text),
+            parsed = BrNotificationParser.healMerchant(toParsed(), text),
             suggestions = ClassificationSuggestion(
                 tagIds = emptyList(),
                 paymentMethod = null,
@@ -269,22 +261,39 @@ internal object RemoteMappers {
     }
 
     /**
+     * The flat `parsed*` columns of the list/pending payload. Kept beside [ParsedNotificationDto.toParsed]
+     * so the two shapes the backend uses for the same data stay visibly parallel; neither is healed
+     * here, because only the callers know which text to re-parse from.
+     */
+    private fun NotificationDto.toParsed(): ParsedNotification = ParsedNotification(
+        type = parseType(parsedType),
+        amount = parsedAmount,
+        date = parseDate(parsedDate),
+        merchantRaw = parsedMerchant,
+        paymentHint = parsedPaymentHint,
+        installments = parsedInstallments,
+        installmentValue = parsedInstallmentValue,
+    )
+
+    /** The nested `parsed` block of the classify response. Mirrors [NotificationDto.toParsed]. */
+    private fun ParsedNotificationDto.toParsed(): ParsedNotification = ParsedNotification(
+        type = parseType(type),
+        amount = amount,
+        date = parseDate(date),
+        merchantRaw = merchantRaw,
+        paymentHint = paymentHint,
+        installments = installments,
+        installmentValue = installmentValue,
+    )
+
+    /**
      * POST /notifications/classify enriches an already-loaded [NotificationItem] (we pass the
      * base item in so we don't re-fetch the text) with the classifier's parsed fields,
      * source/tag suggestions and pre-assigned source-text tokens.
      */
     fun ClassifyResponseDto.toClassified(base: NotificationItem): ClassifiedNotification {
-        val unhealed = ParsedNotification(
-            type = parseType(parsed.type),
-            amount = parsed.amount,
-            date = parseDate(parsed.date),
-            merchantRaw = parsed.merchantRaw,
-            paymentHint = parsed.paymentHint,
-            installments = parsed.installments,
-            installmentValue = parsed.installmentValue,
-        )
         // The response rebuilds `parsed` from storage, so it must be healed too.
-        val parsedDomain = BrNotificationParser.healMerchant(unhealed, base.text)
+        val parsedDomain = BrNotificationParser.healMerchant(parsed.toParsed(), base.text)
         val enriched = base.copy(
             status = parseStatus(status),
             parsed = parsedDomain,
