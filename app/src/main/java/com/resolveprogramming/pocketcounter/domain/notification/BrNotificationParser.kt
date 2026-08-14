@@ -50,10 +50,28 @@ object BrNotificationParser {
      * Read-side heal for stored parses that predate a parser fix. It has to happen on read because
      * the backend stores the parsed* fields verbatim and exposes no notification-update endpoint,
      * so already-captured rows can never be backfilled.
+     *
+     * A blank/null stored value is always re-parsed. A non-blank one is only re-parsed when it
+     * looks truncated — every occurrence of it in [text] ends mid-token, immediately followed by a
+     * letter or digit, which is a mid-word parser cut rather than a deliberate short name. A stored
+     * value never present in [text] at all is left alone, and a stored value is never blanked out
+     * by a fresh parse that comes back null.
      */
     fun healMerchant(parsed: ParsedNotification, text: String): ParsedNotification {
-        if (!parsed.merchantRaw.isNullOrBlank()) return parsed
-        return parsed.copy(merchantRaw = parseMerchant(text))
+        val stored = parsed.merchantRaw
+        if (stored.isNullOrBlank()) return parsed.copy(merchantRaw = parseMerchant(text))
+        if (!isTruncatedMerchant(stored, text)) return parsed
+        val healed = parseMerchant(text) ?: return parsed
+        return parsed.copy(merchantRaw = healed)
+    }
+
+    private fun isTruncatedMerchant(stored: String, text: String): Boolean {
+        val occurrences = Regex(Regex.escape(stored), RegexOption.IGNORE_CASE).findAll(text).toList()
+        if (occurrences.isEmpty()) return false
+        return occurrences.all { match ->
+            val next = match.range.last + 1
+            next < text.length && (text[next].isLetter() || text[next].isDigit())
+        }
     }
 
     private fun parseAmount(text: String): BigDecimal? {
@@ -98,8 +116,10 @@ object BrNotificationParser {
 
     /**
      * Merchant extraction, tried most-specific first: card "final NNNN - <merchant> valor", card
-     * "aprovada em <merchant> para", the generic UPPERCASE-led run, then the loose Itaú-style
-     * "em <merchant>, dd/MM" pattern last — its `[^,\n]` capture is bounded only by the next comma,
+     * "aprovada em <merchant> para", the generic run of complete UPPERCASE/digit words (stopping at
+     * the first word that isn't fully uppercase/digit, so a Title-Case word's leading capital is
+     * never consumed as a false continuation), then the loose Itaú-style "em <merchant>, dd/MM"
+     * pattern last — its `[^,\n]` capture is bounded only by the next comma,
      * so it readily over-captures (e.g. trailing context words) and must lose to a tighter pattern
      * whenever one also matches.
      *
@@ -232,10 +252,27 @@ object BrNotificationParser {
         """(?i:\bem)\s+(?!R\$)(\p{Lu}[^,\n]{1,59}),\s*\d{1,2}/\d{1,2}\b""",
     )
 
-    // Prefix is case-insensitive ((?i:...)); the merchant capture stays case-sensitive so it only
-    // grabs an UPPERCASE-led run and stops at the first lowercase-led context word ("aprovada", "em").
+    // Shared between the word body and its completion lookahead below so the two classes can
+    // never drift apart — a punctuation char added to one but not the other reopens the bug where
+    // a failed word backtracks into a truncated acquirer prefix ("DL*UberRides" -> "DL").
+    private const val MERCHANT_WORD_PUNCTUATION = "&.*\\-"
+
+    // A complete UPPERCASE/digit word: starts with [\p{Lu}\d], may continue with more of the same
+    // plus the punctuation above, and — via the trailing negative lookahead — must not be followed
+    // by more letters/digits/punctuation. That lookahead is what turns a Title-Case word's leading
+    // capital ("Extra") from a one-character false continuation into a hard stop, without also
+    // rejecting a genuine single-letter word ("LOJA A BAHIA") whose next char is whitespace.
+    private const val MERCHANT_WORD =
+        """[\p{Lu}\d][\p{Lu}\d$MERCHANT_WORD_PUNCTUATION]*(?![\p{L}\p{N}$MERCHANT_WORD_PUNCTUATION])"""
+
+    // Prefix is case-insensitive ((?i:...)); the merchant capture stays case-sensitive. The run of
+    // words is wrapped in an optional group behind the same first-char gate the prefix always used
+    // (`(?!R\$)(?=[\p{Lu}\d])`): when the first word fails to complete (e.g. "DL*UberRides", where
+    // every candidate length is followed by a letter or the shared punctuation), the group matches
+    // empty instead of the match position advancing — cleanMerchant then rejects the empty capture
+    // on length, with no retry, so a later bank-footer "em ITAU" is never reached by this pattern.
     private val MERCHANT_REGEX = Regex(
-        """(?i:\bcompra\s+em|\bem)\s+(?!R\$)([\p{Lu}\d][\p{Lu}\d&.*\-]*(?:\s+(?!R\$)[\p{Lu}\d][\p{Lu}\d&.*\-]*)*)""",
+        """(?i:\bcompra\s+em|\bem)\s+(?!R\$)(?=[\p{Lu}\d])($MERCHANT_WORD(?:\s+(?!R\$)$MERCHANT_WORD)*)?""",
     )
 
     private val WHITESPACE_REGEX = Regex("""\s+""")

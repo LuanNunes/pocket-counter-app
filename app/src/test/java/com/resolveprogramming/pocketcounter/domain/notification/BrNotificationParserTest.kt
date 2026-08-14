@@ -438,6 +438,65 @@ class BrNotificationParserTest {
     }
 
     // -------------------------------------------------------------------------
+    // Merchant parsing — Title-Case truncation fix (a Title-Case word after the uppercase
+    // run must not be consumed one letter at a time; the run stops at the first incomplete word)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parse merchant stops at the first Title-Case word instead of consuming its leading capital`() {
+        val result = BrNotificationParser.parse("Débito em SUPERMERCADO Extra R$ 75,00", NOW)
+
+        assertEquals("SUPERMERCADO", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant stops at a single Title-Case word after compra em`() {
+        val result = BrNotificationParser.parse("Compra em LOJA Bonita R$ 30,00", NOW)
+
+        assertEquals("LOJA", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant generic run still wins over em-comma-date without a da connector`() {
+        // Sibling of "parse merchant prefers the generic uppercase run over a swallowing
+        // em-comma-date capture" — no "da" this time, just a bare Title-Case branch name
+        // directly after the uppercase run.
+        val result = BrNotificationParser.parse(
+            "Compra em LOJA XPTO Itau Filial, 08/08 as 10:00 R$ 10,00",
+            NOW,
+        )
+
+        assertEquals("LOJA XPTO", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant does not backtrack a failed word into a truncated acquirer prefix`() {
+        // The lookahead class must forbid the same punctuation the word class allows ("*"), or the
+        // engine backtracks "DL*UberRides" down to "DL" — 2 chars, has letters, no "*" left for
+        // ACQUIRER_PREFIX_REGEX to strip, so it would survive cleanMerchant as a plausible merchant.
+        val result = BrNotificationParser.parse(
+            "29040 Compra aprovada de R$ 23,97 em DL*UberRides, 08/08",
+            NOW,
+        )
+
+        assertEquals("UberRides", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant keeps a single-letter word inside an uppercase run`() {
+        val result = BrNotificationParser.parse("Compra em LOJA A BAHIA R$ 10,00", NOW)
+
+        assertEquals("LOJA A BAHIA", result.parsed.merchantRaw)
+    }
+
+    @Test
+    fun `parse merchant is null for a glued mixed-case first word rather than an arbitrary prefix`() {
+        val result = BrNotificationParser.parse("Compra em MERCADOLivre R$ 10,00", NOW)
+
+        assertNull(result.parsed.merchantRaw)
+    }
+
+    // -------------------------------------------------------------------------
     // Merchant parsing — real credit-card formats ("final NNNN - <merchant> valor")
     // -------------------------------------------------------------------------
 
@@ -546,8 +605,9 @@ class BrNotificationParserTest {
     @Test
     fun `parse merchant from em-comma-date format is rejected when the capture exceeds the length cap`() {
         // Acquirer-prefixed and mixed-case, so only the em-comma-date pattern can match at all — the
-        // generic pattern's single find() stops at "MP*U" (mixed case breaks the uppercase run) and
-        // cleans to null, with no retry. The em-comma-date capture itself (55 chars, within its own
+        // generic pattern's single find() matches the prefix position, but "MP*Uma" never completes
+        // as an UPPERCASE/digit word (mixed case), so the capture group is empty and cleans to null,
+        // with no retry. The em-comma-date capture itself (55 chars, within its own
         // 59-char regex cap) strips to "Uma Loja De Nome Absurdamente Comprido Demais Assim" (51
         // chars), over cleanMerchant's 40-char cap, so the whole parse yields no merchant.
         val result = BrNotificationParser.parse(
