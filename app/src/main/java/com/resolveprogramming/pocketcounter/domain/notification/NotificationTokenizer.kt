@@ -102,11 +102,19 @@ object NotificationTokenizer {
         for (start in 0..tokens.size - words.size) {
             val matches = words.indices.all { offset ->
                 val token = tokens[start + offset]
-                token.role == null && token.text.equals(words[offset], ignoreCase = true)
+                token.role == null && matchesMerchantWord(token.text, words[offset], isFirstWord = offset == 0)
             }
             if (matches) return start until (start + words.size)
         }
         return null
+    }
+
+    // Requiring the "*" (not a plain suffix match) stops a false match on e.g. word "AS" vs token
+    // "CASAS".
+    private fun matchesMerchantWord(tokenText: String, word: String, isFirstWord: Boolean): Boolean {
+        val cleaned = stripEdgePunctuation(tokenText)
+        if (cleaned.equals(word, ignoreCase = true)) return true
+        return isFirstWord && cleaned.endsWith("*$word", ignoreCase = true)
     }
 
     private val WHITESPACE = Regex("\\s+")

@@ -270,6 +270,45 @@ class NotificationTokenizerTest {
         assertEquals(0, merchantTokens.size)
     }
 
+    @Test
+    fun `tokenize assigns MERCHANT across an em-comma-date multi-word merchant despite the trailing comma`() {
+        val parsed = parsedWithMerchant("iFood Clube")
+
+        val tokens = NotificationTokenizer.tokenize(
+            "Compra aprovada em IFD*iFood Clube, 08/08 as 12:01",
+            parsed,
+        )
+
+        val merchantTokens = tokens.filter { it.role == TokenRole.MERCHANT }
+        assertEquals(listOf("IFD*iFood", "Clube,"), merchantTokens.map { it.text })
+    }
+
+    @Test
+    fun `tokenize assigns MERCHANT across a card-format multi-word merchant with an acquirer prefix`() {
+        val parsed = parsedWithMerchant("IFOOD CLUB")
+
+        val tokens = NotificationTokenizer.tokenize(
+            "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - IFD*IFOOD CLUB valor RS 12,90 em 29/06, as 07h11.",
+            parsed,
+        )
+
+        val merchantTokens = tokens.filter { it.role == TokenRole.MERCHANT }
+        assertEquals(listOf("IFD*IFOOD", "CLUB"), merchantTokens.map { it.text })
+    }
+
+    @Test
+    fun `tokenize does not treat a token suffix as an acquirer-prefixed match without a star`() {
+        // Token "CASAS" ends with word "AS" as a plain suffix — no "*" — so the run's first
+        // token must not match, even though the second word ("Bahia") lines up exactly.
+        // Multi-word merchant so the single-word contains-fallback can't mask this.
+        val parsed = parsedWithMerchant("AS Bahia")
+
+        val tokens = NotificationTokenizer.tokenize("Compra em CASAS Bahia aprovada", parsed)
+
+        val merchantTokens = tokens.filter { it.role == TokenRole.MERCHANT }
+        assertEquals(0, merchantTokens.size)
+    }
+
     // -------------------------------------------------------------------------
     // tokenize — mutual exclusivity (AMOUNT vs MERCHANT cannot share a token)
     // -------------------------------------------------------------------------
@@ -323,8 +362,10 @@ class NotificationTokenizerTest {
         "Compra aprovada no seu PERSON BLACK CASHBAC final 3685 - DL*UberRides valor RS 25,10 em 03/07, as 14h35."
 
     @Test
-    fun `tokenize highlights an acquirer-prefixed merchant token via contains-match`() {
+    fun `tokenize highlights an acquirer-prefixed merchant token via the star rule`() {
         // Parser strips "DL*" so merchantRaw is "UberRides"; the token is still "DL*UberRides".
+        // findRun's first-word "*" rule matches this directly — the contains-match fallback below
+        // is not reached here, and stays covered by a non-"*"-glued fixture instead.
         val parsed = ParsedNotification(
             type = TransactionType.EXPENSE, amount = BigDecimal("25.10"),
             date = LocalDate.of(2026, 7, 3), merchantRaw = "UberRides", paymentHint = "final 3685",
@@ -334,6 +375,18 @@ class NotificationTokenizerTest {
 
         val merchant = tokens.filter { it.role == TokenRole.MERCHANT }
         assertEquals(listOf("DL*UberRides"), merchant.map { it.text })
+    }
+
+    @Test
+    fun `tokenize highlights a non-star-glued merchant token via the contains-match fallback`() {
+        // Glue shapes other than "*" (parens here) don't match findRun's star rule, so the chip
+        // still depends on the single-word contains-match fallback in assignMerchant.
+        val parsed = parsedWithMerchant("UberRides")
+
+        val tokens = NotificationTokenizer.tokenize("Compra aprovada em (UberRides) hoje", parsed)
+
+        val merchant = tokens.filter { it.role == TokenRole.MERCHANT }
+        assertEquals(listOf("(UberRides)"), merchant.map { it.text })
     }
 
     @Test
