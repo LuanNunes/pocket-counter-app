@@ -18,48 +18,67 @@ object IssuerCardMatcher {
         cards: Collection<CreditCard>,
         learned: Map<String, String>,
     ): String? {
-        val issuerKey = normalizeIssuer(app)
-        learned[issuerKey]?.let { return it }
-        matchByName(issuerKey, cards)?.let { return it }
-        val leadingToken = text.trim().substringBefore(' ')
-        return matchByName(normalizeIssuer(leadingToken), cards)
+        val token = leadingToken(text)
+        learned[normalizeIssuer(app)]?.let { return it }
+        learned[normalizeIssuer(token)]?.let { return it }
+        matchByName(app, cards)?.let { return it }
+        return matchByName(token, cards)
     }
 
     /**
-     * The normalized key a manual pick from the invoice-payment picker should teach: whichever of
-     * the app label or the text's leading token actually names a card on file, in the same priority
-     * [resolve] uses for a name match. Necessary because for an SMS/aggregator delivery (app =
-     * "Mensagens", text = "Nubank: …") [resolve] finds the card via the leading token, not the app
-     * label — teaching the app label instead would make that one entry outrank the correct
-     * leading-token match for every other issuer arriving through the same app. Falls back to the
-     * app label when neither names a card, so there is still something to teach.
+     * The normalized key a manual pick from the invoice-payment picker should teach: the app label
+     * or the leading token, whichever names at least one card, in [resolve]'s own priority. Null
+     * when neither does — a shared delivery app (e.g. an SMS aggregator) would otherwise poison
+     * every other issuer that arrives through it.
      */
-    fun resolutionKey(app: String, text: String, cards: Collection<CreditCard>): String {
-        val appKey = normalizeIssuer(app)
-        if (matchByName(appKey, cards) != null) return appKey
-        val tokenKey = normalizeIssuer(text.trim().substringBefore(' '))
-        if (matchByName(tokenKey, cards) != null) return tokenKey
-        return appKey
+    fun resolutionKey(app: String, text: String, cards: Collection<CreditCard>): String? {
+        if (namesAnyCard(app, cards)) return normalizeIssuer(app)
+        val token = leadingToken(text)
+        if (namesAnyCard(token, cards)) return normalizeIssuer(token)
+        return null
     }
 
-    /** True when a taught mapping — not a name match, not the amount alone — resolves [app]. */
-    fun isLearned(app: String, learned: Map<String, String>): Boolean =
-        learned.containsKey(normalizeIssuer(app))
+    /**
+     * True when a taught mapping — not a name match, not the amount alone — resolves [app]/[text].
+     * Checks the same two keys [resolve] does, in the same order, so this can never disagree with
+     * what actually produced the match.
+     */
+    fun isLearned(app: String, text: String, learned: Map<String, String>): Boolean =
+        learned.containsKey(normalizeIssuer(app)) || learned.containsKey(normalizeIssuer(leadingToken(text)))
 
-    private fun matchByName(normalizedIssuer: String, cards: Collection<CreditCard>): String? {
-        val matches = cards.filter { namesOverlap(normalizedIssuer, normalizeIssuer(it.name)) }
+    private fun leadingToken(text: String): String = text.trim().substringBefore(' ')
+
+    private fun matchByName(issuerLabel: String, cards: Collection<CreditCard>): String? {
+        val matches = cards.filter { namesOverlap(issuerLabel, it.name) }
         return matches.singleOrNull()?.id
     }
 
+    private fun namesAnyCard(issuerLabel: String, cards: Collection<CreditCard>): Boolean =
+        cards.any { namesOverlap(issuerLabel, it.name) }
+
     /**
-     * True when one normalized name contains the other in either direction ("Nubank" inside "Nubank
-     * Ultravioleta", or a short card nickname inside a longer issuer label). The shorter side must be
-     * at least [MIN_CONTAINMENT_LENGTH] chars, or nearly any two names would spuriously overlap.
+     * True when the shorter name equals the longer one, or equals one of the longer one's
+     * whitespace-separated tokens ("Nubank" inside "Nubank Ultravioleta"). Deliberately whole-token,
+     * not a substring check on a space-deleted string — that collapsed a card nicknamed "Ame" into a
+     * false match against "Pagamento" ("ame" ⊂ "pagamento"). The shorter side must normalize to at
+     * least [MIN_CONTAINMENT_LENGTH] chars, or nearly any short nickname would land on some stray
+     * token in the issuer's boilerplate.
      */
-    private fun namesOverlap(a: String, b: String): Boolean {
-        if (minOf(a.length, b.length) < MIN_CONTAINMENT_LENGTH) return a == b
-        return a.contains(b) || b.contains(a)
+    private fun namesOverlap(rawA: String, rawB: String): Boolean {
+        val a = normalizeIssuer(rawA)
+        val b = normalizeIssuer(rawB)
+        if (a == b) return true
+        if (minOf(a.length, b.length) < MIN_CONTAINMENT_LENGTH) return false
+        val (shorter, longerRaw) = shorterThenLongerRaw(a, b, rawA, rawB)
+        return tokenize(longerRaw).any { normalizeIssuer(it) == shorter }
     }
+
+    private fun shorterThenLongerRaw(a: String, b: String, rawA: String, rawB: String): Pair<String, String> {
+        (a to rawB).takeIf { a.length <= b.length }?.let { return it }
+        return b to rawA
+    }
+
+    private fun tokenize(raw: String): List<String> = raw.trim().split(WHITESPACE_REGEX).filter { it.isNotBlank() }
 
     fun normalizeIssuer(raw: String): String {
         val normalized = Normalizer.normalize(raw.lowercase(), Normalizer.Form.NFD)
@@ -69,6 +88,7 @@ object IssuerCardMatcher {
 
     private val DIACRITIC_REGEX = Regex("\\p{Mn}+")
     private val NON_ALPHANUMERIC_REGEX = Regex("[^\\p{L}\\p{N}]")
+    private val WHITESPACE_REGEX = Regex("\\s+")
 
     // Below this, containment is dropped for exact equality — otherwise a 1-2 char normalized
     // name (e.g. a card nicknamed "Nu") would spuriously overlap unrelated issuers.

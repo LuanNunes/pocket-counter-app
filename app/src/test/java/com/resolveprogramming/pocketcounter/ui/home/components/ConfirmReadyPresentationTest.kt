@@ -49,13 +49,13 @@ class ConfirmReadyPresentationTest {
         installments = installments,
     )
 
-    private fun notification(merchantRaw: String? = "Mercado Central") = NotificationItem(
+    private fun notification(merchantRaw: String? = "Mercado Central", text: String = "Compra aprovada") = NotificationItem(
         id = "n1",
         app = "App",
         channel = NotificationChannel.PUSH,
         time = "agora",
         received = "2026-06-14T13:25:00Z",
-        text = "Compra aprovada",
+        text = text,
         status = NotificationStatus.AUTO,
         parsed = ParsedNotification(
             type = TransactionType.EXPENSE,
@@ -331,5 +331,26 @@ class ConfirmReadyPresentationTest {
         val presentation = presentationOf(item())
 
         assertTrue(presentation.canReview)
+    }
+
+    // -- backend-echoed invoice match: pendingMatch is null, so draft.type (also null) decides --
+
+    private fun backendEchoedInvoiceItem() = ConfirmReadyItem(
+        notificationId = "n1",
+        draft = WizardDraft(type = null, amount = BigDecimal("8866.19"), name = null, tagIds = emptyList()),
+        pendingTransactionId = "tx-99",
+        notification = notification(
+            merchantRaw = null,
+            text = "Nubank Recebemos seu pagamento no valor de R\$ 8.866,19. Obrigado!",
+        ),
+        pendingMatch = null,
+    )
+
+    @Test
+    fun `a backend-echoed invoice match with no draft type still resolves as an EXPENSE`() {
+        val presentation = presentationOf(backendEchoedInvoiceItem())
+
+        assertEquals(TransactionType.EXPENSE, presentation.amountType)
+        assertEquals(BigDecimal("-8866.19"), presentation.signedAmount)
     }
 }

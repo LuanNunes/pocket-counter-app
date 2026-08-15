@@ -11,10 +11,18 @@ import java.text.Normalizer
  */
 object InvoicePaymentDetector {
 
-    fun isInvoicePaymentText(text: String): Boolean {
+    /**
+     * [hasResolvedIssuer] gates only the "pagamento recebido" phrase below — PagBank, Mercado Pago,
+     * InfinitePay and SumUp all send that exact acquirer-receipt text for money coming IN, so alone
+     * it needs either a resolved card issuer or a "fatura" mention to count. The other phrases name
+     * an invoice unambiguously and are unaffected.
+     */
+    fun isInvoicePaymentText(text: String, hasResolvedIssuer: Boolean = false): Boolean {
         val folded = fold(text)
-        if (PHRASES.any { matches(folded, it) }) return true
-        return matchesConfirmationRegex(folded)
+        if (UNAMBIGUOUS_PHRASES.any { matches(folded, it) }) return true
+        if (matchesConfirmationRegex(folded)) return true
+        if (!matches(folded, AMBIGUOUS_RECEIPT_PHRASE)) return false
+        return hasResolvedIssuer || folded.contains("fatura")
     }
 
     private fun matches(folded: String, phrase: String): Boolean {
@@ -47,12 +55,15 @@ object InvoicePaymentDetector {
     private val NEGATION_WORD_REGEX = Regex("""\bnao\b""")
     private const val NEGATION_WINDOW = 30
 
-    private val PHRASES = listOf(
+    private val UNAMBIGUOUS_PHRASES = listOf(
         "recebemos seu pagamento",
         "recebemos o pagamento",
-        "pagamento recebido",
         "fatura paga",
     )
+
+    // Standard merchant-acquirer receipt language, not issuer language — see isInvoicePaymentText's
+    // KDoc for the gate this needs.
+    private const val AMBIGUOUS_RECEIPT_PHRASE = "pagamento recebido"
 
     // "pagamento da (sua) fatura" alone is the generic noun phrase for paying an invoice and shows up
     // in reminders/dunning pushes too ("Agende o pagamento da fatura"); it only means a confirmation

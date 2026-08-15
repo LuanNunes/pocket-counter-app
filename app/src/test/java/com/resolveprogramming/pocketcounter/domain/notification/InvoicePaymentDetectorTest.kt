@@ -39,8 +39,22 @@ class InvoicePaymentDetectorTest {
     }
 
     @Test
-    fun `pagamento recebido phrase is an invoice payment`() {
-        assertTrue(InvoicePaymentDetector.isInvoicePaymentText("Pagamento recebido com sucesso."))
+    fun `pagamento recebido alone, with no fatura mention and no resolved issuer, is not an invoice payment`() {
+        // Standard merchant-acquirer receipt language (PagBank, Mercado Pago, InfinitePay, SumUp all
+        // send exactly this for money coming IN) — ambiguous without a card/fatura context term.
+        assertFalse(InvoicePaymentDetector.isInvoicePaymentText("Pagamento recebido com sucesso."))
+    }
+
+    @Test
+    fun `pagamento recebido is an invoice payment when the text also mentions fatura`() {
+        assertTrue(InvoicePaymentDetector.isInvoicePaymentText("Pagamento recebido. Fatura quitada com sucesso."))
+    }
+
+    @Test
+    fun `pagamento recebido is an invoice payment when the card issuer already resolved`() {
+        assertTrue(
+            InvoicePaymentDetector.isInvoicePaymentText("Pagamento recebido com sucesso.", hasResolvedIssuer = true),
+        )
     }
 
     @Test

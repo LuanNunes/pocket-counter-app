@@ -78,6 +78,40 @@ class InvoicePaymentMatcherTest {
     }
 
     @Test
+    fun `a pagamento recebido push with no fatura mention and no resolved issuer returns null`() {
+        // Acquirer-receipt language alone (PagBank, Mercado Pago, InfinitePay, SumUp) — an exact
+        // amount match must not be enough to settle an invoice from what could be money coming IN.
+        val invoice = invoiceRow(id = "tx-1", amount = BigDecimal("8866.19"))
+
+        val result = matchInvoicePayment(
+            notification = notification(text = "Pagamento recebido com sucesso.", app = "unknown app"),
+            pendingRows = listOf(invoice),
+            cards = emptyList(),
+            learnedIssuers = emptyMap(),
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `a pagamento recebido push settles the invoice when the card issuer resolves`() {
+        val invoice = invoiceRow(id = "tx-1", amount = BigDecimal("8866.19"), cardId = "card-1")
+        val cards = listOf(
+            CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10),
+        )
+
+        val result = matchInvoicePayment(
+            notification = notification(text = "Pagamento recebido com sucesso.", app = "Nubank"),
+            pendingRows = listOf(invoice),
+            cards = cards,
+            learnedIssuers = emptyMap(),
+        )
+
+        assertTrue(result is InvoicePaymentMatch.Matched)
+        assertEquals(invoice, (result as InvoicePaymentMatch.Matched).invoice)
+    }
+
+    @Test
     fun `single exact amount match with no issuer conflict is Matched`() {
         val invoice = invoiceRow(id = "tx-1", amount = BigDecimal("8866.19"))
 
@@ -147,6 +181,27 @@ class InvoicePaymentMatcherTest {
     }
 
     @Test
+    fun `a match narrowed by an issuer learned via the leading token is flagged viaLearnedIssuer, for an SMS aggregator delivery`() {
+        // The app is a generic SMS aggregator, not the issuer; only the learned map (keyed on the
+        // text's leading token, per IssuerCardMatcher.resolutionKey) can narrow the ambiguity.
+        val nubankInvoice = invoiceRow(id = "tx-1", amount = BigDecimal("8866.19"), cardId = "card-1")
+        val itauInvoice = invoiceRow(id = "tx-2", amount = BigDecimal("8866.19"), cardId = "card-2")
+
+        val result = matchInvoicePayment(
+            notification = notification(
+                app = "Mensagens",
+                text = "Nubank: Recebemos seu pagamento no valor de R\$ 8.866,19. Obrigado!",
+            ),
+            pendingRows = listOf(nubankInvoice, itauInvoice),
+            cards = emptyList(),
+            learnedIssuers = mapOf("nubank" to "card-1"),
+        )
+
+        assertTrue(result is InvoicePaymentMatch.Matched)
+        assertTrue((result as InvoicePaymentMatch.Matched).viaLearnedIssuer)
+    }
+
+    @Test
     fun `a match resolved purely by amount, with no card on file for the issuer, is not flagged viaLearnedIssuer`() {
         val invoice = invoiceRow(id = "tx-1", amount = BigDecimal("8866.19"))
 
@@ -155,6 +210,21 @@ class InvoicePaymentMatcherTest {
             pendingRows = listOf(invoice),
             cards = emptyList(),
             learnedIssuers = emptyMap(),
+        )
+
+        assertTrue(result is InvoicePaymentMatch.Matched)
+        assertFalse((result as InvoicePaymentMatch.Matched).viaLearnedIssuer)
+    }
+
+    @Test
+    fun `a single exact amount match is not flagged viaLearnedIssuer even when a learned entry corroborates it, since the amount alone already decided`() {
+        val invoice = invoiceRow(id = "tx-1", amount = BigDecimal("8866.19"), cardId = "card-1")
+
+        val result = matchInvoicePayment(
+            notification = notification(app = "Nubank"),
+            pendingRows = listOf(invoice),
+            cards = emptyList(),
+            learnedIssuers = mapOf("nubank" to "card-1"),
         )
 
         assertTrue(result is InvoicePaymentMatch.Matched)

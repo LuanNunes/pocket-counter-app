@@ -164,4 +164,36 @@ class ConfirmReadyCardInvoiceTest {
 
         compose.onNodeWithText("Revisar", useUnmergedTree = true).assertIsDisplayed()
     }
+
+    @Test
+    fun `a backend-echoed invoice match with no client-resolved row still renders the amount as a negative expense`() {
+        // pendingMatch is null (the backend, not this client, resolved pendingTransactionId) and the
+        // draft carries no type either — before the EXPENSE fallback this rendered an unsigned "+".
+        val backendEchoed = ConfirmReadyItem(
+            notificationId = "n3",
+            draft = WizardDraft(type = null, amount = BigDecimal("8866.19"), name = null, tagIds = emptyList()),
+            pendingTransactionId = "tx-99",
+            notification = item.notification,
+            pendingMatch = null,
+        )
+        compose.setContent {
+            PocketTheme {
+                ConfirmReadyCard(
+                    item = backendEchoed,
+                    presentation = confirmReadyPresentation(
+                        backendEchoed,
+                        LedgerLookups(cards = emptyMap(), tags = emptyMap(), contexts = emptyMap()),
+                        today,
+                    ),
+                    isConfirming = false,
+                    onConfirm = {},
+                    onReview = {},
+                    onIgnore = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("−", substring = true, useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("+", substring = true, useUnmergedTree = true).assertDoesNotExist()
+    }
 }

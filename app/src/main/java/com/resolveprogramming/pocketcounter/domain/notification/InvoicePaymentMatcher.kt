@@ -21,7 +21,10 @@ fun matchInvoicePayment(
     cards: Collection<CreditCard>,
     learnedIssuers: Map<String, String>,
 ): InvoicePaymentMatch? {
-    if (!InvoicePaymentDetector.isInvoicePaymentText(notification.text)) return null
+    val issuerCardId = IssuerCardMatcher.resolve(notification.app, notification.text, cards, learnedIssuers)
+    if (!InvoicePaymentDetector.isInvoicePaymentText(notification.text, hasResolvedIssuer = issuerCardId != null)) {
+        return null
+    }
 
     val amount = notification.parsed.amount
     val eligible = pendingRows.filter {
@@ -29,8 +32,7 @@ fun matchInvoicePayment(
     }
     val invoices = eligible.filter { it.isInvoice }
     val exact = invoices.filter { it.matchesInvoiceAmount(amount) }
-    val issuerCardId = IssuerCardMatcher.resolve(notification.app, notification.text, cards, learnedIssuers)
-    val viaLearnedIssuer = IssuerCardMatcher.isLearned(notification.app, learnedIssuers)
+    val viaLearnedIssuer = IssuerCardMatcher.isLearned(notification.app, notification.text, learnedIssuers)
 
     if (exact.isNotEmpty()) return resolveByAmount(exact, issuerCardId, viaLearnedIssuer, invoices)
     if (issuerCardId == null) return null
@@ -46,7 +48,9 @@ private fun resolveByAmount(
     if (exact.size == 1) {
         val row = exact.single()
         if (issuerCardId == null || issuerCardId == row.cardId) {
-            return InvoicePaymentMatch.Matched(row, viaLearnedIssuer)
+            // The amount alone already decided — a learned entry here only corroborates or vetoes,
+            // never changes the outcome, so it must not read as "the map resolved this."
+            return InvoicePaymentMatch.Matched(row, viaLearnedIssuer = false)
         }
         return InvoicePaymentMatch.NeedsChoice(invoices)
     }

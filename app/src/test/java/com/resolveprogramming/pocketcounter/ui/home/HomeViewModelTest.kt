@@ -668,8 +668,43 @@ class HomeViewModelTest {
 
     @Test
     fun `ignoring a one-tap matched invoice payment forgets the learned issuer, since there is no other undo for a wrong auto-match`() = runTest {
+        // Two same-amount invoices on different cards: the learned mapping is what narrows the
+        // ambiguity down to inv-1, not the amount alone — exactly the case viaLearnedIssuer exists
+        // to flag, unlike a single unambiguous exact match the map merely corroborates.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
         issuerCardRepository.associate("Nubank", "card-1")
-        stubInvoicePush(invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
+        )
+        coEvery { notificationRepository.markIgnored("pend-inv") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(issuerCardRepository.getMap().isEmpty())
+    }
+
+    @Test
+    fun `ignoring a match learned via the leading token forgets that entry, not the app label, for an SMS aggregator delivery`() = runTest {
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        issuerCardRepository.associate("Nubank", "card-1")
+        val notification = invoicePaymentNotification("pend-inv", app = "Mensagens")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-inv", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(
+            monthItems +
+                invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1") +
+                invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
+        )
         coEvery { notificationRepository.markIgnored("pend-inv") } returns Result.success(Unit)
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -845,6 +880,11 @@ class HomeViewModelTest {
 
     @Test
     fun `picking an invoice marks it paid, learns the issuer, and never saves`() = runTest {
+        // A card literally named "Nubank" so resolutionKey has a real signal to teach on — refusing
+        // to teach a fallback key (neither app nor leading token names a card) is deliberate.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
         stubInvoicePush(
             invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
             invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
@@ -898,6 +938,14 @@ class HomeViewModelTest {
 
     @Test
     fun `teaching the issuer from the picker resolves the next push from that issuer without the picker`() = runTest {
+        // Two cards both literally named "Nubank": the app names a real issuer, but not decisively
+        // between them — that ambiguity is exactly what the manual pick resolves and teaches.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(
+                CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10),
+                CreditCard("card-2", "Nubank", "Mastercard", "1111", 0L, 0L, BigDecimal("1000"), 15),
+            ),
+        )
         stubInvoicePush(
             invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1"),
             invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
@@ -973,6 +1021,57 @@ class HomeViewModelTest {
 
         assertNull(vm.state.value.invoicePicker)
         assertEquals("Não foi possível marcar como paga. Tente de novo.", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `a successful pick does not close a different prompt's sheet opened while it was in flight`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val latch = CompletableDeferred<Result<Unit>>()
+        coEvery { transactionRepository.markPaid(any()) } coAnswers { latch.await() }
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first())
+        testDispatcher.scheduler.runCurrent()
+        vm.dismissInvoicePicker()
+        val otherPrompt = InvoicePaymentPrompt(notification = recognizedNotification("other"), candidates = emptyList())
+        vm.openInvoicePicker(otherPrompt)
+
+        latch.complete(Result.success(Unit))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("other", vm.state.value.invoicePicker?.prompt?.notificationId)
+    }
+
+    @Test
+    fun `a failed pick does not write its error into a different prompt's sheet opened while it was in flight`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val latch = CompletableDeferred<Result<Unit>>()
+        coEvery { transactionRepository.markPaid(any()) } coAnswers { latch.await() }
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first())
+        testDispatcher.scheduler.runCurrent()
+        vm.dismissInvoicePicker()
+        val otherPrompt = InvoicePaymentPrompt(notification = recognizedNotification("other"), candidates = emptyList())
+        vm.openInvoicePicker(otherPrompt)
+
+        latch.complete(Result.failure(RuntimeException("offline")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("other", vm.state.value.invoicePicker?.prompt?.notificationId)
+        assertNull(vm.state.value.invoicePicker?.errorMessage)
     }
 
     @Test
@@ -1116,6 +1215,54 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Otherwise the sheet floats over another month's Home with a prompt no longer in state.
+        assertNull(vm.state.value.invoicePicker)
+    }
+
+    @Test
+    fun `a same-month reload while the invoice picker is open refreshes its candidate list, so a row settled meanwhile cannot be picked again`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+            invoiceRow("inv-3", "-8866.19", "Fatura Nubank mais antiga"),
+        )
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openInvoicePicker(vm.state.value.invoicePrompts.single())
+        assertEquals(3, vm.state.value.invoicePicker?.prompt?.candidates?.size)
+
+        // inv-2 gets marked paid from Transações meanwhile; the shared ledgerRefresh signal reloads
+        // this screen too, and its classify pass must not leave the open sheet offering a stale row.
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(
+            monthItems +
+                invoiceRow("inv-1", "-8866.19", "Fatura Nubank") +
+                invoiceRow("inv-3", "-8866.19", "Fatura Nubank mais antiga"),
+        )
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf("inv-1", "inv-3"), vm.state.value.invoicePicker?.prompt?.candidates?.map { it.id })
+    }
+
+    @Test
+    fun `a same-month reload while the invoice picker is open closes it once the underlying prompt is fully resolved`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openInvoicePicker(vm.state.value.invoicePrompts.single())
+        assertTrue(vm.state.value.invoicePicker != null)
+
+        // inv-2 gets marked paid from Transações meanwhile: only inv-1 remains, so amount alone now
+        // resolves the match — this notification leaves invoicePrompts entirely.
+        coEvery { transactionRepository.getMonth(any()) } returns
+            Result.success(monthItems + invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
         assertNull(vm.state.value.invoicePicker)
     }
 

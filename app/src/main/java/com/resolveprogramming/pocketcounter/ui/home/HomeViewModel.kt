@@ -178,10 +178,8 @@ class HomeViewModel @Inject constructor(
 
     private fun loadLookups() {
         viewModelScope.launch {
-            // Explicit try/catch, not runCatching: its Throwable net would also swallow
-            // CancellationException, breaking structured concurrency. A lookup call throwing
-            // instead of returning Result.failure must still not strand cardsReady uncompleted —
-            // every invoice-shaped classify pass awaits it and would park forever.
+            // Not runCatching — its net would also swallow CancellationException. cardsReady must
+            // still complete on a throw, or every invoice-shaped classify pass awaits it forever.
             val cardsLoaded = try {
                 val tagsResult = tagRepository.getAllTags()
                 val contextsResult = tagRepository.getAllContexts()
@@ -319,6 +317,7 @@ class HomeViewModel @Inject constructor(
                 .map { base -> async { classifyOne(base, context) } }
                 .awaitAll()
                 .filterNotNull()
+            val batchIds = batch.map { it.id }.toSet()
             _state.update { s ->
                 if (s.month != month || generation != classifyGeneration) return@update s
                 val ready = outcomes.filterIsInstance<ClassifyOutcome.Ready>().map { it.item }
@@ -329,6 +328,17 @@ class HomeViewModel @Inject constructor(
                     classifying = false,
                     confirmReady = ready,
                     invoicePrompts = prompts,
+                    // A same-month reload (e.g. the sibling row this sheet offers got settled from
+                    // Transações) must not leave the open sheet showing a stale candidate list —
+                    // refresh it to the freshly classified prompt, or close it if that notification no
+                    // longer needs one. Only for a prompt THIS pass actually reclassified, though: one
+                    // opened for a notification outside the batch (or manually, mid another confirm)
+                    // carries no fresh information here and must be left alone.
+                    invoicePicker = s.invoicePicker?.let { picker ->
+                        if (picker.prompt.notificationId !in batchIds) return@let picker
+                        prompts.find { it.notificationId == picker.prompt.notificationId }
+                            ?.let { picker.copy(prompt = it) }
+                    },
                     pendingReviewCount = (pending.size - handled.size).coerceAtLeast(0),
                     pendingReviewFirstId = pending.firstOrNull { it.id !in handled }?.id,
                 )
@@ -382,27 +392,19 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    /**
-     * The pending rows, cards and learned issuers an invoice-payment match is resolved against.
-     * Skipped entirely — and the extra month fetches with it — unless [batch] holds at least one
-     * invoice-payment-shaped text.
-     */
+    /** The pending rows, cards and learned issuers to resolve an invoice-payment match against. */
     private suspend fun invoiceMatchContext(
         batch: List<NotificationItem>,
         month: YearMonth,
     ): InvoiceMatchContext {
         if (batch.none { InvoicePaymentDetector.isInvoicePaymentText(it.text) }) return InvoiceMatchContext()
-        // A bounded wait: if loadLookups is still stuck (or somehow never scheduled) past this, treat
-        // cards as not loaded rather than parking this classify pass — and the whole "classifying"
-        // skeleton with it — forever. windowComplete = false defers the push to manual review instead
-        // of resolving it with data we know is incomplete. A completed-but-failed load (cardsLoaded ==
-        // false) gets the same treatment: an empty cards map must never be read as "no cards on file".
+        // Bounded wait: an unresolved cardsReady must not park this classify pass forever, and an
+        // empty cards map must never be misread as "no cards on file".
         val cardsLoaded = withTimeoutOrNull(CARDS_READY_TIMEOUT_MS) { cardsReady.await() } == true
         if (!cardsLoaded) return InvoiceMatchContext(windowComplete = false)
         val pendingRows = pendingRowsAround(month)
-        // A read failure here must degrade the same way as a failed cards/pending-rows load: silently
-        // falling back to an empty map could resolve a match that only a stale learned entry — now
-        // unavailable — would otherwise have vetoed or narrowed to a different row.
+        // A failed read must degrade like a failed cards/pending-rows load, not silently fall back to
+        // an empty map that could resolve a match a stale learned entry would have vetoed or narrowed.
         val learnedIssuers = runCatching { issuerCardRepository.getMap() }
         return InvoiceMatchContext(
             pendingRows = pendingRows.orEmpty(),
@@ -448,8 +450,7 @@ class HomeViewModel @Inject constructor(
                 .onSuccess { transactionId ->
                     // pendingMatch is set only on the invoice-payment path — the toast has to say
                     // which of the two things happened: an invoice was settled, or a transaction saved.
-                    val toast = item.pendingMatch?.let { "${it.displayTitle()} marcada como paga ✓" }
-                        ?: "Transação confirmada"
+                    val toast = item.pendingMatch?.let(::paidToast) ?: "Transação confirmada"
                     _state.update {
                         it.copy(
                             confirmingIds = it.confirmingIds - item.notificationId,
@@ -484,13 +485,19 @@ class HomeViewModel @Inject constructor(
         // Dedup: a same-month re-classify could have re-added this id while the ignore was in
         // flight; appending blindly would dupe the LazyColumn key.
         restore = { copy(confirmReady = confirmReady.filterNot { it.notificationId == item.notificationId } + item) },
-        // A taught issuer→card mapping has no other undo — there is no "unmark paid" affordance
-        // here — so dismissing a match it produced forgets it, which is what stops the same wrong
-        // pick from repeating on the next push. A match the learned map had no part in (resolved by
-        // amount alone, or by a plain name match) has no such mapping to forget.
+        // See InvoicePaymentMatch.Matched.viaLearnedIssuer: dismissing is the only undo for a wrong
+        // taught mapping, so it forgets one here.
         onIgnored = {
             if (item.pendingMatch != null && item.viaLearnedIssuer) {
-                runCatching { issuerCardRepository.clear(item.notification.app) }
+                // The key that was actually taught — an SMS/aggregator delivery learns the text's
+                // leading token, not the raw app label. Clearing by the wrong key would leave the
+                // real entry in place.
+                val key = IssuerCardMatcher.resolutionKey(
+                    app = item.notification.app,
+                    text = item.notification.text,
+                    cards = _state.value.cards.values,
+                )
+                key?.let { runCatching { issuerCardRepository.clear(it) } }
             }
         },
     )
@@ -572,23 +579,27 @@ class HomeViewModel @Inject constructor(
                     invoice.cardId?.let { cardId ->
                         // Teach the key resolve() would actually have used, not the raw app label —
                         // an SMS/aggregator delivery resolves via the text's leading token instead.
+                        // Null means neither names a card, so there is nothing safe to key on.
                         val key = IssuerCardMatcher.resolutionKey(
                             app = prompt.notification.app,
                             text = prompt.notification.text,
                             cards = _state.value.cards.values,
                         )
-                        runCatching { issuerCardRepository.associate(key, cardId) }
+                        key?.let { runCatching { issuerCardRepository.associate(it, cardId) } }
                     }
                     _state.update {
+                        // The sheet may since have been dismissed, or replaced with a different
+                        // prompt's — either way, this pick only owns its own sheet, never another's.
+                        val ownsPicker = it.invoicePicker?.prompt?.notificationId == prompt.notificationId
                         it.copy(
                             confirmingIds = it.confirmingIds - prompt.notificationId,
-                            invoicePicker = null,
+                            invoicePicker = it.invoicePicker.takeUnless { ownsPicker },
                             invoicePrompts = it.invoicePrompts.filterNot { p ->
                                 p.notificationId == prompt.notificationId
                             },
                             flashId = invoice.id,
                             flashNonce = it.flashNonce + 1,
-                            toastMessage = "${invoice.displayTitle()} marcada como paga ✓",
+                            toastMessage = paidToast(invoice),
                         )
                     }
                     // The shared collector (see init) reloads this month for us and every sibling screen.
@@ -596,13 +607,18 @@ class HomeViewModel @Inject constructor(
                 }
                 .onFailure {
                     _state.update { s ->
-                        // The sheet may have already been dismissed while this call was in flight —
-                        // an inline error nobody can see is no error at all, so toast it instead.
+                        // The sheet may have already been dismissed, or replaced with a different
+                        // prompt's, while this call was in flight — an inline error nobody can see,
+                        // or one written into the wrong sheet, is no error at all, so toast it instead.
                         val message = "Não foi possível marcar como paga. Tente de novo."
+                        val ownsPicker = s.invoicePicker?.prompt?.notificationId == prompt.notificationId
                         s.copy(
                             confirmingIds = s.confirmingIds - prompt.notificationId,
-                            invoicePicker = s.invoicePicker?.copy(isConfirming = false, errorMessage = message),
-                            toastMessage = message.takeIf { s.invoicePicker == null } ?: s.toastMessage,
+                            invoicePicker = s.invoicePicker
+                                ?.takeIf { ownsPicker }
+                                ?.copy(isConfirming = false, errorMessage = message)
+                                ?: s.invoicePicker,
+                            toastMessage = message.takeUnless { ownsPicker } ?: s.toastMessage,
                         )
                     }
                 }
@@ -751,3 +767,5 @@ class HomeViewModel @Inject constructor(
         const val CARDS_READY_TIMEOUT_MS = 5_000L
     }
 }
+
+private fun paidToast(invoice: HistoryItem): String = "${invoice.displayTitle()} marcada como paga ✓"

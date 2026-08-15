@@ -5,6 +5,7 @@ import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.domain.notification.InvoicePaymentDetector
 import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.components.LedgerMeta
 import com.resolveprogramming.pocketcounter.ui.components.LedgerRow
@@ -54,18 +55,25 @@ fun confirmReadyPresentation(
     // The card authorizes marking THIS row paid, so every number on it describes that row. The
     // notification's own amount and timestamp describe nothing the user can go and verify.
     val title = matched?.displayTitle() ?: resolveTitle(draft, item.notification.parsed.merchantRaw, lookups.tags)
-    val type = matched?.type ?: draft.type
+    // A backend-echoed pending match (pendingTransactionId set, but the backend — not this client —
+    // resolved it, so matched is null) carries no draft.type either: BrNotificationParser nulls the
+    // type for this text. Falling back to EXPENSE mirrors how it rendered before this feature.
+    val isInvoiceShaped = InvoicePaymentDetector.isInvoicePaymentText(item.notification.text)
+    val type = matched?.type ?: draft.type ?: TransactionType.EXPENSE.takeIf { isInvoiceShaped }
     val isPendingMatch = item.pendingTransactionId != null
+    // pendingMatch only ever comes from an isInvoice-filtered list, so its presence alone decides
+    // both the pill and the tag fallback below.
+    val isMatched = matched != null
     return ConfirmReadyPresentation(
         title = title,
         signedAmount = signedAmount(matched?.amount ?: draft.amount, type),
         amountType = type,
         meta = meta,
         installmentsLabel = draft.installments?.takeIf { it > 1 }?.let { "$it×" },
-        statusLabel = "PENDENTE".takeIf { matched != null },
+        statusLabel = "PENDENTE".takeIf { isMatched },
         // An invoice parent is never tagged — its tags live on its children, so "sem categoria"
         // would read as a defect the user should fix.
-        emptyTagLabel = "por item".takeIf { matched?.isInvoice == true } ?: "sem categoria",
+        emptyTagLabel = "por item".takeIf { isMatched } ?: "sem categoria",
         // A matched pending charge is being settled, not created; saying so keeps the one-tap
         // write honest about which of the two things it does.
         confirmLabel = "Confirmar pagamento".takeIf { isPendingMatch } ?: "Confirmar",
