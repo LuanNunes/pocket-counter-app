@@ -60,6 +60,8 @@ import com.resolveprogramming.pocketcounter.ui.home.components.ClassifyingSkelet
 import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadySection
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
+import com.resolveprogramming.pocketcounter.ui.home.components.InvoicePaymentSection
+import com.resolveprogramming.pocketcounter.ui.home.components.InvoicePickerSheet
 import com.resolveprogramming.pocketcounter.ui.home.components.MonthNavBar
 import com.resolveprogramming.pocketcounter.ui.home.components.NotificationAccessBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.RevisarBanner
@@ -221,6 +223,18 @@ fun HomeContent(
                     }
                 }
 
+                // Above RevisarBanner: a card proposing a ledger write outranks one proposing only
+                // navigation. Below ConfirmReadySection: that stack is the higher-confidence path.
+                if (state.isCurrentMonth && state.invoicePrompts.isNotEmpty()) {
+                    item(key = "invoice-payment") {
+                        InvoicePaymentSection(
+                            prompts = state.invoicePrompts,
+                            onChoose = viewModel::openInvoicePicker,
+                            onIgnore = viewModel::dismissInvoicePrompt,
+                        )
+                    }
+                }
+
                 if (state.isCurrentMonth && !state.classifying && state.pendingReviewCount > 0) {
                     item {
                         RevisarBanner(
@@ -251,6 +265,15 @@ fun HomeContent(
 
                 item { Spacer(Modifier.height(20.dp)) }
             }
+        }
+
+        state.invoicePicker?.let { picker ->
+            InvoicePickerSheet(
+                picker = picker,
+                lookups = lookups,
+                onConfirm = viewModel::confirmInvoicePayment,
+                onDismiss = viewModel::dismissInvoicePicker,
+            )
         }
 
         PocketToastHost(state = toastState)

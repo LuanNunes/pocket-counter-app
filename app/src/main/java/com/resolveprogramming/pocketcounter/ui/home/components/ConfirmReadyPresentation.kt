@@ -1,6 +1,7 @@
 package com.resolveprogramming.pocketcounter.ui.home.components
 
 import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
+import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
@@ -21,10 +22,15 @@ import java.util.Locale
 data class ConfirmReadyPresentation(
     val title: String,
     val signedAmount: BigDecimal?,
+    val amountType: TransactionType?,
     val meta: LedgerMeta,
     val installmentsLabel: String?,
+    val statusLabel: String?,
+    val emptyTagLabel: String,
     val confirmLabel: String,
+    val confirmContentDescription: String,
     val contentDescription: String,
+    val canReview: Boolean,
 )
 
 fun confirmReadyPresentation(
@@ -33,28 +39,42 @@ fun confirmReadyPresentation(
     today: LocalDate = LocalDate.now(),
 ): ConfirmReadyPresentation {
     val draft = item.draft
-    val date = draft.date ?: today
+    val matched = item.pendingMatch
+    val date = matched?.date ?: draft.date ?: today
     val meta = ledgerMeta(
         row = LedgerRow(
             date = date,
-            tagIds = draft.tagIds,
-            paymentMethod = draft.paymentMethod,
-            cardId = draft.cardId,
+            tagIds = matched?.tagIds ?: draft.tagIds,
+            paymentMethod = matched?.paymentMethod ?: draft.paymentMethod,
+            cardId = matched?.cardId ?: draft.cardId,
         ),
         lookups = lookups,
         today = today,
     )
-    val title = resolveTitle(draft, item.notification.parsed.merchantRaw, lookups.tags)
-    val installmentsLabel = draft.installments?.takeIf { it > 1 }?.let { "$it×" }
+    // The card authorizes marking THIS row paid, so every number on it describes that row. The
+    // notification's own amount and timestamp describe nothing the user can go and verify.
+    val title = matched?.displayTitle() ?: resolveTitle(draft, item.notification.parsed.merchantRaw, lookups.tags)
+    val type = matched?.type ?: draft.type
+    val isPendingMatch = item.pendingTransactionId != null
     return ConfirmReadyPresentation(
         title = title,
-        signedAmount = signedAmount(draft),
+        signedAmount = signedAmount(matched?.amount ?: draft.amount, type),
+        amountType = type,
         meta = meta,
-        installmentsLabel = installmentsLabel,
+        installmentsLabel = draft.installments?.takeIf { it > 1 }?.let { "$it×" },
+        statusLabel = "PENDENTE".takeIf { matched != null },
+        // An invoice parent is never tagged — its tags live on its children, so "sem categoria"
+        // would read as a defect the user should fix.
+        emptyTagLabel = "por item".takeIf { matched?.isInvoice == true } ?: "sem categoria",
         // A matched pending charge is being settled, not created; saying so keeps the one-tap
         // write honest about which of the two things it does.
-        confirmLabel = "Confirmar pagamento".takeIf { item.pendingTransactionId != null } ?: "Confirmar",
-        contentDescription = contentDescription(draft, title, date, meta, today),
+        confirmLabel = "Confirmar pagamento".takeIf { isPendingMatch } ?: "Confirmar",
+        confirmContentDescription = "Confirmar pagamento de $title".takeIf { isPendingMatch }
+            ?: "Confirmar $title",
+        contentDescription = contentDescription(draft, matched, title, date, meta, today),
+        // The wizard resolves its pending match from the backend only; a client-resolved match
+        // (this path) is never echoed there, so routing to it would create a duplicate write.
+        canReview = matched == null,
     )
 }
 
@@ -62,9 +82,9 @@ fun confirmReadyPresentation(
  * AmountText takes its +/− from the value's sign, so the direction has to be applied here. The
  * incoming sign is untrusted: the pending-match path never runs `isStep2Valid`.
  */
-private fun signedAmount(draft: WizardDraft): BigDecimal? {
-    val magnitude = draft.amount?.abs() ?: return null
-    if (draft.type != TransactionType.EXPENSE) return magnitude
+private fun signedAmount(amount: BigDecimal?, type: TransactionType?): BigDecimal? {
+    val magnitude = amount?.abs() ?: return null
+    if (type != TransactionType.EXPENSE) return magnitude
     return magnitude.negate()
 }
 
@@ -88,25 +108,40 @@ private val spokenLocale = Locale("pt", "BR")
  */
 private fun contentDescription(
     draft: WizardDraft,
+    matched: HistoryItem?,
     title: String,
     date: LocalDate,
     meta: LedgerMeta,
     today: LocalDate,
 ): String {
-    val typeWord = when (draft.type) {
+    val type = matched?.type ?: draft.type
+    val typeWord = when (type) {
         TransactionType.EXPENSE -> "despesa"
         TransactionType.INCOME -> "receita"
         null -> null
     }
-    val money = draft.amount?.let { NumberFormat.getCurrencyInstance(spokenLocale).format(it.abs()) }
+    val money = (matched?.amount ?: draft.amount)
+        ?.let { NumberFormat.getCurrencyInstance(spokenLocale).format(it.abs()) }
     val amountPhrase = run {
         if (typeWord != null && money != null) return@run "$typeWord de $money"
         typeWord ?: money
     }
+    val spokenDate = spokenDate(date, today)
+    // Identity first on the pending path: TalkBack users navigating linearly need to know WHICH row
+    // before they hear what happens to it.
+    if (matched != null) {
+        return listOfNotNull(
+            title,
+            "pendente",
+            amountPhrase,
+            "vence $spokenDate",
+            meta.payment.takeIf { it.isNotBlank() }?.lowercase(spokenLocale),
+        ).joinToString(", ")
+    }
     return listOfNotNull(
         amountPhrase,
         title,
-        spokenDate(date, today),
+        spokenDate,
         meta.tagName ?: "sem categoria",
         meta.payment.takeIf { it.isNotBlank() },
         draft.installments?.takeIf { it > 1 }?.let { "em $it vezes" },

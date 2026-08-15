@@ -778,7 +778,7 @@ fun ConfirmReadyCard(
                         Spacer(Modifier.width(8.dp))
                         AmountText(
                             amount = amount,
-                            type = item.draft.type,
+                            type = presentation.amountType,
                             showSign = true,
                             style = PocketTheme.typography.monoBody.copy(
                                 fontWeight = FontWeight.SemiBold,
@@ -790,6 +790,8 @@ fun ConfirmReadyCard(
                 ConfirmReadyMetaRow(
                     meta = presentation.meta,
                     installmentsLabel = presentation.installmentsLabel,
+                    statusLabel = presentation.statusLabel,
+                    emptyTagLabel = presentation.emptyTagLabel,
                 )
             }
             Spacer(Modifier.size(10.dp))
@@ -809,17 +811,23 @@ fun ConfirmReadyCard(
                     enabled = !isConfirming,
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp),
+                        .heightIn(min = 48.dp)
+                        // "Confirmar pagamento" alone is ambiguous read out of context; name the row.
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = presentation.confirmContentDescription
+                        },
                     leading = confirmSpinner(colors.accentInk).takeIf { isConfirming },
                 )
-                PocketButton(
-                    text = "Revisar",
-                    onClick = onReview,
-                    variant = PocketButtonVariant.SOFT,
-                    size = PocketButtonSize.SMALL,
-                    enabled = !isConfirming,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
+                if (presentation.canReview) {
+                    PocketButton(
+                        text = "Revisar",
+                        onClick = onReview,
+                        variant = PocketButtonVariant.SOFT,
+                        size = PocketButtonSize.SMALL,
+                        enabled = !isConfirming,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    )
+                }
                 Spacer(Modifier.width(4.dp))
                 // The learned "skip this suggestion" affordance, muted so it stays subordinate to
                 // Confirmar/Revisar. 48dp target comes from IconButton.
@@ -848,17 +856,51 @@ private fun confirmSpinner(color: Color): @Composable () -> Unit = {
 }
 
 /**
+ * Home's filled status pill (`.tx-status`): dot + label. Not the bare uppercase label Transações
+ * uses — the bundles specify two different treatments and this is a Home surface.
+ */
+@Composable
+fun StatusPill(label: String) {
+    val colors = PocketTheme.colors
+    Row(
+        modifier = Modifier
+            .background(colors.warn.copy(alpha = 0.16f), PocketTheme.shapes.pill)
+            .padding(horizontal = 7.dp, vertical = 1.5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .background(colors.warn, CircleShape),
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = label,
+            style = PocketTheme.typography.label.copy(fontSize = 9.5.sp),
+            color = colors.warn,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
  * `14 jun · ● Farmácia · Crédito Nubank` on one line that must never wrap. Drop priority comes from
  * declaration order: the date is unweighted, the pill ellipsizes, the payment goes first.
  */
 @Composable
-private fun ConfirmReadyMetaRow(meta: LedgerMeta, installmentsLabel: String?) {
+private fun ConfirmReadyMetaRow(
+    meta: LedgerMeta,
+    installmentsLabel: String?,
+    statusLabel: String?,
+    emptyTagLabel: String,
+) {
     val colors = PocketTheme.colors
     val bodyXs = PocketTheme.typography.bodyXs
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
+        statusLabel?.let { StatusPill(label = it) }
         Text(text = meta.date, style = bodyXs, color = colors.text3, maxLines = 1)
         installmentsLabel?.let {
             Text(
@@ -881,7 +923,7 @@ private fun ConfirmReadyMetaRow(meta: LedgerMeta, installmentsLabel: String?) {
         }
         // Plain text, never a TagPill: a pill with a grey dot reads as a real category.
         if (meta.tagName == null) {
-            Text(text = "sem categoria", style = bodyXs, color = colors.text3, maxLines = 1)
+            Text(text = emptyTagLabel, style = bodyXs, color = colors.text3, maxLines = 1)
         }
         MetaPaymentSlot(payment = meta.payment)
     }

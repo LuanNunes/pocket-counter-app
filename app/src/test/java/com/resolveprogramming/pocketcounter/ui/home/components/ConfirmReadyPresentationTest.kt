@@ -2,10 +2,13 @@ package com.resolveprogramming.pocketcounter.ui.home.components
 
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
+import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
@@ -254,5 +257,79 @@ class ConfirmReadyPresentationTest {
         val presentation = presentationOf(item(draft(date = LocalDate.of(2026, 6, 14))))
 
         assertTrue(presentation.contentDescription.contains("14 de junho"))
+    }
+
+    // -- invoice-payment match: every number describes the row that changes --
+
+    private val invoice = HistoryItem(
+        id = "inv-1",
+        date = LocalDate.of(2026, 8, 10),
+        amount = BigDecimal("-8886.92"),
+        type = TransactionType.EXPENSE,
+        tagIds = null,
+        statusPayment = PaymentStatus.PENDING,
+        paymentMethod = PaymentMethod.CREDIT,
+        cardId = "card-1",
+        name = "Fatura Nubank",
+        isInvoice = true,
+    )
+
+    private fun matchedItem() = ConfirmReadyItem(
+        notificationId = "n1",
+        // The push has no merchant and no type, so the untested "Lançamento" fallback is what the
+        // card would show without the matched row.
+        draft = WizardDraft(type = null, amount = BigDecimal("8866.19"), name = null, tagIds = emptyList()),
+        pendingTransactionId = invoice.id,
+        notification = notification(merchantRaw = null),
+        pendingMatch = invoice,
+    )
+
+    @Test
+    fun `a matched invoice is titled with the invoice, not the notification`() {
+        val presentation = presentationOf(matchedItem())
+
+        assertEquals("Fatura Nubank", presentation.title)
+    }
+
+    @Test
+    fun `a matched invoice shows the invoice amount and due date, not the notification's`() {
+        val presentation = presentationOf(matchedItem())
+
+        assertEquals(BigDecimal("-8886.92"), presentation.signedAmount)
+        assertEquals(TransactionType.EXPENSE, presentation.amountType)
+        assertEquals("10 ago", presentation.meta.date)
+    }
+
+    @Test
+    fun `a matched invoice reads por item and carries a PENDENTE pill`() {
+        val presentation = presentationOf(matchedItem())
+
+        assertEquals("por item", presentation.emptyTagLabel)
+        assertEquals("PENDENTE", presentation.statusLabel)
+    }
+
+    @Test
+    fun `a matched invoice announces its identity first`() {
+        val presentation = presentationOf(matchedItem())
+
+        assertTrue(presentation.contentDescription.startsWith("Fatura Nubank, pendente, despesa de "))
+        assertTrue(presentation.contentDescription.contains("vence 10 de agosto"))
+        assertEquals("Confirmar pagamento de Fatura Nubank", presentation.confirmContentDescription)
+    }
+
+    @Test
+    fun `a matched invoice cannot be reviewed in the wizard`() {
+        // The wizard resolves its pending match from the backend only, which is null for a
+        // client-resolved match — routing there would create a duplicate transaction.
+        val presentation = presentationOf(matchedItem())
+
+        assertFalse(presentation.canReview)
+    }
+
+    @Test
+    fun `an ordinary confirm-ready item can still be reviewed in the wizard`() {
+        val presentation = presentationOf(item())
+
+        assertTrue(presentation.canReview)
     }
 }

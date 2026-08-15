@@ -77,4 +77,39 @@ class HistoryItemTest {
 
         assertEquals("—", item.displayTitle())
     }
+
+    private fun invoice(amount: String, isInvoice: Boolean = true) = HistoryItem(
+        id = "inv-1",
+        date = LocalDate.of(2026, 6, 4),
+        amount = BigDecimal(amount),
+        type = TransactionType.EXPENSE,
+        tagIds = null,
+        statusPayment = PaymentStatus.PENDING,
+        isInvoice = isInvoice,
+    )
+
+    @Test
+    fun `matchesInvoiceAmount is true for an invoice with the same absolute amount`() {
+        assertTrue(invoice("-8866.19").matchesInvoiceAmount(BigDecimal("8866.19")))
+    }
+
+    @Test
+    fun `matchesInvoiceAmount is false for a non-invoice row even with the same amount`() {
+        assertFalse(invoice("-8866.19", isInvoice = false).matchesInvoiceAmount(BigDecimal("8866.19")))
+    }
+
+    @Test
+    fun `matchesInvoiceAmount is false for a different amount`() {
+        assertFalse(invoice("-8866.19").matchesInvoiceAmount(BigDecimal("50.00")))
+    }
+
+    @Test
+    fun `matchesInvoiceAmount is false when the notified amount is null`() {
+        assertFalse(invoice("-8866.19").matchesInvoiceAmount(null))
+    }
+
+    @Test
+    fun `matchesInvoiceAmount ignores scale differences`() {
+        assertTrue(invoice("-8886.9").matchesInvoiceAmount(BigDecimal("8886.90")))
+    }
 }

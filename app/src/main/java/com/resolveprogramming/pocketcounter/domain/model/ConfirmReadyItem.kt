@@ -12,4 +12,11 @@ data class ConfirmReadyItem(
     val draft: WizardDraft,
     val pendingTransactionId: String?,
     val notification: NotificationItem,
+    /**
+     * The matched row itself, when the client resolved it (the invoice-payment path). Every number
+     * on a card that authorizes a write must describe the row that changes, not the notification.
+     */
+    val pendingMatch: HistoryItem? = null,
+    /** True when [pendingMatch] came from a taught issuer→card mapping — see [InvoicePaymentMatch.Matched]. */
+    val viaLearnedIssuer: Boolean = false,
 )
