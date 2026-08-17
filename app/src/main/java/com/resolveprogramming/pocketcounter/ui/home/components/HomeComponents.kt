@@ -167,6 +167,12 @@ private fun Chevron(icon: ImageVector, contentDescription: String?, onClick: () 
     }
 }
 
+/**
+ * The month-summary card. The headline figure is what is **still to pay** ([HomeKpis.pendingTotal]),
+ * not the net saldo: with credit-card faturas counted as expenses the saldo is negative almost every
+ * month, so it answers nothing, while the pending total is the number the user can act on. [balance]
+ * keeps its place in the KPI stack below, so nothing was dropped in the swap.
+ */
 @Composable
 fun BalanceHero(
     monthLabel: String,
@@ -199,20 +205,17 @@ fun BalanceHero(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "SALDO DO MÊS · ${monthLabel.uppercase(ptBr)}",
+                        text = "PENDENTE · ${monthLabel.uppercase(ptBr)}",
                         style = PocketTheme.typography.sectionHeader,
                         color = ink.copy(alpha = 0.65f),
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = formatter.format(balance),
+                        text = formatter.format(kpis.pendingTotal),
                         style = PocketTheme.typography.monoBalance,
-                        // Net saldo carries sign meaning: green when up, red when down, neutral at zero.
-                        color = when (balance.signum()) {
-                            1 -> dark.income
-                            -1 -> dark.expense
-                            else -> ink
-                        },
+                        // Amber is the app's "still to pay" semantic (same as the Pendente dot was).
+                        // Owing nothing is not a warning, so a zero settles back to neutral ink.
+                        color = dark.warn.takeIf { kpis.pendingTotal.signum() > 0 } ?: ink,
                     )
                 }
                 Box(
@@ -246,16 +249,23 @@ fun BalanceHero(
                 ink = ink,
                 showDivider = true,
             )
-            if (kpis.pendingCount >= 1) {
-                KpiStackRow(
-                    label = "Pendente",
-                    dotColor = dark.warn,
-                    value = formatter.format(kpis.pendingTotal),
-                    count = "${kpis.pendingCount} em aberto",
-                    ink = ink,
-                    showDivider = true,
-                )
+            // The saldo moved down here when the hero took over the pending figure, and it keeps the
+            // sign colouring the hero used to give it: green up, red down, neutral at zero. Dot and
+            // value share one tone — a green dot beside a white figure would read as two signals.
+            val saldoTone = when (balance.signum()) {
+                1 -> dark.income
+                -1 -> dark.expense
+                else -> ink
             }
+            KpiStackRow(
+                label = "Saldo do mês",
+                dotColor = saldoTone,
+                value = formatter.format(balance),
+                count = "${kpis.expenseCount + kpis.incomeCount} lançs.",
+                ink = ink,
+                valueColor = saldoTone,
+                showDivider = true,
+            )
         }
     }
 }
@@ -268,6 +278,8 @@ private fun KpiStackRow(
     count: String,
     ink: Color,
     showDivider: Boolean,
+    /** Defaults to [ink]; override only where the figure itself carries meaning, like a signed saldo. */
+    valueColor: Color = ink,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (showDivider) {
@@ -301,7 +313,7 @@ private fun KpiStackRow(
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 16.sp,
                     ),
-                    color = ink,
+                    color = valueColor,
                     maxLines = 1,
                     softWrap = false,
                 )
