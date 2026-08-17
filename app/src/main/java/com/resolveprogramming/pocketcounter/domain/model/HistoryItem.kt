@@ -18,6 +18,7 @@ data class HistoryItem(
     val seriesId: String? = null,
     val name: String? = null,
     val description: String? = null,
+    val isInvoice: Boolean = false,
 ) {
     val isFixo: Boolean get() = seriesId != null
 
@@ -25,4 +26,13 @@ data class HistoryItem(
         name?.takeIf { it.isNotBlank() }
             ?: description?.takeIf { it.isNotBlank() }
             ?: "—"
+
+    /**
+     * Whether this row is a pending invoice whose amount matches [notified] to the cent. Shared by
+     * `matchInvoicePayment` and `InvoicePaymentPresentation.exactMatches`, which must never drift
+     * apart — both decide, from the same signal, whether `markPaid` is safe to call on this row.
+     * Exact, deliberately: a tolerance window is what would let a partial payment resolve silently.
+     */
+    fun matchesInvoiceAmount(notified: BigDecimal?): Boolean =
+        isInvoice && notified != null && amount.abs().compareTo(notified.abs()) == 0
 }

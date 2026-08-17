@@ -80,6 +80,7 @@ object BrNotificationParser {
     }
 
     private fun parseType(text: String): TransactionType? {
+        if (InvoicePaymentDetector.isInvoicePaymentText(text)) return null
         val lower = text.lowercase()
         val expense = EXPENSE_PHRASES.any { lower.contains(it) } ||
             EXPENSE_WORDS.any { lower.containsWord(it) }

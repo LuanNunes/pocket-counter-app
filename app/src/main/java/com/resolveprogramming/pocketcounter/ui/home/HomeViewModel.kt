@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
@@ -16,6 +17,7 @@ import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.GroupSort
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
+import com.resolveprogramming.pocketcounter.domain.model.InvoicePaymentMatch
 import com.resolveprogramming.pocketcounter.domain.model.LedgerGroup
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
@@ -24,12 +26,17 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
+import com.resolveprogramming.pocketcounter.domain.notification.InvoicePaymentDetector
+import com.resolveprogramming.pocketcounter.domain.notification.IssuerCardMatcher
 import com.resolveprogramming.pocketcounter.domain.notification.confirmReadyItemOf
+import com.resolveprogramming.pocketcounter.domain.notification.matchInvoicePayment
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
 import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -39,6 +46,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.math.BigDecimal
 import java.time.YearMonth
 import javax.inject.Inject
@@ -56,6 +64,10 @@ data class HomeUiState(
     val pendingReviewFirstId: String? = null,
     /** Pending notifications the classifier recognized — confirmable in one tap, newest cap-limited. */
     val confirmReady: List<ConfirmReadyItem> = emptyList(),
+    /** Invoice-payment pushes that matched zero or several pending invoices — pick or dismiss, never confirm. */
+    val invoicePrompts: List<InvoicePaymentPrompt> = emptyList(),
+    /** The prompt whose picker sheet is open, if any. */
+    val invoicePicker: InvoicePickerState? = null,
     /** Notification ids whose one-tap confirm is in flight (drives the per-card spinner + double-tap guard). */
     val confirmingIds: Set<String> = emptySet(),
     /** True while the classifier's first pass for this month runs, so the UI shows a skeleton instead of a bare banner. */
@@ -80,12 +92,27 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
 )
 
+private data class InvoiceMatchContext(
+    val pendingRows: List<HistoryItem> = emptyList(),
+    val cards: Collection<CreditCard> = emptyList(),
+    val learnedIssuers: Map<String, String> = emptyMap(),
+    /** False when a neighbour-month fetch failed, so [pendingRows] is a truncated window. */
+    val windowComplete: Boolean = true,
+)
+
+/** What one classified notification resolved to: a one-tap confirm, or a prompt that needs the picker. */
+private sealed interface ClassifyOutcome {
+    data class Ready(val item: ConfirmReadyItem) : ClassifyOutcome
+    data class Invoice(val prompt: InvoicePaymentPrompt) : ClassifyOutcome
+}
+
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val notificationRepository: NotificationRepository,
     private val transactionRepository: TransactionRepository,
     private val tagRepository: TagRepository,
     private val cardRepository: CardRepository,
+    private val issuerCardRepository: IssuerCardRepository,
     private val tokenStore: TokenStore,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val viewedMonth: ViewedMonthStore,
@@ -102,6 +129,12 @@ class HomeViewModel @Inject constructor(
     // The last month a classify pass fully committed for. Guards the `classifying` skeleton to the first
     // pass of a month only, so background reloads (ledgerRefresh, confirm) don't re-flash it.
     private var lastClassifiedMonth: YearMonth? = null
+
+    // Completed once loadLookups()'s first pass has settled state.cards, carrying whether that
+    // pass actually loaded them. Invoice matching awaits this so it never reads an empty cards map
+    // that is merely still in flight — or that failed to load — either of which would silently
+    // disable the issuer veto for the whole session.
+    private val cardsReady = CompletableDeferred<Boolean>()
 
     private val _state = MutableStateFlow(
         YearMonth.parse(viewedMonth.month.value).let { ym ->
@@ -145,17 +178,27 @@ class HomeViewModel @Inject constructor(
 
     private fun loadLookups() {
         viewModelScope.launch {
-            val tagsResult = tagRepository.getAllTags()
-            val contextsResult = tagRepository.getAllContexts()
-            val cardsResult = cardRepository.getCards()
-            val userName = tokenStore.getUserName().orEmpty()
-            _state.update { s ->
-                var next = s.copy(userName = userName)
-                if (tagsResult.isSuccess) next = next.copy(tags = tagsResult.getOrThrow().associateBy { it.id })
-                if (contextsResult.isSuccess) next = next.copy(contexts = contextsResult.getOrThrow())
-                if (cardsResult.isSuccess) next = next.copy(cards = cardsResult.getOrThrow().associateBy { it.id })
-                next.recomputed()
+            // Not runCatching — its net would also swallow CancellationException. cardsReady must
+            // still complete on a throw, or every invoice-shaped classify pass awaits it forever.
+            val cardsLoaded = try {
+                val tagsResult = tagRepository.getAllTags()
+                val contextsResult = tagRepository.getAllContexts()
+                val cardsResult = cardRepository.getCards()
+                val userName = tokenStore.getUserName().orEmpty()
+                _state.update { s ->
+                    var next = s.copy(userName = userName)
+                    if (tagsResult.isSuccess) next = next.copy(tags = tagsResult.getOrThrow().associateBy { it.id })
+                    if (contextsResult.isSuccess) next = next.copy(contexts = contextsResult.getOrThrow())
+                    if (cardsResult.isSuccess) next = next.copy(cards = cardsResult.getOrThrow().associateBy { it.id })
+                    next.recomputed()
+                }
+                cardsResult.isSuccess
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
             }
+            if (!cardsReady.isCompleted) cardsReady.complete(cardsLoaded)
         }
     }
 
@@ -215,7 +258,17 @@ class HomeViewModel @Inject constructor(
                     classifyPendingForConfirmReady(pending, month)
                 } else {
                     classifyGeneration++ // invalidate any in-flight pass; off-month shows no confirm-ready cards
-                    _state.update { if (it.month == month) it.copy(confirmReady = emptyList(), classifying = false) else it }
+                    _state.update {
+                        if (it.month != month) return@update it
+                        // invoicePicker too: otherwise the sheet floats over another month's Home with
+                        // a prompt no longer in state.
+                        it.copy(
+                            confirmReady = emptyList(),
+                            invoicePrompts = emptyList(),
+                            invoicePicker = null,
+                            classifying = false,
+                        )
+                    }
                 }
             }
             itemsResult
@@ -258,24 +311,124 @@ class HomeViewModel @Inject constructor(
             _state.update { if (it.month == month) it.copy(classifying = true) else it }
         }
         viewModelScope.launch {
-            val ready = pending.take(CONFIRM_READY_CLASSIFY_CAP)
-                .map { base ->
-                    async { notificationRepository.classify(base.id, base).getOrNull()?.let(::confirmReadyItemOf) }
-                }
+            val batch = pending.take(CONFIRM_READY_CLASSIFY_CAP)
+            val context = invoiceMatchContext(batch, month)
+            val outcomes = batch
+                .map { base -> async { classifyOne(base, context) } }
                 .awaitAll()
                 .filterNotNull()
+            val batchIds = batch.map { it.id }.toSet()
             _state.update { s ->
                 if (s.month != month || generation != classifyGeneration) return@update s
-                val readyIds = ready.mapTo(mutableSetOf()) { it.notificationId }
+                val ready = outcomes.filterIsInstance<ClassifyOutcome.Ready>().map { it.item }
+                val prompts = outcomes.filterIsInstance<ClassifyOutcome.Invoice>().map { it.prompt }
+                val handled = (ready.map { it.notificationId } + prompts.map { it.notificationId }).toSet()
                 lastClassifiedMonth = month
                 s.copy(
                     classifying = false,
                     confirmReady = ready,
-                    pendingReviewCount = (pending.size - ready.size).coerceAtLeast(0),
-                    pendingReviewFirstId = pending.firstOrNull { it.id !in readyIds }?.id,
+                    invoicePrompts = prompts,
+                    // A same-month reload (e.g. the sibling row this sheet offers got settled from
+                    // Transações) must not leave the open sheet showing a stale candidate list —
+                    // refresh it to the freshly classified prompt, or close it if that notification no
+                    // longer needs one. Only for a prompt THIS pass actually reclassified, though: one
+                    // opened for a notification outside the batch (or manually, mid another confirm)
+                    // carries no fresh information here and must be left alone.
+                    invoicePicker = s.invoicePicker?.let { picker ->
+                        if (picker.prompt.notificationId !in batchIds) return@let picker
+                        prompts.find { it.notificationId == picker.prompt.notificationId }
+                            ?.let { picker.copy(prompt = it) }
+                    },
+                    pendingReviewCount = (pending.size - handled.size).coerceAtLeast(0),
+                    pendingReviewFirstId = pending.firstOrNull { it.id !in handled }?.id,
                 )
             }
         }
+    }
+
+    private suspend fun classifyOne(base: NotificationItem, context: InvoiceMatchContext): ClassifyOutcome? {
+        val classified = notificationRepository.classify(base.id, base).getOrNull() ?: return null
+        val isInvoiceShaped = InvoicePaymentDetector.isInvoicePaymentText(classified.notification.text)
+        // A truncated pending-rows window must never resolve an invoice-shaped push: a same-amount
+        // sibling invoice sitting in the month that failed to load would otherwise look absent,
+        // upgrading ambiguity into a false-confidence Matched. Leave it in the revisar banner instead.
+        if (!context.windowComplete && isInvoiceShaped) return null
+        // Before confirmReadyItemOf, never after: the backend's own suggestion for these texts is an
+        // expense, and acting on it is what duplicates the invoice the user already tracks.
+        val match = matchInvoicePayment(
+            notification = classified.notification,
+            pendingRows = context.pendingRows,
+            cards = context.cards,
+            learnedIssuers = context.learnedIssuers,
+        )
+        if (match != null) return invoiceOutcome(classified.notification, match)
+        val ready = confirmReadyItemOf(classified) ?: return null
+        // The matcher declining (no cent-exact invoice, no resolvable card) must not fall through to
+        // a one-tap CREATE: an invoice-shaped push may only settle a row, never create one. A backend-
+        // echoed pendingTransactionId is a different, already-safe settle path and stays untouched.
+        if (isInvoiceShaped && ready.pendingTransactionId == null) return null
+        return ClassifyOutcome.Ready(ready)
+    }
+
+    private fun invoiceOutcome(
+        notification: NotificationItem,
+        match: InvoicePaymentMatch,
+    ): ClassifyOutcome = when (match) {
+        is InvoicePaymentMatch.Matched -> ClassifyOutcome.Ready(
+            ConfirmReadyItem(
+                notificationId = notification.id,
+                draft = WizardDraft.fromNotification(notification),
+                pendingTransactionId = match.invoice.id,
+                notification = notification,
+                pendingMatch = match.invoice,
+                viaLearnedIssuer = match.viaLearnedIssuer,
+            ),
+        )
+        is InvoicePaymentMatch.NeedsChoice -> ClassifyOutcome.Invoice(
+            InvoicePaymentPrompt(notification = notification, candidates = match.candidates),
+        )
+        InvoicePaymentMatch.NoCandidates -> ClassifyOutcome.Invoice(
+            InvoicePaymentPrompt(notification = notification, candidates = emptyList()),
+        )
+    }
+
+    /** The pending rows, cards and learned issuers to resolve an invoice-payment match against. */
+    private suspend fun invoiceMatchContext(
+        batch: List<NotificationItem>,
+        month: YearMonth,
+    ): InvoiceMatchContext {
+        if (batch.none { InvoicePaymentDetector.isInvoicePaymentText(it.text) }) return InvoiceMatchContext()
+        // Bounded wait: an unresolved cardsReady must not park this classify pass forever, and an
+        // empty cards map must never be misread as "no cards on file".
+        val cardsLoaded = withTimeoutOrNull(CARDS_READY_TIMEOUT_MS) { cardsReady.await() } == true
+        if (!cardsLoaded) return InvoiceMatchContext(windowComplete = false)
+        val pendingRows = pendingRowsAround(month)
+        // A failed read must degrade like a failed cards/pending-rows load, not silently fall back to
+        // an empty map that could resolve a match a stale learned entry would have vetoed or narrowed.
+        val learnedIssuers = runCatching { issuerCardRepository.getMap() }
+        return InvoiceMatchContext(
+            pendingRows = pendingRows.orEmpty(),
+            cards = _state.value.cards.values,
+            learnedIssuers = learnedIssuers.getOrDefault(emptyMap()),
+            windowComplete = pendingRows != null && learnedIssuers.isSuccess,
+        )
+    }
+
+    /**
+     * Pending rows for the previous, current and next month, or null when a neighbour-month fetch
+     * failed. There is no "all pending" source — only [TransactionRepository.getMonth] — so this is a
+     * window, not the full set: an invoice whose DUE date falls outside it is not offered and the user
+     * sees "nenhuma fatura pendente". The window spans both neighbours because a payment made near a
+     * month boundary settles an invoice due on either side of it.
+     */
+    private suspend fun pendingRowsAround(month: YearMonth): List<HistoryItem>? = coroutineScope {
+        val neighbours = listOf(month.minusMonths(1), month.plusMonths(1))
+            .map { async { transactionRepository.getMonth(it.toString()) } }
+            .awaitAll()
+        if (neighbours.any { it.isFailure }) return@coroutineScope null
+        (monthItems + neighbours.flatMap { it.getOrThrow() })
+            .distinctBy { it.id }
+            .filter { it.statusPayment == PaymentStatus.PENDING }
     }
 
     /**
@@ -295,12 +448,15 @@ class HomeViewModel @Inject constructor(
             }
             confirmClassifiedNotification(item.notificationId, item.draft, item.pendingTransactionId)
                 .onSuccess { transactionId ->
+                    // pendingMatch is set only on the invoice-payment path — the toast has to say
+                    // which of the two things happened: an invoice was settled, or a transaction saved.
+                    val toast = item.pendingMatch?.let(::paidToast) ?: "Transação confirmada"
                     _state.update {
                         it.copy(
                             confirmingIds = it.confirmingIds - item.notificationId,
                             flashId = transactionId,
                             flashNonce = it.flashNonce + 1,
-                            toastMessage = "Transação confirmada",
+                            toastMessage = toast,
                         )
                     }
                     // The shared collector (see init) reloads this month for us and every sibling screen.
@@ -323,20 +479,53 @@ class HomeViewModel @Inject constructor(
      * card, marks the notification ignored server-side, and leaves the ledger and the "para revisar"
      * count untouched. On failure the card is restored. Guards double-taps via [HomeUiState.confirmingIds].
      */
-    fun ignore(item: ConfirmReadyItem) {
-        if (item.notificationId in _state.value.confirmingIds) return
-        viewModelScope.launch {
-            _state.update {
-                it.copy(
-                    confirmingIds = it.confirmingIds + item.notificationId,
-                    confirmReady = it.confirmReady.filterNot { c -> c.notificationId == item.notificationId },
+    fun ignore(item: ConfirmReadyItem) = ignoreNotification(
+        notificationId = item.notificationId,
+        drop = { copy(confirmReady = confirmReady.filterNot { it.notificationId == item.notificationId }) },
+        // Dedup: a same-month re-classify could have re-added this id while the ignore was in
+        // flight; appending blindly would dupe the LazyColumn key.
+        restore = { copy(confirmReady = confirmReady.filterNot { it.notificationId == item.notificationId } + item) },
+        // See InvoicePaymentMatch.Matched.viaLearnedIssuer: dismissing is the only undo for a wrong
+        // taught mapping, so it forgets one here.
+        onIgnored = {
+            if (item.pendingMatch != null && item.viaLearnedIssuer) {
+                // The key that was actually taught — an SMS/aggregator delivery learns the text's
+                // leading token, not the raw app label. Clearing by the wrong key would leave the
+                // real entry in place.
+                val key = IssuerCardMatcher.resolutionKey(
+                    app = item.notification.app,
+                    text = item.notification.text,
+                    cards = _state.value.cards.values,
                 )
+                key?.let { runCatching { issuerCardRepository.clear(it) } }
             }
-            notificationRepository.markIgnored(item.notificationId)
+        },
+    )
+
+    /** Dismisses an unresolved invoice-payment prompt. Same semantics as [ignore], different list. */
+    fun dismissInvoicePrompt(prompt: InvoicePaymentPrompt) = ignoreNotification(
+        notificationId = prompt.notificationId,
+        drop = { copy(invoicePrompts = invoicePrompts.filterNot { it.notificationId == prompt.notificationId }) },
+        restore = {
+            copy(invoicePrompts = invoicePrompts.filterNot { it.notificationId == prompt.notificationId } + prompt)
+        },
+    )
+
+    private fun ignoreNotification(
+        notificationId: String,
+        drop: HomeUiState.() -> HomeUiState,
+        restore: HomeUiState.() -> HomeUiState,
+        onIgnored: suspend () -> Unit = {},
+    ) {
+        if (notificationId in _state.value.confirmingIds) return
+        viewModelScope.launch {
+            _state.update { it.copy(confirmingIds = it.confirmingIds + notificationId).drop() }
+            notificationRepository.markIgnored(notificationId)
                 .onSuccess {
+                    onIgnored()
                     _state.update {
                         it.copy(
-                            confirmingIds = it.confirmingIds - item.notificationId,
+                            confirmingIds = it.confirmingIds - notificationId,
                             toastMessage = "Notificação ignorada",
                         )
                     }
@@ -344,11 +533,92 @@ class HomeViewModel @Inject constructor(
                 .onFailure {
                     _state.update {
                         it.copy(
-                            confirmingIds = it.confirmingIds - item.notificationId,
-                            // Dedup: a same-month re-classify could have re-added this id while the
-                            // ignore was in flight; appending blindly would dupe the LazyColumn key.
-                            confirmReady = it.confirmReady.filterNot { c -> c.notificationId == item.notificationId } + item,
+                            confirmingIds = it.confirmingIds - notificationId,
                             toastMessage = "Não foi possível ignorar",
+                        ).restore()
+                    }
+                }
+        }
+    }
+
+    fun openInvoicePicker(prompt: InvoicePaymentPrompt) {
+        _state.update { it.copy(invoicePicker = InvoicePickerState(prompt = prompt)) }
+    }
+
+    /**
+     * Always dismisses, even mid-confirm: `ModalBottomSheet` has already animated to Hidden by the
+     * time `onDismissRequest` fires, so vetoing here would only leave state and the (invisible)
+     * sheet disagreeing. A confirm already in flight keeps running; see [confirmInvoicePayment]'s
+     * `onFailure` for how a failure surfaces once the sheet is gone.
+     */
+    fun dismissInvoicePicker() {
+        _state.update { it.copy(invoicePicker = null) }
+    }
+
+    /**
+     * Marks the picked invoice paid — never creates a transaction — then teaches the issuer→card
+     * association so the next push from this issuer resolves without the picker. On failure the
+     * sheet stays open with the selection intact.
+     */
+    fun confirmInvoicePayment(invoice: HistoryItem) {
+        val prompt = _state.value.invoicePicker?.prompt ?: return
+        if (prompt.notificationId in _state.value.confirmingIds) return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    confirmingIds = it.confirmingIds + prompt.notificationId,
+                    invoicePicker = it.invoicePicker?.copy(isConfirming = true, errorMessage = null),
+                )
+            }
+            confirmClassifiedNotification(
+                prompt.notificationId,
+                WizardDraft.fromNotification(prompt.notification),
+                invoice.id,
+            )
+                .onSuccess {
+                    invoice.cardId?.let { cardId ->
+                        // Teach the key resolve() would actually have used, not the raw app label —
+                        // an SMS/aggregator delivery resolves via the text's leading token instead.
+                        // Null means neither names a card, so there is nothing safe to key on.
+                        val key = IssuerCardMatcher.resolutionKey(
+                            app = prompt.notification.app,
+                            text = prompt.notification.text,
+                            cards = _state.value.cards.values,
+                        )
+                        key?.let { runCatching { issuerCardRepository.associate(it, cardId) } }
+                    }
+                    _state.update {
+                        // The sheet may since have been dismissed, or replaced with a different
+                        // prompt's — either way, this pick only owns its own sheet, never another's.
+                        val ownsPicker = it.invoicePicker?.prompt?.notificationId == prompt.notificationId
+                        it.copy(
+                            confirmingIds = it.confirmingIds - prompt.notificationId,
+                            invoicePicker = it.invoicePicker.takeUnless { ownsPicker },
+                            invoicePrompts = it.invoicePrompts.filterNot { p ->
+                                p.notificationId == prompt.notificationId
+                            },
+                            flashId = invoice.id,
+                            flashNonce = it.flashNonce + 1,
+                            toastMessage = paidToast(invoice),
+                        )
+                    }
+                    // The shared collector (see init) reloads this month for us and every sibling screen.
+                    ledgerRefresh.signal()
+                }
+                .onFailure {
+                    _state.update { s ->
+                        // The sheet may have already been dismissed, or replaced with a different
+                        // prompt's, while this call was in flight — an inline error nobody can see,
+                        // or one written into the wrong sheet, is no error at all, so toast it instead.
+                        val message = "Não foi possível marcar como paga. Tente de novo."
+                        val ownsPicker = s.invoicePicker?.prompt?.notificationId == prompt.notificationId
+                        s.copy(
+                            confirmingIds = s.confirmingIds - prompt.notificationId,
+                            invoicePicker = s.invoicePicker
+                                ?.takeIf { ownsPicker }
+                                ?.copy(isConfirming = false, errorMessage = message)
+                                ?: s.invoicePicker,
+                            toastMessage = message.takeUnless { ownsPicker } ?: s.toastMessage,
                         )
                     }
                 }
@@ -491,5 +761,11 @@ class HomeViewModel @Inject constructor(
         // Minimum time the pull-to-refresh indicator stays up, so a sub-frame reload can't strand
         // PullToRefreshBox in a re-triggering loop. Also reads as intentional feedback, not a flicker.
         const val MIN_REFRESH_INDICATOR_MS = 600L
+
+        // Bounds how long an invoice-shaped classify pass waits on loadLookups's first pass to
+        // settle state.cards. See invoiceMatchContext.
+        const val CARDS_READY_TIMEOUT_MS = 5_000L
     }
 }
+
+private fun paidToast(invoice: HistoryItem): String = "${invoice.displayTitle()} marcada como paga ✓"

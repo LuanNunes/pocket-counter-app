@@ -1,7 +1,9 @@
 package com.resolveprogramming.pocketcounter.di
 
+import com.resolveprogramming.pocketcounter.data.local.DataStoreIssuerCardStore
 import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodDictionaryStore
 import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodPrefsStore
+import com.resolveprogramming.pocketcounter.data.local.IssuerCardStore
 import com.resolveprogramming.pocketcounter.data.local.PaymentMethodDictionaryStore
 import com.resolveprogramming.pocketcounter.data.local.PaymentMethodPrefsStore
 import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleSignIn
@@ -11,7 +13,9 @@ import com.resolveprogramming.pocketcounter.data.repository.AssistantRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.LocalCardLast4Repository
+import com.resolveprogramming.pocketcounter.data.repository.LocalIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.LocalPaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.LocalPaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -117,4 +121,14 @@ abstract class DataModule {
     abstract fun bindPaymentMethodDictionaryRepository(
         impl: LocalPaymentMethodDictionaryRepository,
     ): PaymentMethodDictionaryRepository
+
+    @Binds
+    abstract fun bindIssuerCardStore(
+        impl: DataStoreIssuerCardStore,
+    ): IssuerCardStore
+
+    @Binds
+    abstract fun bindIssuerCardRepository(
+        impl: LocalIssuerCardRepository,
+    ): IssuerCardRepository
 }

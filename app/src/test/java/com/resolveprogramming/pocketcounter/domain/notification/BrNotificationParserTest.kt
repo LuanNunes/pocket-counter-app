@@ -253,6 +253,41 @@ class BrNotificationParserTest {
     }
 
     @Test
+    fun `parse invoice-payment confirmation text yields null type but stays financial`() {
+        // This is the ingest-time guard: parsedType is stored verbatim server-side with no update
+        // endpoint, so a row captured before this guard existed keeps its stale type forever — see
+        // HomeViewModel.classifyOne, which re-derives from text rather than trusting a stored type.
+        val result = BrNotificationParser.parse(
+            "Nubank Recebemos seu pagamento no valor de R\$ 8.866,19. Obrigado!",
+            NOW,
+        )
+
+        assertNull(result.parsed.type)
+        assertTrue(result.isFinancial)
+    }
+
+    @Test
+    fun `parse pagamento efetuado text still yields EXPENSE`() {
+        val result = BrNotificationParser.parse("Pagamento efetuado R\$ 120,00", NOW)
+
+        assertEquals(TransactionType.EXPENSE, result.parsed.type)
+    }
+
+    @Test
+    fun `parse voce pagou text still yields EXPENSE`() {
+        val result = BrNotificationParser.parse("Você pagou R\$ 50,00", NOW)
+
+        assertEquals(TransactionType.EXPENSE, result.parsed.type)
+    }
+
+    @Test
+    fun `parse boleto payment text still yields EXPENSE`() {
+        val result = BrNotificationParser.parse("Pagamento de boleto no valor de R\$ 300,00 realizado", NOW)
+
+        assertEquals(TransactionType.EXPENSE, result.parsed.type)
+    }
+
+    @Test
     fun `parse text with both expense and income keywords yields null type`() {
         // "compra" (EXPENSE_WORD) and "recebido" (INCOME_WORD) both present → ambiguous → null.
         val result = BrNotificationParser.parse("Compra recebido R$ 10,00", NOW)

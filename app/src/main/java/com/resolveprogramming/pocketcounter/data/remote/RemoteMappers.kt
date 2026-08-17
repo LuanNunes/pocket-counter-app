@@ -209,6 +209,7 @@ internal object RemoteMappers {
             seriesId = idSeries,
             name = name,
             description = description,
+            isInvoice = isInvoice,
         )
     }
 

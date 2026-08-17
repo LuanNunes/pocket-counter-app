@@ -142,4 +142,23 @@ class ConfirmReadyTest {
         assertNotNull(item)
         assertEquals(TransactionType.EXPENSE, item!!.draft.type)
     }
+
+    @Test
+    fun `AUTO invoice-payment confirmation with a null parsed type and no suggested type is never confirm-ready`() {
+        // A fresh parse only: once RemoteMappers.toClassified rebuilds `parsed` from server storage,
+        // an already-captured push carries type = EXPENSE instead of null, guarded separately in
+        // HomeViewModel.classifyOne (see HomeViewModelTest).
+        val parsed = BrNotificationParser.parse(
+            "Nubank Recebemos seu pagamento no valor de R\$ 8.866,19. Obrigado!",
+        ).parsed
+
+        val item = confirmReadyItemOf(
+            ClassifiedNotification(
+                notification(NotificationStatus.AUTO, type = parsed.type, amount = parsed.amount, suggestedType = null),
+                pendingTransactionId = null,
+            ),
+        )
+
+        assertNull(item)
+    }
 }

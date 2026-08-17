@@ -4,11 +4,14 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
+import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.GroupMode
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
@@ -18,6 +21,7 @@ import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
+import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
@@ -55,6 +59,7 @@ class HomeViewModelTest {
     private val transactionRepository: TransactionRepository = mockk()
     private val tagRepository: TagRepository = mockk()
     private val cardRepository: CardRepository = mockk()
+    private val issuerCardRepository = FakeIssuerCardRepository()
     private val tokenStore: TokenStore = mockk()
 
     private val currentMonth: YearMonth = YearMonth.now()
@@ -113,11 +118,13 @@ class HomeViewModelTest {
     private fun makeViewModel(
         viewedMonth: ViewedMonthStore = ViewedMonthStore(),
         ledgerRefresh: LedgerRefreshSignal = LedgerRefreshSignal(),
+        issuerCardRepository: IssuerCardRepository = this.issuerCardRepository,
     ): HomeViewModel = HomeViewModel(
         notificationRepository = notificationRepository,
         transactionRepository = transactionRepository,
         tagRepository = tagRepository,
         cardRepository = cardRepository,
+        issuerCardRepository = issuerCardRepository,
         tokenStore = tokenStore,
         confirmClassifiedNotification = ConfirmClassifiedNotificationUseCase(
             transactionRepository,
@@ -573,6 +580,597 @@ class HomeViewModelTest {
         assertEquals("Não foi possível ignorar", vm.state.value.toastMessage)
     }
 
+    // -------------------------------------------------------------------------
+    // Invoice payment: "Recebemos seu pagamento" must settle the invoice, not duplicate it
+    // -------------------------------------------------------------------------
+
+    private fun invoiceRow(id: String, amount: String, name: String, cardId: String = "card-1") = HistoryItem(
+        id = id,
+        date = currentDay,
+        amount = BigDecimal(amount),
+        type = TransactionType.EXPENSE,
+        tagIds = null,
+        statusPayment = PaymentStatus.PENDING,
+        paymentMethod = PaymentMethod.CREDIT,
+        cardId = cardId,
+        name = name,
+        isInvoice = true,
+    )
+
+    private fun invoicePaymentNotification(
+        id: String,
+        amount: String = "8866.19",
+        status: NotificationStatus = NotificationStatus.NEEDS_REVIEW,
+        parsedType: TransactionType? = null,
+        app: String = "Nubank",
+    ) = NotificationItem(
+        id = id,
+        app = app,
+        channel = NotificationChannel.PUSH,
+        time = "agora",
+        received = "2026-06-30T13:25:00Z",
+        text = "Nubank Recebemos seu pagamento no valor de R$ 8.866,19. Obrigado!",
+        status = status,
+        parsed = ParsedNotification(
+            type = parsedType,
+            amount = BigDecimal(amount),
+            date = currentDay,
+            merchantRaw = null,
+            paymentHint = null,
+        ),
+        suggestions = ClassificationSuggestion(tagIds = emptyList()),
+        tokens = emptyList(),
+    )
+
+    private fun stubInvoicePush(vararg rows: HistoryItem, notificationId: String = "pend-inv") {
+        val notification = invoicePaymentNotification(notificationId)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify(notificationId, any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(monthItems + rows)
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+    }
+
+    @Test
+    fun `confirming a matched invoice payment marks it paid and never saves`() = runTest {
+        stubInvoicePush(invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        coEvery { transactionRepository.markPaid("inv-1") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val item = vm.state.value.confirmReady.single()
+        assertEquals("inv-1", item.pendingTransactionId)
+        assertEquals("Fatura Nubank", item.pendingMatch?.displayTitle())
+
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { transactionRepository.markPaid("inv-1") }
+        // The whole point of the feature: confirming must never create a second expense.
+        coVerify(exactly = 0) { transactionRepository.save(any()) }
+    }
+
+    @Test
+    fun `confirming a one-tap matched invoice payment toasts which invoice was marked paid`() = runTest {
+        stubInvoicePush(invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        coEvery { transactionRepository.markPaid("inv-1") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The generic "Transação confirmada" asserts a transaction was created — wrong for a path
+        // that marks an existing invoice paid instead.
+        assertEquals("Fatura Nubank marcada como paga ✓", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `ignoring a one-tap matched invoice payment forgets the learned issuer, since there is no other undo for a wrong auto-match`() = runTest {
+        // Two same-amount invoices on different cards: the learned mapping is what narrows the
+        // ambiguity down to inv-1, not the amount alone — exactly the case viaLearnedIssuer exists
+        // to flag, unlike a single unambiguous exact match the map merely corroborates.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        issuerCardRepository.associate("Nubank", "card-1")
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
+        )
+        coEvery { notificationRepository.markIgnored("pend-inv") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(issuerCardRepository.getMap().isEmpty())
+    }
+
+    @Test
+    fun `ignoring a match learned via the leading token forgets that entry, not the app label, for an SMS aggregator delivery`() = runTest {
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        issuerCardRepository.associate("Nubank", "card-1")
+        val notification = invoicePaymentNotification("pend-inv", app = "Mensagens")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-inv", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(
+            monthItems +
+                invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1") +
+                invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
+        )
+        coEvery { notificationRepository.markIgnored("pend-inv") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(issuerCardRepository.getMap().isEmpty())
+    }
+
+    @Test
+    fun `ignoring a plain recognized notification leaves any learned issuer mapping alone`() = runTest {
+        issuerCardRepository.associate("Nubank", "card-1")
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { notificationRepository.markIgnored("pend-1") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(mapOf("nubank" to "card-1"), issuerCardRepository.getMap())
+    }
+
+    @Test
+    fun `ignoring an invoice payment matched purely by amount never touches the learned map`() = runTest {
+        // No card on file at all, so this match resolved by amount alone — the learned map had no
+        // part in it. Clearing anything here would be a no-op at best and a needless write at worst;
+        // the point is that ignore() must not even attempt it.
+        val issuerRepo: IssuerCardRepository = mockk(relaxed = true)
+        coEvery { issuerRepo.getMap() } returns emptyMap()
+        stubInvoicePush(invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        coEvery { notificationRepository.markIgnored("pend-inv") } returns Result.success(Unit)
+        val vm = makeViewModel(issuerCardRepository = issuerRepo)
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.ignore(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { issuerRepo.clear(any()) }
+    }
+
+    @Test
+    fun `a legacy row with parsedType EXPENSE and status AUTO still matches the invoice by text`() = runTest {
+        // parsedType is stored server-side verbatim with no update endpoint, so a row captured
+        // before this feature shipped still carries EXPENSE/AUTO even though its text is an
+        // invoice-payment confirmation. The match must be decided by text, not by that stale field.
+        val notification = invoicePaymentNotification(
+            "pend-inv",
+            status = NotificationStatus.AUTO,
+            parsedType = TransactionType.EXPENSE,
+        )
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-inv", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(any()) } returns
+            Result.success(monthItems + invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val item = vm.state.value.confirmReady.single()
+        assertEquals("inv-1", item.pendingTransactionId)
+    }
+
+    @Test
+    fun `two invoices with the same amount produce a prompt and no confirm-ready card`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals(1, vm.state.value.invoicePrompts.size)
+        assertEquals(2, vm.state.value.invoicePrompts.single().candidates.size)
+        // A prompt is handled, so it must not also sit in the wizard-path banner.
+        assertEquals(0, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `a failed neighbour-month fetch skips invoice matching instead of matching off a truncated window`() = runTest {
+        // Two same-amount pending invoices, one this month and one next month. If the next-month
+        // fetch failed silently, the matcher would only ever see the current-month one and
+        // auto-resolve a Matched — the exact truncated-window false confidence this guards against.
+        val notification = invoicePaymentNotification("pend-inv")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-inv", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(currentMonth.toString()) } returns
+            Result.success(monthItems + invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        coEvery { transactionRepository.getMonth(currentMonth.minusMonths(1).toString()) } returns
+            Result.success(emptyList())
+        coEvery { transactionRepository.getMonth(currentMonth.plusMonths(1).toString()) } returns
+            Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `invoice matching waits for cards to load instead of matching with an empty issuer veto`() = runTest {
+        // The push names Nubank, and the pending invoice is on a DIFFERENT card — the issuer must
+        // veto the amount match. With cards still loading, IssuerCardMatcher has nothing to resolve
+        // against and the veto can't fire, so an unheld match would auto-resolve wrong.
+        val cardsDeferred = CompletableDeferred<Result<List<CreditCard>>>()
+        coEvery { cardRepository.getCards() } coAnswers { cardsDeferred.await() }
+        stubInvoicePush(invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-2"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+
+        cardsDeferred.complete(
+            Result.success(listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10))),
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals(1, vm.state.value.invoicePrompts.size)
+    }
+
+    @Test
+    fun `a failed card load must not silently disable the issuer veto`() = runTest {
+        // Same shape as the "cards still loading" case above: the push names Nubank, and the
+        // pending invoice is on a DIFFERENT card. A failed getCards() must not degrade to an empty
+        // cards map that lets the amount match auto-resolve unvetoed.
+        coEvery { cardRepository.getCards() } returns Result.failure(RuntimeException("network"))
+        stubInvoicePush(invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-2"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `a learned-issuer read failure must not resolve a match that depends on the missing mapping`() = runTest {
+        val failingIssuerCardRepository: IssuerCardRepository = mockk()
+        coEvery { failingIssuerCardRepository.getMap() } throws RuntimeException("datastore error")
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(
+                CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10),
+                CreditCard("card-2", "Roxinho", "Mastercard", "1111", 0L, 0L, BigDecimal("1000"), 10),
+            ),
+        )
+        // Previously taught: this issuer's real invoices land on card-2 ("Roxinho"), not the
+        // literally-named "Nubank" card — exactly what the learned map exists to remember.
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Roxinho", cardId = "card-2"),
+        )
+        val vm = makeViewModel(issuerCardRepository = failingIssuerCardRepository)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Without the learned mapping, a name-only match would auto-settle the wrong invoice
+        // (card-1's) instead of falling through to the picker or the revisar banner.
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `picking an invoice marks it paid, learns the issuer, and never saves`() = runTest {
+        // A card literally named "Nubank" so resolutionKey has a real signal to teach on — refusing
+        // to teach a fallback key (neither app nor leading token names a card) is deliberate.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        coEvery { transactionRepository.markPaid("inv-2") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        // After confirming, the notification leaves the pending queue.
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first { it.id == "inv-2" })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { transactionRepository.markPaid("inv-2") }
+        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        // Normalized: production's IssuerCardMatcher.resolve looks the learned map up by
+        // normalizeIssuer(app), never by the raw app label.
+        assertEquals(mapOf("nubank" to "card-1"), issuerCardRepository.getMap())
+        assertNull(vm.state.value.invoicePicker)
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals("Fatura Nubank anterior marcada como paga ✓", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `picking an invoice from an SMS aggregator delivery teaches the leading token, not the app label`() = runTest {
+        // app = "Mensagens" names no card; the issuer is only findable via the text's leading
+        // token "Nubank". Teaching "mensagens" instead would outrank every other issuer that also
+        // arrives through the SMS app.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        val notification = invoicePaymentNotification("pend-inv", app = "Mensagens")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-inv", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(any()) } returns
+            Result.success(monthItems + invoiceRow("inv-1", "-1.00", "Fatura Nubank", cardId = "card-1"))
+        coEvery { transactionRepository.markPaid("inv-1") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.single())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(mapOf("nubank" to "card-1"), issuerCardRepository.getMap())
+    }
+
+    @Test
+    fun `teaching the issuer from the picker resolves the next push from that issuer without the picker`() = runTest {
+        // Two cards both literally named "Nubank": the app names a real issuer, but not decisively
+        // between them — that ambiguity is exactly what the manual pick resolves and teaches.
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(
+                CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10),
+                CreditCard("card-2", "Nubank", "Mastercard", "1111", 0L, 0L, BigDecimal("1000"), 15),
+            ),
+        )
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank", cardId = "card-1"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
+        )
+        coEvery { transactionRepository.markPaid("inv-2") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first { it.id == "inv-2" })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // A second, unrelated push from the same issuer: two fresh same-amount pending invoices,
+        // one on each card — ambiguous by amount alone, exactly like the first round.
+        val secondNotification = invoicePaymentNotification("pend-inv-2")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(secondNotification))
+        coEvery { notificationRepository.classify("pend-inv-2", any()) } returns
+            Result.success(ClassifiedNotification(secondNotification, pendingTransactionId = null))
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(
+            monthItems +
+                invoiceRow("inv-3", "-8866.19", "Fatura Nubank", cardId = "card-1") +
+                invoiceRow("inv-4", "-8866.19", "Fatura Nubank anterior", cardId = "card-2"),
+        )
+        vm.refresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals("inv-4", vm.state.value.confirmReady.single().pendingTransactionId)
+    }
+
+    @Test
+    fun `a failed pick keeps the sheet open with an inline error`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        coEvery { transactionRepository.markPaid(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val picker = vm.state.value.invoicePicker
+        assertEquals("Não foi possível marcar como paga. Tente de novo.", picker?.errorMessage)
+        assertFalse(picker?.isConfirming ?: true)
+        assertEquals(1, vm.state.value.invoicePrompts.size)
+    }
+
+    @Test
+    fun `a pick that fails after the sheet was already dismissed toasts instead of leaving an invisible error`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val latch = CompletableDeferred<Result<Unit>>()
+        coEvery { transactionRepository.markPaid(any()) } coAnswers { latch.await() }
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first())
+        testDispatcher.scheduler.runCurrent()
+        // ModalBottomSheet has already animated to Hidden and fired onDismissRequest by the time a
+        // real device gets here — the sheet is gone even though isConfirming is still true.
+        vm.dismissInvoicePicker()
+        latch.complete(Result.failure(RuntimeException("offline")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.invoicePicker)
+        assertEquals("Não foi possível marcar como paga. Tente de novo.", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `a successful pick does not close a different prompt's sheet opened while it was in flight`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val latch = CompletableDeferred<Result<Unit>>()
+        coEvery { transactionRepository.markPaid(any()) } coAnswers { latch.await() }
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first())
+        testDispatcher.scheduler.runCurrent()
+        vm.dismissInvoicePicker()
+        val otherPrompt = InvoicePaymentPrompt(notification = recognizedNotification("other"), candidates = emptyList())
+        vm.openInvoicePicker(otherPrompt)
+
+        latch.complete(Result.success(Unit))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("other", vm.state.value.invoicePicker?.prompt?.notificationId)
+    }
+
+    @Test
+    fun `a failed pick does not write its error into a different prompt's sheet opened while it was in flight`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val latch = CompletableDeferred<Result<Unit>>()
+        coEvery { transactionRepository.markPaid(any()) } coAnswers { latch.await() }
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first())
+        testDispatcher.scheduler.runCurrent()
+        vm.dismissInvoicePicker()
+        val otherPrompt = InvoicePaymentPrompt(notification = recognizedNotification("other"), candidates = emptyList())
+        vm.openInvoicePicker(otherPrompt)
+
+        latch.complete(Result.failure(RuntimeException("offline")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("other", vm.state.value.invoicePicker?.prompt?.notificationId)
+        assertNull(vm.state.value.invoicePicker?.errorMessage)
+    }
+
+    @Test
+    fun `no pending invoice and no matching card falls through to the revisar banner, not a prompt`() = runTest {
+        // Regression for the "fatura" false positive: with no card on file for the issuer and no
+        // cent-exact invoice, this push is not treated as a credit-card invoice payment at all.
+        stubInvoicePush()
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `an AUTO invoice push with an echoed EXPENSE type, no pending invoice and no card creates nothing`() = runTest {
+        // The matcher declining (no cent-exact invoice, no resolvable card) must not fall through
+        // to the ordinary confirm-ready path: the backend's own suggestion for this text is an
+        // expense, and one-tap-confirming it would duplicate the invoice the user already tracks.
+        val notification = invoicePaymentNotification(
+            "pend-inv",
+            status = NotificationStatus.AUTO,
+            parsedType = TransactionType.EXPENSE,
+        )
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-inv", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `an invoice push with a known card and no pending invoice still prompts, with an empty candidate list`() = runTest {
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        stubInvoicePush()
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val prompt = vm.state.value.invoicePrompts.single()
+        // expensePending is a plain pending expense, not an invoice: it must not be offered here.
+        assertTrue(prompt.candidates.isEmpty())
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+    }
+
+    @Test
+    fun `loadLookups throwing still completes cardsReady so an invoice classify pass does not hang forever`() = runTest {
+        // tokenStore.getUserName() is a plain suspend fun, not Result-wrapped like the repository
+        // calls in this block, so it is the one call here that can legitimately throw.
+        coEvery { tokenStore.getUserName() } throws RuntimeException("datastore corrupted")
+        stubInvoicePush()
+        val vm = makeViewModel()
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.classifying)
+    }
+
+    @Test
+    fun `an invoice classify pass does not hang forever when cardsReady never completes`() = runTest {
+        // Never resolves — simulates loadLookups stalling (e.g. a slow tagRepository call) so
+        // cardsReady.await() alone would park the classify pass indefinitely.
+        val stall = CompletableDeferred<Result<List<Tag>>>()
+        coEvery { tagRepository.getAllTags() } coAnswers { stall.await() }
+        stubInvoicePush()
+        val vm = makeViewModel()
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.classifying)
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `dismissing an invoice prompt marks it ignored and drops only that card`() = runTest {
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-1", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        stubInvoicePush(invoiceRow("inv-1", "-1.00", "Fatura Nubank"))
+        coEvery { notificationRepository.markIgnored("pend-inv") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.dismissInvoicePrompt(vm.state.value.invoicePrompts.single())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("pend-inv") }
+        assertTrue(vm.state.value.invoicePrompts.isEmpty())
+        assertEquals("Notificação ignorada", vm.state.value.toastMessage)
+    }
+
     @Test
     fun `classify pass is the sole writer of the pending count on the current month`() = runTest {
         // p1 recognized -> card; p2 not recognized (default classify failure) -> stays in the banner.
@@ -600,6 +1198,72 @@ class HomeViewModelTest {
 
         assertFalse(vm.state.value.classifying)
         assertFalse(vm.state.value.openBillsLoading)
+    }
+
+    @Test
+    fun `a month flip while the invoice picker is open closes the sheet`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openInvoicePicker(vm.state.value.invoicePrompts.single())
+        assertTrue(vm.state.value.invoicePicker != null)
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Otherwise the sheet floats over another month's Home with a prompt no longer in state.
+        assertNull(vm.state.value.invoicePicker)
+    }
+
+    @Test
+    fun `a same-month reload while the invoice picker is open refreshes its candidate list, so a row settled meanwhile cannot be picked again`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+            invoiceRow("inv-3", "-8866.19", "Fatura Nubank mais antiga"),
+        )
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openInvoicePicker(vm.state.value.invoicePrompts.single())
+        assertEquals(3, vm.state.value.invoicePicker?.prompt?.candidates?.size)
+
+        // inv-2 gets marked paid from Transações meanwhile; the shared ledgerRefresh signal reloads
+        // this screen too, and its classify pass must not leave the open sheet offering a stale row.
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(
+            monthItems +
+                invoiceRow("inv-1", "-8866.19", "Fatura Nubank") +
+                invoiceRow("inv-3", "-8866.19", "Fatura Nubank mais antiga"),
+        )
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf("inv-1", "inv-3"), vm.state.value.invoicePicker?.prompt?.candidates?.map { it.id })
+    }
+
+    @Test
+    fun `a same-month reload while the invoice picker is open closes it once the underlying prompt is fully resolved`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openInvoicePicker(vm.state.value.invoicePrompts.single())
+        assertTrue(vm.state.value.invoicePicker != null)
+
+        // inv-2 gets marked paid from Transações meanwhile: only inv-1 remains, so amount alone now
+        // resolves the match — this notification leaves invoicePrompts entirely.
+        coEvery { transactionRepository.getMonth(any()) } returns
+            Result.success(monthItems + invoiceRow("inv-1", "-8866.19", "Fatura Nubank"))
+        refresh.signal()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.invoicePicker)
     }
 
     // -------------------------------------------------------------------------
