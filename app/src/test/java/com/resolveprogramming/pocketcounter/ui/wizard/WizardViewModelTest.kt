@@ -534,7 +534,59 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `save sets error when transactionRepository save fails`() = runTest {
+    fun `save surfaces a toast carrying the cause when transactionRepository save fails`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("HTTP 400 Bad Request"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Não foi possível salvar: HTTP 400 Bad Request", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `save toast falls back to a bare message when the cause has none`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Não foi possível salvar", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `consumeToast clears the save-failure toast`() = runTest {
+        val notification = makeNotification()
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.consumeToast()
+
+        assertNull(vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `save failure leaves the CTA usable so the user can retry`() = runTest {
         val notification = makeNotification()
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -547,7 +599,8 @@ class WizardViewModelTest {
         vm.save(onDone = {})
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals("save failed", vm.state.value.error)
+        assertFalse(vm.state.value.isSaving)
+        assertFalse(vm.state.value.isSwitching)
     }
 
     @Test
