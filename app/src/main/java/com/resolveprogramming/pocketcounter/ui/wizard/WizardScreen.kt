@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
+import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
+import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -41,6 +43,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,6 +76,13 @@ fun WizardScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showIgnoreConfirm by remember { mutableStateOf(false) }
     var ignoreLearn by remember { mutableStateOf(true) }
+    val toastState = remember { PocketToastState() }
+
+    LaunchedEffect(state.toastMessage) {
+        val message = state.toastMessage ?: return@LaunchedEffect
+        toastState.show(message)
+        viewModel.consumeToast()
+    }
 
     // Full-screen spinner only on the very first open, when there's nothing to keep on screen.
     // Switching between queued items keeps the current item visible (see isSwitching below).
@@ -102,6 +112,8 @@ fun WizardScreen(
             onConfirm = viewModel::confirmPending,
             onDismiss = onDismiss,
         )
+        // Sibling overlay: the host fills the screen and pins its pill to the bottom.
+        PocketToastHost(state = toastState)
         return
     }
 
@@ -280,6 +292,8 @@ fun WizardScreen(
             },
         )
     }
+
+    PocketToastHost(state = toastState)
 
     if (showIgnoreConfirm) {
         IgnoreConfirmDialog(

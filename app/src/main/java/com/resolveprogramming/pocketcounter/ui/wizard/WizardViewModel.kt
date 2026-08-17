@@ -71,7 +71,10 @@ data class WizardUiState(
     val pendingConfirmed: Boolean = false,
     val isLoading: Boolean = true,
     val isSwitching: Boolean = false,
+    /** Initial-load failure. Rendered as a full-screen recoverable error, so it is load-only. */
     val error: String? = null,
+    /** Transient feedback for a failure that happens with the wizard on screen (save/confirm). */
+    val toastMessage: String? = null,
     /**
      * Set when the notification carried a "final NNNN" hint that could not be matched to a
      * known card in the local last-4 map. The UI should prompt the user to assign it to an
@@ -472,9 +475,26 @@ class WizardViewModel @Inject constructor(
                     // the app when none remain.
                     advanceToNext(onDone)
                 }
-                .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
+                .onFailure { e ->
+                    _state.update { it.copy(isSaving = false, toastMessage = failureMessage(e)) }
+                }
         }
     }
+
+    /**
+     * Feedback for a failed save/confirm. [WizardUiState.error] can't carry it: the screen only
+     * renders that when the notification failed to load, so a failed save used to flip the CTA back
+     * from "Salvando..." and say nothing at all — indistinguishable from a dead button.
+     *
+     * The cause rides along ("HTTP 400 Bad Request", a connection failure) because "tente novamente"
+     * alone is unactionable when the request is the thing that is broken.
+     */
+    private fun failureMessage(e: Throwable): String {
+        val detail = e.message?.trim()?.takeIf { it.isNotEmpty() } ?: return "Não foi possível salvar"
+        return "Não foi possível salvar: ${detail.take(DETAIL_MAX_CHARS)}"
+    }
+
+    fun consumeToast() = _state.update { it.copy(toastMessage = null) }
 
     /**
      * Discards the captured notification (marks it ignored so it leaves "Para revisar") and then
@@ -661,7 +681,9 @@ class WizardViewModel @Inject constructor(
                         it.copy(isSaving = false, isConfirmingPending = false, pendingConfirmed = true)
                     }
                 }
-                .onFailure { e -> _state.update { it.copy(isSaving = false, error = e.message) } }
+                .onFailure { e ->
+                    _state.update { it.copy(isSaving = false, toastMessage = failureMessage(e)) }
+                }
         }
     }
 
@@ -745,5 +767,8 @@ class WizardViewModel @Inject constructor(
     private companion object {
         /** Normalized card-hint words that must never be learned as a payment-method token. */
         private val CARD_HINT_WORDS = setOf("cartão", "cartao", "conta", "final")
+
+        /** Keeps a long cause (a stack-trace-ish message) from overflowing the toast pill. */
+        private const val DETAIL_MAX_CHARS = 90
     }
 }
