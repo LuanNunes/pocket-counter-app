@@ -58,7 +58,7 @@ import com.resolveprogramming.pocketcounter.ui.components.TabId
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 @Composable
-fun RegrasScreen(
+fun RulesScreen(
     onBack: () -> Unit,
     onNav: (TabId) -> Unit,
     viewModel: RegrasViewModel = hiltViewModel(),
