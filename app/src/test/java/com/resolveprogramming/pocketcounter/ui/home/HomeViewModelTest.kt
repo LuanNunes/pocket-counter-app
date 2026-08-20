@@ -5,6 +5,7 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -48,6 +49,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -61,6 +63,7 @@ class HomeViewModelTest {
     private val tagRepository: TagRepository = mockk()
     private val cardRepository: CardRepository = mockk()
     private val issuerCardRepository = FakeIssuerCardRepository()
+    private val blockedSourceRepository = FakeBlockedSourceRepository()
     private val tokenStore: TokenStore = mockk()
 
     private val currentMonth: YearMonth = YearMonth.now()
@@ -135,6 +138,7 @@ class HomeViewModelTest {
         viewedMonth = viewedMonth,
         ledgerRefresh = ledgerRefresh,
         appMessageRelay = appMessageRelay,
+        blockedSourceRepository = blockedSourceRepository,
     )
 
     @Test
@@ -229,6 +233,32 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("Notificações do Google não serão mais capturadas.", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `blockedSourceCount follows the blocklist`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(0, vm.state.value.blockedSourceCount)
+
+        blockedSourceRepository.block("Google", Instant.now())
+        blockedSourceRepository.block("Promo Bank", Instant.now())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(2, vm.state.value.blockedSourceCount)
+    }
+
+    @Test
+    fun `blockedSourceCount returns to zero after the last unblock`() = runTest {
+        blockedSourceRepository.block("Google", Instant.now())
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, vm.state.value.blockedSourceCount)
+
+        blockedSourceRepository.unblock("google")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.blockedSourceCount)
     }
 
     @Test

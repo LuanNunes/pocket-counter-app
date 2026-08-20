@@ -385,6 +385,67 @@ fun NotificationAccessBanner(onEnable: () -> Unit) {
     }
 }
 
+/**
+ * Shown on Home whenever at least one notification source is blocked, so a mis-tapped block never
+ * silences a real bank invisibly. Tapping it opens Configurações, where the block can be undone.
+ */
+@Composable
+fun BlockedSourcesBanner(count: Int, onManage: () -> Unit) {
+    val muted = PocketTheme.colors.text2
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .border(1.dp, muted.copy(alpha = 0.5f), PocketTheme.shapes.card)
+            .clickable(onClick = onManage)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .background(muted.copy(alpha = 0.18f), PocketTheme.shapes.icon),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.NotificationsOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = muted,
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(blockedSourcesLead(count)) }
+                    append("Toque para rever.")
+                },
+                style = PocketTheme.typography.bodySm,
+                color = PocketTheme.colors.text,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "gerenciar",
+                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Bold),
+                color = muted,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = muted,
+            )
+        }
+    }
+}
+
+private fun blockedSourcesLead(count: Int): String =
+    "Captura pausada para 1 app. ".takeIf { count == 1 } ?: "Captura pausada para $count apps. "
+
 @Composable
 fun RevisarBanner(count: Int, onClick: () -> Unit) {
     Row(

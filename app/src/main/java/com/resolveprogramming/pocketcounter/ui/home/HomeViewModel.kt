@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
+import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -91,6 +92,8 @@ data class HomeUiState(
     val monthCount: Int = 0,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    /** Drives the Home banner that keeps a device-local source block from suppressing capture invisibly. */
+    val blockedSourceCount: Int = 0,
 )
 
 private data class InvoiceMatchContext(
@@ -119,6 +122,7 @@ class HomeViewModel @Inject constructor(
     private val viewedMonth: ViewedMonthStore,
     private val ledgerRefresh: LedgerRefreshSignal,
     private val appMessageRelay: AppMessageRelay,
+    private val blockedSourceRepository: BlockedSourceRepository,
 ) : ViewModel() {
 
     // The full month's rows, before listType/groupBy filtering — the source for recomputed().
@@ -181,6 +185,13 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             appMessageRelay.messages.collect { message ->
                 _state.update { it.copy(toastMessage = message) }
+            }
+        }
+        // A device-local block only surfaces in Configurações, which nobody visits unprompted — Home
+        // carries the reminder so a mis-tapped block can't silence a real bank indefinitely.
+        viewModelScope.launch {
+            blockedSourceRepository.blocklist.collect { blocklist ->
+                _state.update { it.copy(blockedSourceCount = blocklist.entries.size) }
             }
         }
     }
