@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.ui.home
 
+import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
@@ -119,6 +120,7 @@ class HomeViewModelTest {
         viewedMonth: ViewedMonthStore = ViewedMonthStore(),
         ledgerRefresh: LedgerRefreshSignal = LedgerRefreshSignal(),
         issuerCardRepository: IssuerCardRepository = this.issuerCardRepository,
+        appMessageRelay: AppMessageRelay = AppMessageRelay(),
     ): HomeViewModel = HomeViewModel(
         notificationRepository = notificationRepository,
         transactionRepository = transactionRepository,
@@ -132,6 +134,7 @@ class HomeViewModelTest {
         ),
         viewedMonth = viewedMonth,
         ledgerRefresh = ledgerRefresh,
+        appMessageRelay = appMessageRelay,
     )
 
     @Test
@@ -213,6 +216,19 @@ class HomeViewModelTest {
 
         assertEquals(0, vm.state.value.kpis.pendingCount)
         assertEquals(BigDecimal.ZERO, vm.state.value.kpis.pendingTotal)
+    }
+
+    @Test
+    fun `a relayed message lands in toastMessage so a popped screen's feedback still renders`() = runTest {
+        val relay = AppMessageRelay()
+        val vm = makeViewModel(appMessageRelay = relay)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // The wizard signs off as its review queue empties, then pops back to Home.
+        relay.send("Notificações do Google não serão mais capturadas.")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Notificações do Google não serão mais capturadas.", vm.state.value.toastMessage)
     }
 
     @Test

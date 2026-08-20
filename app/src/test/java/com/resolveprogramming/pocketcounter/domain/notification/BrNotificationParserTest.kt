@@ -1000,6 +1000,106 @@ class BrNotificationParserTest {
     }
 
     // -------------------------------------------------------------------------
+    // AMOUNT_REGEX hardening — decimal-tail guard rejects a malformed amount instead of
+    // silently resolving to a truncated wrong value; plain digit runs are no longer capped at 3.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `parse Google Finance stock alert is not financial`() {
+        val text = "GGBR4 is down 3.9% 📉 Gerdau SA Preference Shares fell to R$23.25 today"
+        val result = BrNotificationParser.parse(text, NOW)
+
+        assertFalse(result.isFinancial)
+        assertNull(result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount with two decimal digits glued after a dot is not financial`() {
+        val result = BrNotificationParser.parse("R$23.25", NOW)
+
+        assertNull(result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount with space then two decimal digits after a dot is not financial`() {
+        val result = BrNotificationParser.parse("R$ 12.34", NOW)
+
+        assertNull(result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount with a single stray digit after the comma is not financial`() {
+        val result = BrNotificationParser.parse("R$ 50,5", NOW)
+
+        assertNull(result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount with three digits after the decimal comma is not financial`() {
+        val result = BrNotificationParser.parse("R$ 1.234,567", NOW)
+
+        assertNull(result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount dotted thousands with no decimal part`() {
+        val result = BrNotificationParser.parse("R$ 1.234", NOW)
+
+        assertEquals(BigDecimal("1234"), result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount plain digit run longer than three digits is not truncated`() {
+        val result = BrNotificationParser.parse("R$ 1234,56", NOW)
+
+        assertEquals(BigDecimal("1234.56"), result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount in US thousands-and-decimal form is not financial`() {
+        val result = BrNotificationParser.parse("R$ 1,234.56", NOW)
+
+        assertFalse(result.isFinancial)
+        assertNull(result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount RS currency form with a four-digit plain integer part`() {
+        val result = BrNotificationParser.parse("RS 1234,56", NOW)
+
+        assertEquals(BigDecimal("1234.56"), result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount R$ glued directly to the preceding word`() {
+        val result = BrNotificationParser.parse("CompraR$50,00", NOW)
+
+        assertEquals(BigDecimal("50.00"), result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount RS currency form preceded by a labeling word`() {
+        val result = BrNotificationParser.parse("valor RS 26,74", NOW)
+
+        assertEquals(BigDecimal("26.74"), result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount BRL currency form with dotted thousands`() {
+        val result = BrNotificationParser.parse("BRL 1.234,56", NOW)
+
+        assertEquals(BigDecimal("1234.56"), result.parsed.amount)
+    }
+
+    @Test
+    fun `parse amount CEP-shaped number after RS is not financial`() {
+        val result = BrNotificationParser.parse("Porto Alegre RS 90000-000", NOW)
+
+        assertFalse(result.isFinancial)
+        assertNull(result.parsed.amount)
+    }
+
+    // -------------------------------------------------------------------------
     // parsePaymentMethod
     // -------------------------------------------------------------------------
 

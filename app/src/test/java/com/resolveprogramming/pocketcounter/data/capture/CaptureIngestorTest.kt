@@ -1,8 +1,10 @@
 package com.resolveprogramming.pocketcounter.data.capture
 
+import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.domain.model.CapturedMessage
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
+import com.resolveprogramming.pocketcounter.domain.notification.SourceBlocklist
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -35,12 +37,20 @@ class CaptureIngestorTest {
 
     @Before
     fun setUp() {
-        ingestor = CaptureIngestor(repository, testScope)
+        ingestor = ingestorBlocking()
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private fun ingestorBlocking(vararg apps: String) = CaptureIngestor(
+        repository,
+        testScope,
+        FakeBlockedSourceRepository(
+            apps.fold(SourceBlocklist.EMPTY) { list, app -> list.with(app, Instant.EPOCH) },
+        ),
+    )
 
     private fun financialMessage(
         text: String = "Compra aprovada R$ 89,90",
@@ -164,6 +174,69 @@ class CaptureIngestorTest {
 
         ingestor.shouldIngest(nonFinancial) // dropped — should not pollute cache
         assertTrue(ingestor.shouldIngest(financial))
+    }
+
+    // -------------------------------------------------------------------------
+    // shouldIngest — blocked-source gate
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `shouldIngest is fail-open until the blocklist has been collected`() {
+        // Fail-closed would need runBlocking on the listener's main thread; one stray captured
+        // item on a cold start is the cheaper failure.
+        val blockedIngestor = ingestorBlocking("Blocked App")
+        val message = financialMessage(app = "Blocked App", channel = NotificationChannel.PUSH)
+
+        assertTrue(blockedIngestor.shouldIngest(message))
+    }
+
+    @Test
+    fun `shouldIngest returns false for a blocked source before parsing`() {
+        val blockedIngestor = ingestorBlocking("Blocked App")
+        testDispatcher.scheduler.advanceUntilIdle()
+        val message = financialMessage(app = "Blocked App", channel = NotificationChannel.PUSH)
+
+        assertFalse(blockedIngestor.shouldIngest(message))
+    }
+
+    @Test
+    fun `shouldIngest still returns true for a financial message from a non-blocked app`() {
+        val gatedIngestor = ingestorBlocking("Blocked App")
+        testDispatcher.scheduler.advanceUntilIdle()
+        val message = financialMessage(app = "Banco Itaú", channel = NotificationChannel.PUSH)
+
+        assertTrue(gatedIngestor.shouldIngest(message))
+    }
+
+    @Test
+    fun `shouldIngest blocked message does not poison the seen cache`() {
+        val gatedIngestor = ingestorBlocking("Blocked App")
+        testDispatcher.scheduler.advanceUntilIdle()
+        val base = Instant.ofEpochSecond(1_000_000L)
+        val blocked = financialMessage(
+            text = "Compra aprovada R$ 10,00",
+            channel = NotificationChannel.PUSH,
+            app = "Blocked App",
+            receivedAt = base,
+        )
+        val allowed = financialMessage(
+            text = "Compra aprovada R$ 10,00",
+            channel = NotificationChannel.PUSH,
+            app = "Banco Itaú",
+            receivedAt = base,
+        )
+
+        gatedIngestor.shouldIngest(blocked) // dropped — must not pollute the dedup cache
+        assertTrue(gatedIngestor.shouldIngest(allowed))
+    }
+
+    @Test
+    fun `shouldIngest never blocks SMS even from a source blocked on PUSH`() {
+        val gatedIngestor = ingestorBlocking("Google")
+        testDispatcher.scheduler.advanceUntilIdle()
+        val message = financialMessage(app = "Google", channel = NotificationChannel.SMS)
+
+        assertTrue(gatedIngestor.shouldIngest(message))
     }
 
     // -------------------------------------------------------------------------

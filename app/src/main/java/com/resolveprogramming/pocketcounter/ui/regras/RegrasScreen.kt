@@ -205,14 +205,8 @@ private fun RegraCard(
             }
 
             Spacer(Modifier.height(6.dp))
-            val outcome = listOfNotNull(
-                rule.paymentMethod?.label(),
-                rule.cardId?.let { cardsById[it]?.name },
-                rule.tags.size.takeIf { it > 0 }?.let { "+ $it tags" },
-                rule.appliedCount.takeIf { it > 0 }?.let { "aplicada ${it}×" },
-            ).joinToString(" · ")
             Text(
-                text = "sem destino".takeIf { outcome.isBlank() } ?: "→ $outcome",
+                text = ruleOutcomeLabel(rule, cardsById),
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text3,
             )
@@ -234,6 +228,17 @@ private fun RegraCard(
             }
         }
     }
+}
+
+private fun ruleOutcomeLabel(rule: ClassificationRule, cardsById: Map<String, CreditCard>): String {
+    if (rule.action == RuleAction.IGNORE) return "→ ignorar"
+    val outcome = listOfNotNull(
+        rule.paymentMethod?.label(),
+        rule.cardId?.let { cardsById[it]?.name },
+        rule.tags.size.takeIf { it > 0 }?.let { "+ $it tags" },
+        rule.appliedCount.takeIf { it > 0 }?.let { "aplicada ${it}×" },
+    ).joinToString(" · ")
+    return "sem destino".takeIf { outcome.isBlank() } ?: "→ $outcome"
 }
 
 @OptIn(ExperimentalLayoutApi::class)

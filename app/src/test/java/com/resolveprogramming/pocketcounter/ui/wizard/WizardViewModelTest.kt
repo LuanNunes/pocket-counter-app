@@ -2,9 +2,12 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
+import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -16,6 +19,7 @@ import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNoti
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.IgnoreScope
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
@@ -35,7 +39,11 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -48,7 +56,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -65,6 +75,8 @@ class WizardViewModelTest {
     private val cardLast4Repository: CardLast4Repository = mockk()
     private val fakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository()
     private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository = mockk()
+    private val blockedSourceRepository: BlockedSourceRepository = mockk()
+    private val appMessageRelay = AppMessageRelay()
 
     @Before
     fun setUp() {
@@ -99,6 +111,8 @@ class WizardViewModelTest {
         coEvery { paymentMethodDictionaryRepository.getMap() } returns emptyMap()
         coEvery { paymentMethodDictionaryRepository.learn(any(), any()) } returns Unit
         coEvery { paymentMethodDictionaryRepository.forget(any()) } returns Unit
+        coEvery { blockedSourceRepository.block(any(), any()) } returns Unit
+        coEvery { blockedSourceRepository.unblock(any()) } returns Unit
     }
 
     @After
@@ -120,10 +134,12 @@ class WizardViewModelTest {
         tagIds: List<String> = emptyList(),
         tokens: List<Token> = emptyList(),
         paymentHint: String? = null,
+        app: String = "Banco Itaú",
+        channel: NotificationChannel = NotificationChannel.SMS,
     ) = NotificationItem(
         id = id,
-        app = "Banco Itaú",
-        channel = NotificationChannel.SMS,
+        app = app,
+        channel = channel,
         time = "agora",
         received = "10:00",
         text = "Compra aprovada R$ 49,90",
@@ -158,6 +174,7 @@ class WizardViewModelTest {
         notificationId: String = "notif-1",
         paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = fakePaymentMethodPrefsRepository,
         dictionaryRepository: PaymentMethodDictionaryRepository = paymentMethodDictionaryRepository,
+        blockedSources: BlockedSourceRepository = blockedSourceRepository,
     ): WizardViewModel {
         val handle = SavedStateHandle(mapOf("notificationId" to notificationId))
         return WizardViewModel(
@@ -174,7 +191,25 @@ class WizardViewModelTest {
             cardLast4Repository = cardLast4Repository,
             paymentMethodPrefsRepository = paymentMethodPrefsRepository,
             paymentMethodDictionaryRepository = dictionaryRepository,
+            blockedSourceRepository = blockedSources,
+            appMessageRelay = appMessageRelay,
         )
+    }
+
+    /**
+     * Collects everything [appMessageRelay] emits while [block] runs. Unconfined so the collector
+     * subscribes at launch: the relay replays nothing, so a later subscription sees no message.
+     */
+    private fun TestScope.relayedMessages(block: () -> Unit): List<String> {
+        val messages = mutableListOf<String>()
+        val job = backgroundScope.launch(UnconfinedTestDispatcher(testDispatcher.scheduler)) {
+            appMessageRelay.messages.collect { messages += it }
+        }
+        testDispatcher.scheduler.advanceUntilIdle()
+        block()
+        testDispatcher.scheduler.advanceUntilIdle()
+        job.cancel()
+        return messages
     }
 
     // -------------------------------------------------------------------------
@@ -978,11 +1013,11 @@ class WizardViewModelTest {
     }
 
     // -------------------------------------------------------------------------
-    // ignore() path
+    // ignore() path — IgnoreScope.ThisOnly
     // -------------------------------------------------------------------------
 
     @Test
-    fun `ignore marks notification ignored and advances in place to next pending item`() = runTest {
+    fun `ignore ThisOnly marks notification ignored and advances in place to next pending item`() = runTest {
         val notification = makeNotification(id = "notif-1")
         val nextNotification = makeNotification(id = "notif-2")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
@@ -994,7 +1029,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.ignore(learn = false, onDone = { doneCalled = true })
+        vm.ignore(scope = IgnoreScope.ThisOnly, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
@@ -1003,7 +1038,7 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `ignore calls onDone when no more pending notifications`() = runTest {
+    fun `ignore ThisOnly calls onDone when no more pending notifications`() = runTest {
         val notification = makeNotification(id = "notif-1")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
@@ -1014,11 +1049,375 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         var doneCalled = false
-        vm.ignore(learn = false, onDone = { doneCalled = true })
+        vm.ignore(scope = IgnoreScope.ThisOnly, onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
         assertTrue(doneCalled)
+    }
+
+    @Test
+    fun `ignore ThisOnly never creates a rule`() = runTest {
+        // ThisOnly is what the wizard falls back to when neither a pattern nor source-blocking is
+        // derivable — it must still ignore cleanly, and never touch the rule repository.
+        val notification = makeNotification(id = "notif-1")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.ThisOnly, onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    // -------------------------------------------------------------------------
+    // ignore() path — IgnoreScope.Pattern
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `ignore Pattern creates an IGNORE rule with the given pattern and marks ignored`() = runTest {
+        val notification = makeNotification(id = "notif-1").copy(text = "Compra IFOOD aprovada R$ 49,90")
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Pattern("IFOOD"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(
+                match { it.action == RuleAction.IGNORE && it.patterns == listOf("IFOOD") && it.tags.isEmpty() },
+            )
+        }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    @Test
+    fun `ignore Pattern toast survives advancing to the next pending item after a rule create failure`() = runTest {
+        // Regression: loadNotification rebuilds state wholesale on advance; the toast set just
+        // before it must ride along or it is destroyed before it ever renders.
+        val notification = makeNotification(id = "notif-1").copy(text = "Compra IFOOD aprovada R$ 49,90")
+        val nextNotification = makeNotification(id = "notif-2")
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.getById("notif-2") } returns Result.success(nextNotification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.classify("notif-2", nextNotification) } returns
+            Result.success(ClassifiedNotification(nextNotification, null))
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(notification, nextNotification))
+        coEvery { classificationRuleRepository.create(any()) } returns Result.failure(RuntimeException("boom"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Pattern("IFOOD"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("notif-2", vm.state.value.notification?.id)
+        assertEquals(
+            "Notificação ignorada, mas não foi possível salvar a regra.",
+            vm.state.value.toastMessage,
+        )
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    @Test
+    fun `ignore Pattern relays the rule-create failure to Home when the queue empties`() = runTest {
+        val notification = makeNotification(id = "notif-1").copy(text = "Compra IFOOD aprovada R$ 49,90")
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        coEvery { classificationRuleRepository.create(any()) } returns Result.failure(RuntimeException("boom"))
+
+        val vm = makeViewModel()
+
+        var doneCalled = false
+        val messages = relayedMessages {
+            vm.ignore(scope = IgnoreScope.Pattern("IFOOD"), onDone = { doneCalled = true })
+        }
+
+        assertTrue(doneCalled)
+        assertEquals(listOf("Notificação ignorada, mas não foi possível salvar a regra."), messages)
+        assertNull(vm.state.value.toastMessage)
+    }
+
+    // -------------------------------------------------------------------------
+    // ignore() path — IgnoreScope.Source
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `ignore Source blocks the app in the repository`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { blockedSourceRepository.block("Google", any()) }
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+    }
+
+    @Test
+    fun `ignore Source bulk-ignores other pending items from the same app by normalized key`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val other = makeNotification(id = "notif-2", app = "google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification, other))
+        coEvery { notificationRepository.markIgnored("notif-2") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-2") }
+    }
+
+    @Test
+    fun `ignore Source does not bulk-ignore pending items from a different app`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val other = makeNotification(id = "notif-2", app = "Nubank", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification, other))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { notificationRepository.markIgnored("notif-2") }
+    }
+
+    @Test
+    fun `ignore Source excludes the current and bulk-ignored ids from the next advance`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val other = makeNotification(id = "notif-2", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification, other))
+        coEvery { notificationRepository.markIgnored("notif-2") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Both the current item and the bulk-ignored one are excluded from "next", even though the
+        // (stale) getPendingReview stub still lists notif-2 as pending.
+        var doneCalled = false
+        vm.ignore(scope = IgnoreScope.Source("Google"), onDone = { doneCalled = true })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(doneCalled)
+    }
+
+    @Test
+    fun `ignore Source toast has no pendente suffix when no other pending item matched`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+
+        val vm = makeViewModel()
+
+        val messages = relayedMessages { vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {}) }
+
+        assertEquals(listOf("Notificações do Google não serão mais capturadas."), messages)
+    }
+
+    @Test
+    fun `ignore Source toast uses singular wording for exactly one bulk-ignored pending item`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val other = makeNotification(id = "notif-2", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification, other))
+        coEvery { notificationRepository.markIgnored("notif-2") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+
+        val messages = relayedMessages { vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {}) }
+
+        assertEquals(
+            listOf("Notificações do Google não serão mais capturadas. 1 pendente foi descartada."),
+            messages,
+        )
+    }
+
+    @Test
+    fun `ignore Source toast counts only successful bulk markIgnored calls, not attempts`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val ok = makeNotification(id = "notif-2", app = "Google", channel = NotificationChannel.PUSH)
+        val failed = makeNotification(id = "notif-3", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(notification, ok, failed))
+        coEvery { notificationRepository.markIgnored("notif-2") } returns Result.success(Unit)
+        coEvery { notificationRepository.markIgnored("notif-3") } returns Result.failure(RuntimeException("boom"))
+
+        val vm = makeViewModel()
+
+        val messages = relayedMessages { vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {}) }
+
+        assertEquals(
+            listOf("Notificações do Google não serão mais capturadas. 1 pendente foi descartada."),
+            messages,
+        )
+    }
+
+    @Test
+    fun `ignore Source toast uses plural wording for more than one bulk-ignored pending item`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val other1 = makeNotification(id = "notif-2", app = "Google", channel = NotificationChannel.PUSH)
+        val other2 = makeNotification(id = "notif-3", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(notification, other1, other2))
+        coEvery { notificationRepository.markIgnored("notif-2") } returns Result.success(Unit)
+        coEvery { notificationRepository.markIgnored("notif-3") } returns Result.success(Unit)
+
+        val vm = makeViewModel()
+
+        val messages = relayedMessages { vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {}) }
+
+        assertEquals(
+            listOf("Notificações do Google não serão mais capturadas. 2 pendentes foram descartadas."),
+            messages,
+        )
+    }
+
+    @Test
+    fun `ignore Source toast survives advancing to the next pending item`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val nextNotification = makeNotification(id = "notif-2", app = "Nubank", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.getById("notif-2") } returns Result.success(nextNotification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.classify("notif-2", nextNotification) } returns
+            Result.success(ClassifiedNotification(nextNotification, null))
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(notification, nextNotification))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("notif-2", vm.state.value.notification?.id)
+        assertEquals(
+            "Notificações do Google não serão mais capturadas.",
+            vm.state.value.toastMessage,
+        )
+    }
+
+    @Test
+    fun `ignore Source relays the toast instead of stranding it in state when the queue empties`() = runTest {
+        // The screen is popped as soon as onDone runs, taking its toast host with it — a message left
+        // in state.toastMessage here would never render.
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+
+        var doneCalled = false
+        val messages = relayedMessages {
+            vm.ignore(scope = IgnoreScope.Source("Google"), onDone = { doneCalled = true })
+        }
+
+        assertTrue(doneCalled)
+        assertEquals(listOf("Notificações do Google não serão mais capturadas."), messages)
+        assertNull(vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `ignore Source still ignores and says so when the block write fails`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
+        coEvery { blockedSourceRepository.block(any(), any()) } throws IOException("disk full")
+
+        val vm = makeViewModel()
+
+        val messages = relayedMessages { vm.ignore(scope = IgnoreScope.Source("Google"), onDone = {}) }
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+        assertEquals(listOf("Notificação ignorada, mas não foi possível bloquear Google."), messages)
+    }
+
+    @Test
+    fun `ignore Source with a blank-normalizing label sweeps nothing and blocks nothing`() = runTest {
+        // A null key must not be treated as a wildcard: it would match every other blank-labelled
+        // pending item and discard them.
+        val blockedSources = FakeBlockedSourceRepository()
+        val notification = makeNotification(id = "notif-1", app = "📉", channel = NotificationChannel.PUSH)
+        val other = makeNotification(id = "notif-2", app = "📈", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification, other))
+
+        val vm = makeViewModel(blockedSources = blockedSources)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.ignore(scope = IgnoreScope.Source("📉"), onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
+        coVerify(exactly = 0) { notificationRepository.markIgnored("notif-2") }
+        assertTrue(blockedSources.blocklist.first().entries.isEmpty())
+    }
+
+    // -------------------------------------------------------------------------
+    // state.ignoreOption
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `state ignoreOption is Source when no pattern is derivable but the source can be blocked`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(IgnoreScope.Source("Google"), vm.state.value.ignoreOption)
     }
 
     @Test
@@ -1050,124 +1449,6 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(PaymentMethod.PIX, vm.state.value.draft.paymentMethod)
-    }
-
-    @Test
-    fun `ignore with learn creates an IGNORE rule from the merchant and marks ignored`() = runTest {
-        // Merchant "IFOOD" appears in the text, so it becomes the CONTAINS pattern.
-        val notification = makeNotification(id = "notif-1").copy(text = "Compra IFOOD aprovada R$ 49,90")
-        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
-        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
-        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
-
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        vm.ignore(learn = true, onDone = {})
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        coVerify(exactly = 1) {
-            classificationRuleRepository.create(
-                match { it.action == RuleAction.IGNORE && it.patterns == listOf("IFOOD") && it.tags.isEmpty() },
-            )
-        }
-        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
-    }
-
-    @Test
-    fun `ignore with learn but no derivable pattern still ignores without a rule`() = runTest {
-        // Default text "Compra aprovada R$ 49,90" does NOT contain the merchant "IFOOD" → no pattern.
-        val notification = makeNotification(id = "notif-1")
-        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
-        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
-        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
-
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        vm.ignore(learn = true, onDone = {})
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
-        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
-    }
-
-    @Test
-    fun `ignore with learn accepts a bare gateway prefix as pattern`() = runTest {
-        val base = makeNotification(id = "notif-1")
-        val notification = base.copy(
-            text = "Compra IFD*APROVADO R$ 49,90",
-            parsed = base.parsed.copy(merchantRaw = "Ifd*"),
-        )
-        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
-        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
-        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
-
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        vm.ignore(learn = true, onDone = {})
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        coVerify(exactly = 1) {
-            classificationRuleRepository.create(
-                match { it.action == RuleAction.IGNORE && it.patterns == listOf("Ifd*") && it.tags.isEmpty() },
-            )
-        }
-        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
-    }
-
-    @Test
-    fun `ignore with learn keeps the payment hint as pattern when no merchant candidate exists`() = runTest {
-        val base = makeNotification(id = "notif-1", paymentHint = "final 3685")
-        val notification = base.copy(
-            text = "Compra aprovada no cartão final 3685 R$ 49,90",
-            parsed = base.parsed.copy(merchantRaw = null),
-        )
-        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
-        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
-        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
-
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        vm.ignore(learn = true, onDone = {})
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        coVerify(exactly = 1) {
-            classificationRuleRepository.create(
-                match { it.action == RuleAction.IGNORE && it.patterns == listOf("final 3685") && it.tags.isEmpty() },
-            )
-        }
-        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
-    }
-
-    @Test
-    fun `ignore with learn refuses a bare card-word payment hint`() = runTest {
-        // "conta" is emitted for the INCOME phrase "crédito em conta" too, so an IGNORE rule keyed on
-        // it would drop incoming money out of the review queue.
-        val base = makeNotification(id = "notif-1", paymentHint = "conta")
-        val notification = base.copy(
-            text = "Crédito em conta R$ 1.200,00",
-            parsed = base.parsed.copy(merchantRaw = null),
-        )
-        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
-        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
-        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
-
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        vm.ignore(learn = true, onDone = {})
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
-        coVerify(exactly = 1) { notificationRepository.markIgnored("notif-1") }
     }
 
     // -------------------------------------------------------------------------

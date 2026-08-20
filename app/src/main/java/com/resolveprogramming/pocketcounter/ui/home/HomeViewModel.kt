@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
@@ -117,6 +118,7 @@ class HomeViewModel @Inject constructor(
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val viewedMonth: ViewedMonthStore,
     private val ledgerRefresh: LedgerRefreshSignal,
+    private val appMessageRelay: AppMessageRelay,
 ) : ViewModel() {
 
     // The full month's rows, before listType/groupBy filtering — the source for recomputed().
@@ -173,6 +175,13 @@ class HomeViewModel @Inject constructor(
         // the single reload path for every mutation: emitters just call signal() and are served here too.
         viewModelScope.launch {
             ledgerRefresh.events.collect { loadMonth(showLoading = false) }
+        }
+        // Feedback from a screen that was popped before it could render its own toast — the wizard
+        // signing off as its review queue empties lands here (see AppMessageRelay).
+        viewModelScope.launch {
+            appMessageRelay.messages.collect { message ->
+                _state.update { it.copy(toastMessage = message) }
+            }
         }
     }
 

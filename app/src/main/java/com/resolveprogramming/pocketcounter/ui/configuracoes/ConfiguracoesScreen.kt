@@ -21,17 +21,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
@@ -39,12 +43,18 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.resolveprogramming.pocketcounter.domain.model.BlockedSource
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.ui.components.ManageTopBar
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.icon
 import com.resolveprogramming.pocketcounter.ui.wizard.label
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val BLOCKED_AT_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(ZoneId.systemDefault())
 
 @Composable
 fun ConfiguracoesScreen(
@@ -119,7 +129,103 @@ fun ConfiguracoesScreen(
                         )
                     }
                 }
+
+                Spacer(Modifier.height(24.dp))
+
+                CaptureSection(
+                    blockedSources = state.blockedSources,
+                    onUnblock = viewModel::unblockSource,
+                )
             }
+        }
+    }
+}
+
+/** Stays visible when empty so the concept is findable before a user needs to undo a block. */
+@Composable
+internal fun CaptureSection(
+    blockedSources: List<BlockedSource>,
+    onUnblock: (String) -> Unit,
+) {
+    Text(
+        text = "Captura de notificações",
+        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+        color = PocketTheme.colors.text,
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        text = "Apps bloqueados não geram nada para revisar.",
+        style = PocketTheme.typography.bodyXs,
+        color = PocketTheme.colors.text3,
+    )
+    Spacer(Modifier.height(12.dp))
+
+    if (blockedSources.isEmpty()) {
+        Text(
+            text = "Nenhum app bloqueado.",
+            style = PocketTheme.typography.bodyXs,
+            color = PocketTheme.colors.text3,
+        )
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        blockedSources.forEach { source ->
+            BlockedSourceRow(source = source, onUnblock = { onUnblock(source.key) })
+        }
+    }
+}
+
+@Composable
+private fun BlockedSourceRow(
+    source: BlockedSource,
+    onUnblock: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+            .padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(PocketTheme.colors.surface2, PocketTheme.shapes.icon),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.NotificationsOff,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = PocketTheme.colors.text2,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = source.label,
+                style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                color = PocketTheme.colors.text,
+            )
+            Text(
+                text = "Bloqueado em ${BLOCKED_AT_FORMATTER.format(source.blockedAt)}",
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+            )
+        }
+        TextButton(
+            onClick = onUnblock,
+            modifier = Modifier
+                .heightIn(min = 48.dp)
+                .semantics { contentDescription = "Reativar captura de ${source.label}" },
+        ) {
+            Text(
+                text = "Reativar",
+                style = PocketTheme.typography.body,
+                color = PocketTheme.colors.accent,
+            )
         }
     }
 }

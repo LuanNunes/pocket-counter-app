@@ -4,9 +4,11 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.local.BiometricSettingsStore
+import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAuthResult
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAvailability
+import com.resolveprogramming.pocketcounter.domain.model.BlockedSource
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.platform.biometric.BiometricAuthenticator
@@ -36,6 +38,7 @@ data class ConfiguracoesUiState(
     val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
     val lockEnabled: Boolean = false,
     val lockRowState: LockRowState = LockRowState.Enabled,
+    val blockedSources: List<BlockedSource> = emptyList(),
 )
 
 @HiltViewModel
@@ -43,6 +46,7 @@ class ConfiguracoesViewModel @Inject constructor(
     private val repository: PaymentMethodPrefsRepository,
     private val authenticator: BiometricAuthenticator,
     private val settingsStore: BiometricSettingsStore,
+    private val blockedSourceRepository: BlockedSourceRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -62,11 +66,21 @@ class ConfiguracoesViewModel @Inject constructor(
         settingsStore.lockEnabled
             .onEach { enabled -> _state.update { it.copy(lockEnabled = enabled) } }
             .launchIn(viewModelScope)
+        blockedSourceRepository.blocklist
+            .onEach { blocklist -> _state.update { it.copy(blockedSources = blocklist.recentFirst) } }
+            .launchIn(viewModelScope)
     }
 
     fun setPaymentMethodEnabled(method: PaymentMethod, enabled: Boolean) {
         viewModelScope.launch {
             repository.setEnabled(method, enabled)
+        }
+    }
+
+    /** A failed DataStore write must not crash the process; the row simply stays on the list. */
+    fun unblockSource(key: String) {
+        viewModelScope.launch {
+            runCatching { blockedSourceRepository.unblock(key) }
         }
     }
 

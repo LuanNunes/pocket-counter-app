@@ -1,11 +1,15 @@
 package com.resolveprogramming.pocketcounter.data.capture
 
 import android.util.Log
+import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.di.ApplicationScope
 import com.resolveprogramming.pocketcounter.domain.model.CapturedMessage
 import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
+import com.resolveprogramming.pocketcounter.domain.notification.SourceBlocklist
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,7 +27,12 @@ import javax.inject.Singleton
 class CaptureIngestor @Inject constructor(
     private val repository: NotificationRepository,
     @ApplicationScope private val scope: CoroutineScope,
+    blockedSourceRepository: BlockedSourceRepository,
 ) {
+    /** Fail-open until the first emission lands: fail-closed needs `runBlocking` on the main thread. */
+    private val blocklist =
+        blockedSourceRepository.blocklist.stateIn(scope, SharingStarted.Eagerly, SourceBlocklist.EMPTY)
+
     /** Content key → last-seen epoch second. Access-ordered, bounded LRU. */
     private val seen = object : LinkedHashMap<Int, Long>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Long>?): Boolean =
@@ -40,8 +49,9 @@ class CaptureIngestor @Inject constructor(
         }
     }
 
-    /** Returns true when [captured] is financial and not a recent duplicate (and records it). */
+    /** A dropped message never enters the `seen` LRU, so it can't shadow a later real one. */
     fun shouldIngest(captured: CapturedMessage): Boolean {
+        if (blocklist.value.blocks(captured.app, captured.channel)) return false
         if (!BrNotificationParser.parse(captured.text).isFinancial) return false
         val key = dedupKey(captured)
         val now = captured.receivedAt.epochSecond

@@ -3,6 +3,8 @@ package com.resolveprogramming.pocketcounter.ui.wizard
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
+import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
@@ -13,6 +15,7 @@ import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.IgnoreScope
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
@@ -30,8 +33,10 @@ import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationPa
 import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import com.resolveprogramming.pocketcounter.domain.notification.PaymentMethodResolver
+import com.resolveprogramming.pocketcounter.domain.notification.SourceBlocklist
+import com.resolveprogramming.pocketcounter.domain.rules.IgnoreOptions
 import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
-import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternResolver
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPlan
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -42,6 +47,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -90,6 +96,19 @@ data class WizardUiState(
         } else {
             null
         }
+
+    /**
+     * Derived, not stored, so a mid-wizard merchant edit keeps the "Ignorar" dialog's promised
+     * pattern and the persisted rule pattern identical.
+     */
+    private val ignorePattern: String?
+        get() = notification?.let { TeachPatternResolver.resolve(draft, it, forIgnoreRule = true) }
+
+    val ignoreOption: IgnoreScope?
+        get() = notification?.let { IgnoreOptions.resolve(ignorePattern, it.app, it.channel) }
+
+    val ignoreDefaultLearn: Boolean
+        get() = ignoreOption is IgnoreScope.Pattern
 }
 
 @HiltViewModel
@@ -104,6 +123,8 @@ class WizardViewModel @Inject constructor(
     private val cardLast4Repository: CardLast4Repository,
     private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
     private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository,
+    private val blockedSourceRepository: BlockedSourceRepository,
+    private val appMessageRelay: AppMessageRelay,
 ) : ViewModel() {
 
     private var notificationId: String = savedStateHandle["notificationId"] ?: ""
@@ -179,6 +200,7 @@ class WizardViewModel @Inject constructor(
                     isConfirmingPending = true,
                     isLoading = false,
                     enabledMethods = _state.value.enabledMethods,
+                    toastMessage = _state.value.toastMessage,
                 )
                 return@launch
             }
@@ -216,6 +238,7 @@ class WizardViewModel @Inject constructor(
                 error = degradeError,
                 unknownCardLast4 = unknownLast4,
                 enabledMethods = _state.value.enabledMethods,
+                toastMessage = _state.value.toastMessage,
             )
         }
     }
@@ -497,60 +520,107 @@ class WizardViewModel @Inject constructor(
     fun consumeToast() = _state.update { it.copy(toastMessage = null) }
 
     /**
-     * Discards the captured notification (marks it ignored so it leaves "Para revisar") and then
-     * advances the queue: loads the next pending item in place, or returns to the app via [onDone]
-     * when none remain. The ignore is best-effort.
+     * Discards the captured notification (marks it ignored so it leaves "Para revisar") according to
+     * [scope], then advances the queue: loads the next pending item in place, or returns to the app
+     * via [onDone] when none remain.
      */
-    fun ignore(learn: Boolean, onDone: () -> Unit) {
+    fun ignore(scope: IgnoreScope, onDone: () -> Unit) {
         if (_state.value.isSaving || _state.value.isSwitching) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true) }
-            // Best-effort: learn an ignore-rule first so future similar notifications are auto-ignored.
-            if (learn) learnIgnoreRule()
-            notificationRepository.markIgnored(notificationId)
-            advanceToNext(onDone)
+            when (scope) {
+                IgnoreScope.ThisOnly -> {
+                    notificationRepository.markIgnored(notificationId)
+                    advanceToNext(onDone)
+                }
+                is IgnoreScope.Pattern -> {
+                    val ruleFailure = learnIgnorePatternRule(scope.pattern)
+                    notificationRepository.markIgnored(notificationId)
+                    advanceToNext(onDone, farewell = ruleFailure)
+                }
+                is IgnoreScope.Source -> ignoreSource(scope.app, onDone)
+            }
         }
     }
 
     /**
-     * Creates an IGNORE-action classification rule so the backend auto-ignores future notifications
-     * matching the same merchant pattern. Carries only the pattern (no tags/type). Best-effort: a
-     * missing pattern or a create failure is swallowed and the ignore still proceeds.
-     *
-     * Broad patterns the SUGGEST path refuses are accepted here: silencing a whole acquirer or card
-     * is a legitimate ask, and a rule with no tags and no teach targeting can't mis-tag anything.
+     * Creates an IGNORE-action classification rule carrying [pattern] verbatim — the pattern the
+     * dialog named is what gets stored, not a re-derived one. Carries no tags/type: broad patterns
+     * the SUGGEST path refuses are accepted here, since a rule with no tags can't mis-tag anything.
      */
-    private suspend fun learnIgnoreRule() {
-        val notification = _state.value.notification ?: return
-        val pattern = learnPattern(_state.value.draft, notification, forIgnoreRule = true) ?: return
-        runCatching {
-            classificationRuleRepository.create(
-                ClassificationRule(
-                    id = null,
-                    patterns = listOf(pattern),
-                    matchType = "CONTAINS",
-                    active = true,
-                    appliedCount = 0,
-                    transactionType = null,
-                    paymentMethod = null,
-                    cardId = null,
-                    tags = emptyList(),
-                    action = RuleAction.IGNORE,
-                ),
-            )
-        }
+    private suspend fun learnIgnorePatternRule(pattern: String): String? {
+        val created = classificationRuleRepository.create(
+            ClassificationRule(
+                id = null,
+                patterns = listOf(pattern),
+                matchType = "CONTAINS",
+                active = true,
+                appliedCount = 0,
+                transactionType = null,
+                paymentMethod = null,
+                cardId = null,
+                tags = emptyList(),
+                action = RuleAction.IGNORE,
+            ),
+        )
+        if (created.isSuccess) return null
+        return "Notificação ignorada, mas não foi possível salvar a regra."
     }
 
-    /** Loads the next still-pending item in place, or returns to the app via [onDone] when none remain. */
-    private suspend fun advanceToNext(onDone: () -> Unit) {
+    /**
+     * Blocks [app] entirely, ignores the current item, and best-effort bulk-ignores every other
+     * currently pending item from the same normalized source — so blocking "Google" clears every
+     * stray push already sitting in the queue, not just the one on screen.
+     */
+    private suspend fun ignoreSource(app: String, onDone: () -> Unit) {
+        // A failed local write must not take the ignore down with it, but it can't be silent either:
+        // the source keeps capturing, and the user was just promised it wouldn't.
+        val blocked = runCatching { blockedSourceRepository.block(app, Instant.now()) }.isSuccess
+        notificationRepository.markIgnored(notificationId)
+        // A label that normalizes to blank is unblockable, so it must not sweep the queue either:
+        // a null key would otherwise match every other blank-labelled item and discard them too.
+        val key = SourceBlocklist.keyOf(app) ?: run {
+            advanceToNext(onDone)
+            return
+        }
+        val others = notificationRepository.getPendingReview().getOrDefault(emptyList())
+            .filter { it.id != notificationId && SourceBlocklist.keyOf(it.app) == key }
+        var ignoredCount = 0
+        others.forEach { item ->
+            notificationRepository.markIgnored(item.id).onSuccess { ignoredCount++ }
+        }
+        val farewell = sourceBlockToast(app, ignoredCount)
+            .takeIf { blocked }
+            ?: "Notificação ignorada, mas não foi possível bloquear $app."
+        advanceToNext(onDone, exclude = others.map { it.id }.toSet(), farewell = farewell)
+    }
+
+    private fun sourceBlockToast(app: String, otherIgnoredCount: Int): String {
+        val base = "Notificações do $app não serão mais capturadas."
+        if (otherIgnoredCount == 0) return base
+        if (otherIgnoredCount == 1) return "$base 1 pendente foi descartada."
+        return "$base $otherIgnoredCount pendentes foram descartadas."
+    }
+
+    /**
+     * [exclude] guards against a [NotificationRepository.getPendingReview] response that has not yet
+     * caught up with ids this call just bulk-ignored. [farewell] goes to [AppMessageRelay] when the
+     * queue empties, because this screen is popped right after, taking its toast host with it.
+     */
+    private suspend fun advanceToNext(
+        onDone: () -> Unit,
+        exclude: Set<String> = emptySet(),
+        farewell: String? = null,
+    ) {
         val next = notificationRepository.getPendingReview().getOrNull()
-            ?.firstOrNull { it.id != notificationId }
+            ?.firstOrNull { it.id != notificationId && it.id !in exclude }
         if (next == null) {
+            farewell?.let(appMessageRelay::send)
             onDone()
             return
         }
         // Clear the save/ignore flag so the in-place switch isn't blocked by its own guard.
-        _state.update { it.copy(isSaving = false) }
+        _state.update { it.copy(isSaving = false, toastMessage = farewell ?: it.toastMessage) }
         goTo(next.id)
     }
 
@@ -567,7 +637,7 @@ class WizardViewModel @Inject constructor(
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
         val notification = _state.value.notification ?: return
-        val pattern = learnPattern(draft, notification, forIgnoreRule = false) ?: return
+        val pattern = TeachPatternResolver.resolve(draft, notification, forIgnoreRule = false) ?: return
         // Only tags with a context serialize into the rule (ClassificationRuleTagDto needs idCategory).
         val ruleTags = _state.value.allTags.filter { it.id in draft.tagIds && !it.idContext.isNullOrBlank() }
         if (ruleTags.isEmpty()) return
@@ -612,42 +682,11 @@ class WizardViewModel @Inject constructor(
         if (paymentTokens.size != 1) return
         val span = paymentTokens.first().text
         val normalizedSpan = PaymentMethodResolver.normalizeKey(span)
-        if (normalizedSpan in CARD_HINT_WORDS) return
+        if (normalizedSpan in TeachPatternResolver.CARD_HINT_WORDS) return
         if (normalizedSpan.isNotEmpty() && normalizedSpan.all { it.isDigit() }) return
         if (BrNotificationParser.parsePaymentMethod(span) == method) return
         runCatching { paymentMethodDictionaryRepository.learn(span, method) }
     }
-
-    /**
-     * The CONTAINS pattern for a learned rule. Candidate order is decided here — the merchant the
-     * user edited beats the parsed one; [TeachPatternSanitizer] decides what survives.
-     *
-     * The payment hint never names a merchant, so it is offered on the IGNORE path only: a SUGGEST
-     * rule keyed on it would claim and mis-tag every notification of that card.
-     */
-    private fun learnPattern(
-        draft: WizardDraft,
-        notification: NotificationItem,
-        forIgnoreRule: Boolean,
-    ): String? =
-        TeachPatternSanitizer.choose(
-            candidates = listOf(
-                draft.merchant,
-                notification.parsed.merchantRaw,
-                if (forIgnoreRule) identifyingPaymentHint(notification) else null,
-            ),
-            notificationText = notification.text,
-            allowGatewayMarker = forIgnoreRule,
-        )
-
-    /**
-     * The parsed payment hint, minus the bare card words of [CARD_HINT_WORDS]. "conta" is why: the
-     * parser emits it for the INCOME phrase "crédito em conta", so an IGNORE rule keyed on it would
-     * swallow incoming-money notifications.
-     */
-    private fun identifyingPaymentHint(notification: NotificationItem): String? =
-        notification.parsed.paymentHint
-            ?.takeIf { PaymentMethodResolver.normalizeKey(it) !in CARD_HINT_WORDS }
 
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
         if (!draft.isFixo) return
@@ -765,9 +804,6 @@ class WizardViewModel @Inject constructor(
     }
 
     private companion object {
-        /** Normalized card-hint words that must never be learned as a payment-method token. */
-        private val CARD_HINT_WORDS = setOf("cartão", "cartao", "conta", "final")
-
         /** Keeps a long cause (a stack-trace-ish message) from overflowing the toast pill. */
         private const val DETAIL_MAX_CHARS = 90
     }
