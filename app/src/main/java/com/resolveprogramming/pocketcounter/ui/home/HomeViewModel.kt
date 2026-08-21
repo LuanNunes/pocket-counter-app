@@ -7,7 +7,6 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
-import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -77,8 +76,8 @@ data class HomeUiState(
     val classifying: Boolean = false,
     val openBillsTotal: BigDecimal = BigDecimal.ZERO,
     val openBillsCount: Int = 0,
-    /** True only across a month flip, until loadOpenBills settles — keeps the fatura tile from flashing R$ 0. */
-    val openBillsLoading: Boolean = false,
+    /** True until an open-invoice fetch commits, so the fatura tile never flashes "R$ 0,00 · 0 cartões". */
+    val openBillsLoading: Boolean = true,
     val shownItems: List<HistoryItem> = emptyList(),
     val groupedSections: List<LedgerGroup> = emptyList(),
     val periodTotal: BigDecimal = BigDecimal.ZERO,
@@ -89,12 +88,12 @@ data class HomeUiState(
     val flashId: String? = null,
     val flashNonce: Int = 0,
     val toastMessage: String? = null,
-    val isEmptyMonth: Boolean = false,
     val monthCount: Int = 0,
-    val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
-    /** Drives the Home banner that keeps a device-local source block from suppressing capture invisibly. */
-    val blockedSourceCount: Int = 0,
+    /** True once the ledger COMMITTED a result for [month] — success OR failure. Never derived from emptiness. */
+    val hasLoadedMonth: Boolean = false,
+    /** True while every commit for [month] has failed, so the figures below are unknown rather than zero. */
+    val monthLoadFailed: Boolean = false,
 )
 
 private data class InvoiceMatchContext(
@@ -123,7 +122,6 @@ class HomeViewModel @Inject constructor(
     private val viewedMonth: ViewedMonthStore,
     private val ledgerRefresh: LedgerRefreshSignal,
     private val appMessageRelay: AppMessageRelay,
-    private val blockedSourceRepository: BlockedSourceRepository,
     private val productiveSourceRepository: ProductiveSourceRepository,
 ) : ViewModel() {
 
@@ -171,6 +169,8 @@ class HomeViewModel @Inject constructor(
                         openBillsTotal = BigDecimal.ZERO,
                         openBillsCount = 0,
                         openBillsLoading = true,
+                        hasLoadedMonth = false,
+                        monthLoadFailed = false,
                     )
                 }
                 loadMonth()
@@ -180,20 +180,13 @@ class HomeViewModel @Inject constructor(
         // Transações) — so Pendente/saldo and the fatura tile never go stale in the foreground. This is
         // the single reload path for every mutation: emitters just call signal() and are served here too.
         viewModelScope.launch {
-            ledgerRefresh.events.collect { loadMonth(showLoading = false) }
+            ledgerRefresh.events.collect { loadMonth() }
         }
         // Feedback from a screen that was popped before it could render its own toast — the wizard
         // signing off as its review queue empties lands here (see AppMessageRelay).
         viewModelScope.launch {
             appMessageRelay.messages.collect { message ->
                 _state.update { it.copy(toastMessage = message) }
-            }
-        }
-        // A device-local block only surfaces in Configurações, which nobody visits unprompted — Home
-        // carries the reminder so a mis-tapped block can't silence a real bank indefinitely.
-        viewModelScope.launch {
-            blockedSourceRepository.blocklist.collect { blocklist ->
-                _state.update { it.copy(blockedSourceCount = blocklist.entries.size) }
             }
         }
     }
@@ -224,21 +217,22 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private fun loadMonth(showLoading: Boolean = true) {
-        viewModelScope.launch { reloadMonth(showLoading) }
+    private fun loadMonth() {
+        viewModelScope.launch { reloadMonth() }
     }
 
     /**
      * Core reload: fetches the ledger and pending queue in parallel and commits the result
-     * fail-soft — on failure the existing rendered content is kept and [isLoading] is cleared.
+     * fail-soft — on failure the existing rendered content is kept. Every commit, success or
+     * failure, marks [HomeUiState.hasLoadedMonth] true — that flag, not emptiness, is what tells
+     * the UI the hero has real data to show.
      * Returns the raw [Result] from [TransactionRepository.getMonth] so callers can react
      * (e.g. [onManualRefresh] shows an error toast); never touches [HomeUiState.isRefreshing].
      */
-    private suspend fun reloadMonth(showLoading: Boolean): Result<List<HistoryItem>> {
+    private suspend fun reloadMonth(): Result<List<HistoryItem>> {
         val month = _state.value.month
         val key = month.toString()
         val current = month == YearMonth.now()
-        if (showLoading) _state.update { it.copy(isLoading = true) }
         // The fatura tile is secondary — load it concurrently in its own coroutine so its statement
         // fetch never sits on the ledger's critical path (that was the month-switch delay).
         loadOpenBills(month, key)
@@ -258,8 +252,9 @@ class HomeViewModel @Inject constructor(
                     onSuccess = { items ->
                         monthItems = items
                         s.copy(
-                            isLoading = false,
                             isCurrentMonth = current,
+                            hasLoadedMonth = true,
+                            monthLoadFailed = false,
                             // On the current month the classify pass is the sole writer of these — its
                             // terminal update settles the accurate pending/ready split even when nothing
                             // is recognized. Keep the prior values here so the banner doesn't flicker in
@@ -269,8 +264,12 @@ class HomeViewModel @Inject constructor(
                         ).recomputed()
                     },
                     onFailure = {
-                        // Fail-soft: keep the existing rendered content; only clear the loading spinner.
-                        s.copy(isLoading = false)
+                        // Fail-soft: keep the existing rendered content. Sticky `||`: a second failure
+                        // must not clear the error state and drop the user onto real-looking zeros.
+                        s.copy(
+                            hasLoadedMonth = true,
+                            monthLoadFailed = s.monthLoadFailed || !s.hasLoadedMonth,
+                        )
                     },
                 )
             }
@@ -303,8 +302,10 @@ class HomeViewModel @Inject constructor(
      */
     private fun loadOpenBills(month: YearMonth, key: String) {
         viewModelScope.launch {
+            // A failed fetch leaves the tile unknown: committing zeros would announce a total we
+            // never got.
             val invoices = cardRepository.getOpenInvoices(RemoteMappers.monthKeyToRef(key))
-                .getOrDefault(emptyList())
+                .getOrNull() ?: return@launch
             val openBillsTotal = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
             _state.update { s ->
                 if (s.month != month) return@update s
@@ -673,7 +674,7 @@ class HomeViewModel @Inject constructor(
                 // forever — the "eternal refresh". The floor guarantees a clean true-then-false the
                 // gesture can settle on, and the re-entrancy guard above covers the window.
                 failed = coroutineScope {
-                    val reload = async { reloadMonth(showLoading = false) }
+                    val reload = async { reloadMonth() }
                     delay(MIN_REFRESH_INDICATOR_MS)
                     reload.await().isFailure
                 }
@@ -693,6 +694,18 @@ class HomeViewModel @Inject constructor(
     fun refresh() {
         loadLookups()
         loadMonth()
+    }
+
+    /**
+     * Retry from the load-error card: forgets the failed commit so the hero shows placeholders, not
+     * zeros, then goes through [onManualRefresh] for its indicator floor and toast. Guarded first, so
+     * the reset never lands without a fetch behind it — [onManualRefresh]'s own guard rejects the tap
+     * during the floor, after the reload already committed.
+     */
+    fun retryMonth() {
+        if (_state.value.isRefreshing) return
+        _state.update { it.copy(hasLoadedMonth = false, monthLoadFailed = false) }
+        onManualRefresh()
     }
 
     // Month navigation writes to the shared store; the collector in init reloads in response, so the
@@ -755,7 +768,11 @@ class HomeViewModel @Inject constructor(
 
     fun consumeFlash() = _state.update { it.copy(flashId = null) }
 
-    /** Recomputes KPIs, shown rows, grouped sections and the period total from [monthItems]. */
+    /**
+     * Recomputes KPIs, shown rows, grouped sections and the period total from [monthItems]. Never
+     * touches [HomeUiState.hasLoadedMonth] / [HomeUiState.monthLoadFailed]: those are commit
+     * markers from [reloadMonth] and must never be derived from emptiness.
+     */
     private fun HomeUiState.recomputed(): HomeUiState {
         val kpis = HomeKpis.from(monthItems)
         val shown = monthItems
@@ -779,7 +796,6 @@ class HomeViewModel @Inject constructor(
             shownItems = shown,
             groupedSections = grouped,
             periodTotal = periodTotal,
-            isEmptyMonth = monthItems.isEmpty(),
             monthCount = monthItems.size,
         )
     }

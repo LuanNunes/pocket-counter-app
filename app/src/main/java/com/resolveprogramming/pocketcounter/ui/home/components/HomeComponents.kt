@@ -1,8 +1,10 @@
 package com.resolveprogramming.pocketcounter.ui.home.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -55,8 +57,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -178,12 +182,20 @@ fun BalanceHero(
     monthLabel: String,
     kpis: HomeKpis,
     balance: BigDecimal,
+    hasLoadedMonth: Boolean,
 ) {
     // The hero stays dark in both themes; KPI dot/value colors read from the always-dark palette.
     val dark = PocketTheme.darkColors
     val cardBg = dark.surface
     val ink = dark.text
+    val placeholderInk = ink.copy(alpha = 0.45f)
+    val reducedMotion = LocalReducedMotion.current
     val formatter = currency()
+    val pending = formatter.format(kpis.pendingTotal)
+    val expense = formatter.format(kpis.totals.expense)
+    val income = formatter.format(kpis.totals.income)
+    val saldo = formatter.format(balance)
+    val monthCount = kpis.expenseCount + kpis.incomeCount
 
     PocketCard(
         modifier = Modifier.fillMaxWidth().clip(PocketTheme.shapes.card),
@@ -203,20 +215,34 @@ fun BalanceHero(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = heroPendingDescription(monthLabel, pending, hasLoadedMonth)
+                            liveRegion = LiveRegionMode.Polite
+                        },
+                ) {
                     Text(
                         text = "PENDENTE · ${monthLabel.uppercase(ptBr)}",
                         style = PocketTheme.typography.sectionHeader,
                         color = ink.copy(alpha = 0.65f),
                     )
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = formatter.format(kpis.pendingTotal),
-                        style = PocketTheme.typography.monoBalance,
-                        // Amber is the app's "still to pay" semantic (same as the Pendente dot was).
-                        // Owing nothing is not a warning, so a zero settles back to neutral ink.
-                        color = dark.warn.takeIf { kpis.pendingTotal.signum() > 0 } ?: ink,
-                    )
+                    // Figure and tone cross-fade together, so the outgoing one is never redrawn in the
+                    // incoming tone.
+                    Crossfade(
+                        targetState = figureOrDash(pending, hasLoadedMonth) to
+                            pendingTone(kpis.pendingTotal, hasLoadedMonth, dark.warn, ink, placeholderInk),
+                        animationSpec = tween(durationMillis = 0.takeIf { reducedMotion } ?: 200),
+                        label = "heroPending",
+                    ) { (figure, tone) ->
+                        Text(
+                            text = figure,
+                            style = PocketTheme.typography.monoBalance,
+                            color = tone,
+                        )
+                    }
                 }
                 Box(
                     modifier = Modifier
@@ -233,41 +259,68 @@ fun BalanceHero(
                 }
             }
             Spacer(Modifier.height(16.dp))
+            val figureTone = ink.takeIf { hasLoadedMonth } ?: placeholderInk
             KpiStackRow(
                 label = "Despesas",
                 dotColor = dark.expense,
-                value = formatter.format(kpis.totals.expense),
-                count = "${kpis.expenseCount} lançs.",
+                value = figureOrDash(expense, hasLoadedMonth),
+                count = figureOrDash("${kpis.expenseCount} lançs.", hasLoadedMonth),
+                contentDescription = kpiRowDescription("Despesas", expense, kpis.expenseCount, hasLoadedMonth),
                 ink = ink,
                 showDivider = false,
+                valueColor = figureTone,
             )
             KpiStackRow(
                 label = "Receitas",
                 dotColor = dark.income,
-                value = formatter.format(kpis.totals.income),
-                count = "${kpis.incomeCount} lançs.",
+                value = figureOrDash(income, hasLoadedMonth),
+                count = figureOrDash("${kpis.incomeCount} lançs.", hasLoadedMonth),
+                contentDescription = kpiRowDescription("Receitas", income, kpis.incomeCount, hasLoadedMonth),
                 ink = ink,
                 showDivider = true,
+                valueColor = figureTone,
             )
-            // The saldo moved down here when the hero took over the pending figure, and it keeps the
-            // sign colouring the hero used to give it: green up, red down, neutral at zero. Dot and
-            // value share one tone — a green dot beside a white figure would read as two signals.
-            val saldoTone = when (balance.signum()) {
-                1 -> dark.income
-                -1 -> dark.expense
-                else -> ink
-            }
+            // Dot and value share one tone — a green dot beside a white figure reads as two signals.
+            val saldoTone = saldoTone(balance, hasLoadedMonth, dark.income, dark.expense, ink, placeholderInk)
             KpiStackRow(
                 label = "Saldo do mês",
                 dotColor = saldoTone,
-                value = formatter.format(balance),
-                count = "${kpis.expenseCount + kpis.incomeCount} lançs.",
+                value = figureOrDash(saldo, hasLoadedMonth),
+                count = figureOrDash("$monthCount lançs.", hasLoadedMonth),
+                contentDescription = kpiRowDescription("Saldo do mês", saldo, monthCount, hasLoadedMonth),
                 ink = ink,
-                valueColor = saldoTone,
                 showDivider = true,
+                valueColor = saldoTone,
             )
         }
     }
+}
+
+/** Amber is the app's "still to pay" semantic; owing nothing is not a warning, so a zero is neutral. */
+private fun pendingTone(
+    pendingTotal: BigDecimal,
+    hasLoaded: Boolean,
+    warn: Color,
+    ink: Color,
+    placeholder: Color,
+): Color {
+    if (!hasLoaded) return placeholder
+    return warn.takeIf { pendingTotal.signum() > 0 } ?: ink
+}
+
+/** Green up, red down, neutral at zero — and demoted ink while the sign is still unknown. */
+private fun saldoTone(
+    balance: BigDecimal,
+    hasLoaded: Boolean,
+    income: Color,
+    expense: Color,
+    ink: Color,
+    placeholder: Color,
+): Color {
+    if (!hasLoaded) return placeholder
+    if (balance.signum() > 0) return income
+    if (balance.signum() < 0) return expense
+    return ink
 }
 
 @Composable
@@ -276,12 +329,20 @@ private fun KpiStackRow(
     dotColor: Color,
     value: String,
     count: String,
+    contentDescription: String,
     ink: Color,
     showDivider: Boolean,
     /** Defaults to [ink]; override only where the figure itself carries meaning, like a signed saldo. */
     valueColor: Color = ink,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    // Aliased: inside the semantics lambda the bare name resolves to the receiver's property, whose
+    // getter throws.
+    val rowDescription = contentDescription
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { this.contentDescription = rowDescription },
+    ) {
         if (showDivider) {
             Box(
                 modifier = Modifier
@@ -385,67 +446,6 @@ fun NotificationAccessBanner(onEnable: () -> Unit) {
     }
 }
 
-/**
- * Shown on Home whenever at least one notification source is blocked, so a mis-tapped block never
- * silences a real bank invisibly. Tapping it opens Configurações, where the block can be undone.
- */
-@Composable
-fun BlockedSourcesBanner(count: Int, onManage: () -> Unit) {
-    val muted = PocketTheme.colors.text2
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
-            .border(1.dp, muted.copy(alpha = 0.5f), PocketTheme.shapes.card)
-            .clickable(onClick = onManage)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-            Box(
-                modifier = Modifier
-                    .size(30.dp)
-                    .background(muted.copy(alpha = 0.18f), PocketTheme.shapes.icon),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.NotificationsOff,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = muted,
-                )
-            }
-            Spacer(Modifier.width(11.dp))
-            Text(
-                text = buildAnnotatedString {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(blockedSourcesLead(count)) }
-                    append("Toque para rever.")
-                },
-                style = PocketTheme.typography.bodySm,
-                color = PocketTheme.colors.text,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "gerenciar",
-                style = PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Bold),
-                color = muted,
-            )
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = muted,
-            )
-        }
-    }
-}
-
-private fun blockedSourcesLead(count: Int): String =
-    "Captura pausada para 1 app. ".takeIf { count == 1 } ?: "Captura pausada para $count apps. "
-
 @Composable
 fun RevisarBanner(count: Int, onClick: () -> Unit) {
     Row(
@@ -529,6 +529,7 @@ fun HomeQuickTiles(
     onResumo: () -> Unit,
     onFaturas: () -> Unit,
 ) {
+    val openBills = currency().format(openBillsTotal)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -541,6 +542,7 @@ fun HomeQuickTiles(
             value = "Para onde foi",
             valueMono = false,
             onClick = onResumo,
+            contentDescription = resumoTileDescription(),
             modifier = Modifier.weight(1f),
         )
         QuickTile(
@@ -549,11 +551,12 @@ fun HomeQuickTiles(
             badgeTint = PocketTheme.colors.text2,
             // While the fatura reloads across a month flip, drop the "· N cartões" suffix so it never
             // reads "0 cartões", and show an em-dash instead of a premature R$ 0.
-            caption = if (openBillsLoading) "Faturas" else "Faturas · $openBillsCount cartões",
-            value = if (openBillsLoading) "—" else currency().format(openBillsTotal),
+            caption = "Faturas".takeIf { openBillsLoading } ?: "Faturas · $openBillsCount cartões",
+            value = figureOrDash(openBills, hasLoaded = !openBillsLoading),
             valueMono = true,
-            valueColor = if (openBillsLoading) PocketTheme.colors.text3 else PocketTheme.colors.text,
+            valueColor = PocketTheme.colors.text3.takeIf { openBillsLoading } ?: PocketTheme.colors.text,
             onClick = onFaturas,
+            contentDescription = faturasTileDescription(openBills, openBillsCount, openBillsLoading),
             modifier = Modifier.weight(1f),
         )
     }
@@ -568,15 +571,18 @@ private fun QuickTile(
     value: String,
     valueMono: Boolean,
     onClick: () -> Unit,
+    contentDescription: String,
     modifier: Modifier = Modifier,
     valueColor: Color = PocketTheme.colors.text,
 ) {
-    val valueStyle = when {
-        valueMono -> PocketTheme.typography.monoSm.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-        else -> PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-    }
+    val valueStyle = (PocketTheme.typography.monoSm.takeIf { valueMono } ?: PocketTheme.typography.body)
+        .copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    val tileDescription = contentDescription
     PocketCard(
-        modifier = modifier.clickable(onClick = onClick),
+        // Semantics after clickable so the merged node keeps the click action and the Button role.
+        modifier = modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { this.contentDescription = tileDescription },
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -613,13 +619,17 @@ private fun QuickTile(
 }
 
 @Composable
-fun SwipeCue(count: Int, onClick: () -> Unit) {
+fun SwipeCue(count: Int, hasLoadedMonth: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
             .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.card)
             .clickable(onClickLabel = "Abrir lançamentos", role = Role.Button, onClick = onClick)
+            // Merged on the outer Row: merging only the text column leaves "deslize" as a second read.
+            .semantics(mergeDescendants = true) {
+                contentDescription = swipeCueDescription(count, hasLoadedMonth)
+            }
             .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -631,7 +641,7 @@ fun SwipeCue(count: Int, onClick: () -> Unit) {
                 color = PocketTheme.colors.text,
             )
             Text(
-                text = "$count no mês".takeIf { count > 0 } ?: "deslize para ver",
+                text = swipeCueLabel(count, hasLoadedMonth),
                 style = PocketTheme.typography.bodyXs.copy(fontSize = 12.sp),
                 color = PocketTheme.colors.text3,
             )

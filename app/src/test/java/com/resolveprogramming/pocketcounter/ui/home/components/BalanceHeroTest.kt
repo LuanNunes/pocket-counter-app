@@ -1,7 +1,10 @@
 package com.resolveprogramming.pocketcounter.ui.home.components
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import com.resolveprogramming.pocketcounter.domain.model.HomeKpis
 import com.resolveprogramming.pocketcounter.domain.model.TransactionTotals
@@ -45,10 +48,27 @@ class BalanceHeroTest {
         pendingCount = pendingCount,
     )
 
-    private fun setHero(kpis: HomeKpis, balance: String) {
+    private fun zeroKpis() = HomeKpis(
+        totals = TransactionTotals(
+            income = BigDecimal.ZERO,
+            expense = BigDecimal.ZERO,
+            balance = BigDecimal.ZERO,
+        ),
+        expenseCount = 0,
+        incomeCount = 0,
+        pendingTotal = BigDecimal.ZERO,
+        pendingCount = 0,
+    )
+
+    private fun setHero(kpis: HomeKpis, balance: String, hasLoadedMonth: Boolean = true) {
         compose.setContent {
             PocketTheme {
-                BalanceHero(monthLabel = "Agosto 2026", kpis = kpis, balance = BigDecimal(balance))
+                BalanceHero(
+                    monthLabel = "Agosto 2026",
+                    kpis = kpis,
+                    balance = BigDecimal(balance),
+                    hasLoadedMonth = hasLoadedMonth,
+                )
             }
         }
     }
@@ -83,5 +103,53 @@ class BalanceHeroTest {
 
         compose.onNodeWithText(brl.format(BigDecimal.ZERO)).assertIsDisplayed()
         compose.onNodeWithText("Saldo do mês").assertIsDisplayed()
+    }
+
+    @Test
+    fun `shows an em dash for every figure while the month is unknown`() {
+        setHero(zeroKpis(), balance = "0", hasLoadedMonth = false)
+
+        // Headline plus the three KPI values and their three counts.
+        compose.onAllNodesWithText(UNKNOWN_FIGURE, useUnmergedTree = true).assertCountEquals(7)
+        compose.onAllNodesWithText(brl.format(BigDecimal.ZERO), useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `shows a real zero once the month is loaded`() {
+        setHero(zeroKpis(), balance = "0", hasLoadedMonth = true)
+
+        // Headline, Despesas, Receitas, Saldo — all genuinely zero.
+        compose.onAllNodesWithText(brl.format(BigDecimal.ZERO), useUnmergedTree = true).assertCountEquals(4)
+        compose.onAllNodesWithText(UNKNOWN_FIGURE, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun `keeps the chrome while the month is unknown`() {
+        setHero(zeroKpis(), balance = "0", hasLoadedMonth = false)
+
+        // The card badge is a decorative Icon (contentDescription = null), so it emits no node to assert.
+        compose.onNodeWithText("PENDENTE · AGOSTO 2026", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("Despesas", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("Saldo do mês", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun `announces loading instead of a figure while the month is unknown`() {
+        setHero(zeroKpis(), balance = "0", hasLoadedMonth = false)
+
+        compose.onNodeWithContentDescription("Pendente de Agosto 2026, carregando").assertExists()
+        compose.onNodeWithContentDescription("Despesas, carregando").assertExists()
+    }
+
+    @Test
+    fun `announces the figures once the month is loaded`() {
+        setHero(kpis(), balance = "-24631.31")
+
+        compose
+            .onNodeWithContentDescription("Pendente de Agosto 2026, ${brl.format(BigDecimal("7912.92"))}")
+            .assertExists()
+        compose
+            .onNodeWithContentDescription("Despesas, ${brl.format(BigDecimal("47606.36"))}, 47 lançamentos")
+            .assertExists()
     }
 }

@@ -5,7 +5,6 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
-import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
@@ -50,7 +49,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
-import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -64,7 +62,6 @@ class HomeViewModelTest {
     private val tagRepository: TagRepository = mockk()
     private val cardRepository: CardRepository = mockk()
     private val issuerCardRepository = FakeIssuerCardRepository()
-    private val blockedSourceRepository = FakeBlockedSourceRepository()
     private val productiveSourceRepository = FakeProductiveSourceRepository()
     private val tokenStore: TokenStore = mockk()
 
@@ -140,7 +137,6 @@ class HomeViewModelTest {
         viewedMonth = viewedMonth,
         ledgerRefresh = ledgerRefresh,
         appMessageRelay = appMessageRelay,
-        blockedSourceRepository = blockedSourceRepository,
         productiveSourceRepository = productiveSourceRepository,
     )
 
@@ -239,32 +235,6 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `blockedSourceCount follows the blocklist`() = runTest {
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(0, vm.state.value.blockedSourceCount)
-
-        blockedSourceRepository.block("Google", Instant.now())
-        blockedSourceRepository.block("Promo Bank", Instant.now())
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertEquals(2, vm.state.value.blockedSourceCount)
-    }
-
-    @Test
-    fun `blockedSourceCount returns to zero after the last unblock`() = runTest {
-        blockedSourceRepository.block("Google", Instant.now())
-        val vm = makeViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(1, vm.state.value.blockedSourceCount)
-
-        blockedSourceRepository.unblock("google")
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        assertEquals(0, vm.state.value.blockedSourceCount)
-    }
-
-    @Test
     fun `setListType recomputes shown items and period total`() = runTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -353,13 +323,13 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `empty month sets isEmptyMonth and zero KPIs`() = runTest {
+    fun `empty month yields zero KPIs and no rows`() = runTest {
         coEvery { transactionRepository.getMonth(any()) } returns Result.success(emptyList())
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         val s = vm.state.value
-        assertTrue(s.isEmptyMonth)
+        assertEquals(0, s.monthCount)
         assertEquals(0, s.kpis.expenseCount)
         assertEquals(0, s.kpis.incomeCount)
         assertEquals(0, s.kpis.pendingCount)
@@ -1483,6 +1453,9 @@ class HomeViewModelTest {
         // fail-soft: existing content is NOT blanked
         assertEquals(3, vm.state.value.monthCount)
         assertEquals(2, vm.state.value.shownItems.size)
+        // ...and the hero keeps showing it: a failure ON TOP of loaded data is not an error state.
+        assertTrue(vm.state.value.hasLoadedMonth)
+        assertFalse(vm.state.value.monthLoadFailed)
     }
 
     @Test
@@ -1523,5 +1496,281 @@ class HomeViewModelTest {
 
         assertFalse(vm.state.value.isRefreshing)
         assertTrue(vm.state.value.toastMessage != "Sem conexão. Tente novamente.")
+    }
+
+    // =========================================================================
+    // hasLoadedMonth / monthLoadFailed — cold-start commit marker (CHANGE 2)
+    // =========================================================================
+
+    @Test
+    fun `hasLoadedMonth is false while the first fetch is in flight`() = runTest {
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+
+        val vm = makeViewModel()
+        // Start the load: without this the assert only reads HomeUiState's default.
+        testDispatcher.scheduler.runCurrent()
+
+        assertFalse(vm.state.value.hasLoadedMonth)
+        assertFalse(vm.state.value.monthLoadFailed)
+
+        latch.complete(Result.success(monthItems))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+    }
+
+    @Test
+    fun `hasLoadedMonth becomes true once the ledger fetch succeeds`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+    }
+
+    @Test
+    fun `hasLoadedMonth and monthLoadFailed both become true once the ledger fetch fails`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+        assertTrue(vm.state.value.monthLoadFailed)
+    }
+
+    @Test
+    fun `a second consecutive failure keeps monthLoadFailed true`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.monthLoadFailed)
+
+        // A pull-to-refresh retried and failed again — the error state must not be silently cleared.
+        vm.onManualRefresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.monthLoadFailed)
+    }
+
+    @Test
+    fun `a success after a failure clears monthLoadFailed`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.monthLoadFailed)
+
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(monthItems)
+        vm.onManualRefresh()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.monthLoadFailed)
+        assertTrue(vm.state.value.hasLoadedMonth)
+    }
+
+    @Test
+    fun `a month flip resets hasLoadedMonth and monthLoadFailed until the new month commits`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.hasLoadedMonth)
+
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.runCurrent()
+        assertFalse(vm.state.value.hasLoadedMonth)
+        assertFalse(vm.state.value.monthLoadFailed)
+
+        latch.complete(Result.success(monthItems))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+    }
+
+    @Test
+    fun `a ledgerRefresh silent reload does not reset hasLoadedMonth while it is in flight`() = runTest {
+        val refresh = LedgerRefreshSignal()
+        val vm = makeViewModel(ledgerRefresh = refresh)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.hasLoadedMonth)
+
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+        refresh.signal()
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+
+        latch.complete(Result.success(monthItems))
+        testDispatcher.scheduler.advanceUntilIdle()
+    }
+
+    @Test
+    fun `refresh (ON_RESUME) does not reset hasLoadedMonth while it is in flight`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.hasLoadedMonth)
+
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+        vm.refresh()
+        testDispatcher.scheduler.runCurrent()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+
+        latch.complete(Result.success(monthItems))
+        testDispatcher.scheduler.advanceUntilIdle()
+    }
+
+    @Test
+    fun `an empty month commits hasLoadedMonth with real zeros, not placeholders`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.success(emptyList())
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val s = vm.state.value
+        assertTrue(s.hasLoadedMonth)
+        assertFalse(s.monthLoadFailed)
+        assertEquals(0, s.monthCount)
+        assertEquals(BigDecimal.ZERO, s.kpis.pendingTotal)
+    }
+
+    @Test
+    fun `retryMonth clears the failed commit before the retry resolves, then recommits on success`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.monthLoadFailed)
+
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+        vm.retryMonth()
+        testDispatcher.scheduler.runCurrent()
+
+        assertFalse(vm.state.value.hasLoadedMonth)
+        assertFalse(vm.state.value.monthLoadFailed)
+
+        latch.complete(Result.success(monthItems))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.hasLoadedMonth)
+        assertFalse(vm.state.value.monthLoadFailed)
+    }
+
+    @Test
+    fun `a superseded in-flight failure cannot commit over a newer month`() = runTest {
+        val monthA = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(currentMonth.toString()) } coAnswers { monthA.await() }
+        val vm = makeViewModel()
+        testDispatcher.scheduler.runCurrent()
+        assertFalse(vm.state.value.hasLoadedMonth)
+
+        // Month B loads a single row, so a late A commit would be visible in monthCount too.
+        coEvery { transactionRepository.getMonth(currentMonth.minusMonths(1).toString()) } returns
+            Result.success(listOf(income))
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(currentMonth.minusMonths(1), vm.state.value.month)
+        assertTrue(vm.state.value.hasLoadedMonth)
+        assertEquals(1, vm.state.value.monthCount)
+
+        monthA.complete(Result.failure(RuntimeException("offline")))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // A's failure belongs to a month the user already left: B stays loaded, unfailed, intact.
+        assertEquals(currentMonth.minusMonths(1), vm.state.value.month)
+        assertTrue(vm.state.value.hasLoadedMonth)
+        assertFalse(vm.state.value.monthLoadFailed)
+        assertEquals(1, vm.state.value.monthCount)
+    }
+
+    @Test
+    fun `openBillsLoading stays true from the first frame until the invoice fetch commits`() = runTest {
+        val latch = CompletableDeferred<Result<List<OpenInvoice>>>()
+        coEvery { cardRepository.getOpenInvoices(any()) } coAnswers { latch.await() }
+
+        val vm = makeViewModel()
+        // The very first composed frame can beat the collector in init.
+        assertTrue(vm.state.value.openBillsLoading)
+
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(vm.state.value.openBillsLoading)
+
+        latch.complete(Result.success(emptyList()))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(vm.state.value.openBillsLoading)
+    }
+
+    @Test
+    fun `a failed invoice fetch leaves the fatura tile unknown instead of zeroed`() = runTest {
+        coEvery { cardRepository.getOpenInvoices(any()) } returns Result.failure(RuntimeException("offline"))
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // "R$ 0,00 · 0 cartões" would be a figure the app never received.
+        assertTrue(vm.state.value.openBillsLoading)
+        assertEquals(0, vm.state.value.openBillsCount)
+        assertEquals(BigDecimal.ZERO, vm.state.value.openBillsTotal)
+    }
+
+    @Test
+    fun `retryMonth ignores repeat taps while the retry is in flight`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val latch = CompletableDeferred<Result<List<HistoryItem>>>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers { latch.await() }
+        vm.retryMonth()
+        testDispatcher.scheduler.runCurrent()
+        assertTrue(vm.state.value.isRefreshing)
+
+        vm.retryMonth() // second tap on the error card — must not spawn a parallel reload
+        latch.complete(Result.success(monthItems))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // 1 init call + 1 retry; the second tap was a no-op.
+        coVerify(exactly = 2) { transactionRepository.getMonth(any()) }
+        assertFalse(vm.state.value.isRefreshing)
+        assertTrue(vm.state.value.hasLoadedMonth)
+    }
+
+    @Test
+    fun `a repeat retry inside the indicator floor cannot strand the hero without an error card`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertTrue(vm.state.value.monthLoadFailed)
+
+        vm.retryMonth()
+        // Offline resolves within a frame: the retry already recommitted the failure...
+        testDispatcher.scheduler.runCurrent()
+        // ...but isRefreshing stays up for the indicator floor, so a second tap finds nothing in flight.
+        testDispatcher.scheduler.advanceTimeBy(200)
+        assertTrue(vm.state.value.isRefreshing)
+        assertTrue(vm.state.value.monthLoadFailed)
+
+        vm.retryMonth()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Clearing the flags without issuing a fetch would leave a dashed hero with no way back.
+        assertTrue(vm.state.value.hasLoadedMonth)
+        assertTrue(vm.state.value.monthLoadFailed)
+    }
+
+    @Test
+    fun `a retry that fails again toasts and keeps the error card up`() = runTest {
+        coEvery { transactionRepository.getMonth(any()) } returns Result.failure(RuntimeException("offline"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.retryMonth()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("Sem conexão. Tente novamente.", vm.state.value.toastMessage)
+        assertTrue(vm.state.value.monthLoadFailed)
     }
 }
