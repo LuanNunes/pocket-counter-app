@@ -33,12 +33,13 @@ class IgnoreConfirmDialogTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun render(option: IgnoreScope?, defaultLearn: Boolean) {
+    private fun render(option: IgnoreScope?, defaultLearn: Boolean, sourceTransactionCount: Int = 0) {
         compose.setContent {
             PocketTheme {
                 var learn by remember { mutableStateOf(defaultLearn) }
                 IgnoreConfirmDialog(
                     option = option,
+                    sourceTransactionCount = sourceTransactionCount,
                     learnSelected = learn,
                     onSelect = { learn = it },
                     onConfirm = {},
@@ -74,6 +75,32 @@ class IgnoreConfirmDialogTest {
             )
             .assertIsDisplayed()
         compose.onNodeWithText("Só esta notificação", substring = true).assertIsSelected()
+    }
+
+    @Test
+    fun `a source that already produced one transaction says so and still starts unselected`() {
+        render(IgnoreScope.Source("Google"), defaultLearn = false, sourceTransactionCount = 1)
+
+        compose
+            .onNodeWithText(
+                "Este app já registrou 1 transação sua. Nada vindo dele será capturado.",
+                useUnmergedTree = true,
+            )
+            .assertIsDisplayed()
+        compose.onNodeWithText("Nunca capturar notificações do Google", substring = true).assertIsNotSelected()
+    }
+
+    @Test
+    fun `a source that already produced several transactions names the count`() {
+        render(IgnoreScope.Source("Google"), defaultLearn = false, sourceTransactionCount = 7)
+
+        compose
+            .onNodeWithText(
+                "Este app já registrou 7 transações suas. Nada vindo dele será capturado.",
+                useUnmergedTree = true,
+            )
+            .assertIsDisplayed()
+        compose.onNodeWithText("Nunca capturar notificações do Google", substring = true).assertIsNotSelected()
     }
 
     @Test

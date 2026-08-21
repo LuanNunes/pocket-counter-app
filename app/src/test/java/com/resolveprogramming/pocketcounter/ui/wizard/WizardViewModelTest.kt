@@ -10,8 +10,10 @@ import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRe
 import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
+import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
@@ -76,6 +78,7 @@ class WizardViewModelTest {
     private val fakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository()
     private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository = mockk()
     private val blockedSourceRepository: BlockedSourceRepository = mockk()
+    private val productiveSourceRepository = FakeProductiveSourceRepository()
     private val appMessageRelay = AppMessageRelay()
 
     @Before
@@ -175,6 +178,7 @@ class WizardViewModelTest {
         paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = fakePaymentMethodPrefsRepository,
         dictionaryRepository: PaymentMethodDictionaryRepository = paymentMethodDictionaryRepository,
         blockedSources: BlockedSourceRepository = blockedSourceRepository,
+        productiveSources: ProductiveSourceRepository = productiveSourceRepository,
     ): WizardViewModel {
         val handle = SavedStateHandle(mapOf("notificationId" to notificationId))
         return WizardViewModel(
@@ -192,6 +196,7 @@ class WizardViewModelTest {
             paymentMethodPrefsRepository = paymentMethodPrefsRepository,
             paymentMethodDictionaryRepository = dictionaryRepository,
             blockedSourceRepository = blockedSources,
+            productiveSourceRepository = productiveSources,
             appMessageRelay = appMessageRelay,
         )
     }
@@ -1418,6 +1423,91 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(IgnoreScope.Source("Google"), vm.state.value.ignoreOption)
+    }
+
+    // -------------------------------------------------------------------------
+    // state.sourceTransactionCount
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `sourceTransactionCount is loaded for the notification's source app`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+
+        val vm = makeViewModel(productiveSources = FakeProductiveSourceRepository(mapOf("google" to 3)))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(3, vm.state.value.sourceTransactionCount)
+    }
+
+    @Test
+    fun `sourceTransactionCount is zero for a source that never produced a transaction`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification, null))
+
+        val vm = makeViewModel(productiveSources = FakeProductiveSourceRepository(mapOf("nubank" to 9)))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, vm.state.value.sourceTransactionCount)
+    }
+
+    @Test
+    fun `save records the notification's source as productive`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new-99")
+        val productiveSources = FakeProductiveSourceRepository()
+
+        val vm = makeViewModel(productiveSources = productiveSources)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, productiveSources.countFor("Google"))
+    }
+
+    @Test
+    fun `a failed save does not record the source as productive`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        val productiveSources = FakeProductiveSourceRepository()
+
+        val vm = makeViewModel(productiveSources = productiveSources)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, productiveSources.countFor("Google"))
+    }
+
+    @Test
+    fun `confirmPending records the notification's source as productive`() = runTest {
+        val notification = makeNotification(id = "notif-1", app = "Google", channel = NotificationChannel.PUSH)
+        val pendingId = "tx-pending-42"
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = pendingId)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+        coEvery { transactionRepository.markPaid(pendingId) } returns Result.success(Unit)
+        val productiveSources = FakeProductiveSourceRepository()
+
+        val vm = makeViewModel(productiveSources = productiveSources)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.confirmPending()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, productiveSources.countFor("Google"))
     }
 
     @Test

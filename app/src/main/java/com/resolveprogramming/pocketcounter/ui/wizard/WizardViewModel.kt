@@ -11,6 +11,7 @@ import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRe
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
+import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
@@ -89,6 +90,8 @@ data class WizardUiState(
     val unknownCardLast4: String? = null,
     /** User-configured enabled payment methods; used to filter the method-selection UI. */
     val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
+    /** Confirmed transactions this notification's source app has already produced on this device. */
+    val sourceTransactionCount: Int = 0,
 ) {
     val selectionRange: IntRange?
         get() = if (selectionAnchor != null && selectionFocus != null) {
@@ -124,6 +127,7 @@ class WizardViewModel @Inject constructor(
     private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
     private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository,
     private val blockedSourceRepository: BlockedSourceRepository,
+    private val productiveSourceRepository: ProductiveSourceRepository,
     private val appMessageRelay: AppMessageRelay,
 ) : ViewModel() {
 
@@ -178,6 +182,10 @@ class WizardViewModel @Inject constructor(
                     )
                 }
                 return@launch
+            }
+            // Only startable once the source app is known; still overlaps the classify round-trip.
+            val productiveDeferred = async {
+                runCatching { productiveSourceRepository.countFor(base.app) }.getOrDefault(0)
             }
             val cards = cardsDeferred.await()
             val tags = tagsDeferred.await()
@@ -239,6 +247,7 @@ class WizardViewModel @Inject constructor(
                 unknownCardLast4 = unknownLast4,
                 enabledMethods = _state.value.enabledMethods,
                 toastMessage = _state.value.toastMessage,
+                sourceTransactionCount = productiveDeferred.await(),
             )
         }
     }
@@ -494,6 +503,7 @@ class WizardViewModel @Inject constructor(
                     learnRuleIfRequested(draft)
                     // Persist a learned payment-method word if the user marked one.
                     learnPaymentMethodIfMarked(draft)
+                    recordProductiveSource()
                     // Process the review queue in place: load the next pending item, or return to
                     // the app when none remain.
                     advanceToNext(onDone)
@@ -688,6 +698,15 @@ class WizardViewModel @Inject constructor(
         runCatching { paymentMethodDictionaryRepository.learn(span, method) }
     }
 
+    /**
+     * Counts this source as productive, so the "Ignorar" dialog can warn before silencing an app
+     * that already pays off. Best-effort — a device-local counter never fails a confirm.
+     */
+    private suspend fun recordProductiveSource() {
+        val app = _state.value.notification?.app ?: return
+        runCatching { productiveSourceRepository.record(app) }
+    }
+
     private suspend fun linkSeries(draft: WizardDraft, transactionId: String) {
         if (!draft.isFixo) return
         val existingSeriesId = draft.seriesId
@@ -716,6 +735,7 @@ class WizardViewModel @Inject constructor(
             _state.update { it.copy(isSaving = true) }
             confirmClassifiedNotification(notificationId, _state.value.draft, pendingTransactionId = pendingId)
                 .onSuccess {
+                    recordProductiveSource()
                     _state.update {
                         it.copy(isSaving = false, isConfirmingPending = false, pendingConfirmed = true)
                     }

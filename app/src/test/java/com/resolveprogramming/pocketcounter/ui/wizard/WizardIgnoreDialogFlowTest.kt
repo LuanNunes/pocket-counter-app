@@ -14,6 +14,7 @@ import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -118,6 +119,7 @@ class WizardIgnoreDialogFlowTest {
         paymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
         paymentMethodDictionaryRepository = FakePaymentMethodDictionaryRepository(),
         blockedSourceRepository = blockedSourceRepository,
+        productiveSourceRepository = FakeProductiveSourceRepository(),
         appMessageRelay = AppMessageRelay(),
     )
 

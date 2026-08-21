@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
@@ -64,6 +65,7 @@ class HomeViewModelTest {
     private val cardRepository: CardRepository = mockk()
     private val issuerCardRepository = FakeIssuerCardRepository()
     private val blockedSourceRepository = FakeBlockedSourceRepository()
+    private val productiveSourceRepository = FakeProductiveSourceRepository()
     private val tokenStore: TokenStore = mockk()
 
     private val currentMonth: YearMonth = YearMonth.now()
@@ -139,6 +141,7 @@ class HomeViewModelTest {
         ledgerRefresh = ledgerRefresh,
         appMessageRelay = appMessageRelay,
         blockedSourceRepository = blockedSourceRepository,
+        productiveSourceRepository = productiveSourceRepository,
     )
 
     @Test
@@ -536,6 +539,41 @@ class HomeViewModelTest {
         coVerify { notificationRepository.markClassified("pend-1", "tx-new") }
         assertEquals("Transação confirmada", vm.state.value.toastMessage)
         assertTrue(vm.state.value.confirmReady.isEmpty())
+    }
+
+    @Test
+    fun `confirm records the notification's source as productive`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, productiveSourceRepository.countFor("App"))
+    }
+
+    @Test
+    fun `a failed confirm does not record the source as productive`() = runTest {
+        coEvery { notificationRepository.getPendingReview() } returns
+            Result.success(listOf(recognizedNotification("pend-1")))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
+        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("boom"))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val item = vm.state.value.confirmReady.single()
+
+        vm.confirm(item)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(0, productiveSourceRepository.countFor("App"))
     }
 
     @Test
@@ -954,6 +992,24 @@ class HomeViewModelTest {
         assertNull(vm.state.value.invoicePicker)
         assertTrue(vm.state.value.invoicePrompts.isEmpty())
         assertEquals("Fatura Nubank anterior marcada como paga ✓", vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `picking an invoice records the source as productive`() = runTest {
+        stubInvoicePush(
+            invoiceRow("inv-1", "-8866.19", "Fatura Nubank"),
+            invoiceRow("inv-2", "-8866.19", "Fatura Nubank anterior"),
+        )
+        coEvery { transactionRepository.markPaid("inv-2") } returns Result.success(Unit)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val prompt = vm.state.value.invoicePrompts.single()
+
+        vm.openInvoicePicker(prompt)
+        vm.confirmInvoicePayment(prompt.candidates.first { it.id == "inv-2" })
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, productiveSourceRepository.countFor("Nubank"))
     }
 
     @Test

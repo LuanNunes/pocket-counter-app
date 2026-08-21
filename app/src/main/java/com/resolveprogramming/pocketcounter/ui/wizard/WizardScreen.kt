@@ -307,6 +307,7 @@ fun WizardScreen(
         val option = state.ignoreOption
         IgnoreConfirmDialog(
             option = option,
+            sourceTransactionCount = state.sourceTransactionCount,
             learnSelected = ignoreLearn,
             onSelect = { ignoreLearn = it },
             onConfirm = {
@@ -324,6 +325,7 @@ internal fun ignoreScopeOf(option: IgnoreScope?, learnSelected: Boolean): Ignore
 @Composable
 internal fun IgnoreConfirmDialog(
     option: IgnoreScope?,
+    sourceTransactionCount: Int,
     learnSelected: Boolean,
     onSelect: (Boolean) -> Unit,
     onConfirm: () -> Unit,
@@ -335,6 +337,7 @@ internal fun IgnoreConfirmDialog(
         text = {
             IgnoreScopeOptions(
                 option = option,
+                sourceTransactionCount = sourceTransactionCount,
                 learnSelected = learnSelected,
                 onSelect = onSelect,
             )
@@ -356,6 +359,7 @@ internal fun IgnoreConfirmDialog(
 @Composable
 private fun IgnoreScopeOptions(
     option: IgnoreScope?,
+    sourceTransactionCount: Int,
     learnSelected: Boolean,
     onSelect: (Boolean) -> Unit,
 ) {
@@ -373,12 +377,12 @@ private fun IgnoreScopeOptions(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         IgnoreScopeOptionRow(
-            copy = IgnoreScope.ThisOnly.optionCopy(),
+            copy = IgnoreScope.ThisOnly.optionCopy(sourceTransactionCount),
             selected = !learnSelected,
             onSelect = { onSelect(false) },
         )
         IgnoreScopeOptionRow(
-            copy = option.optionCopy(),
+            copy = option.optionCopy(sourceTransactionCount),
             selected = learnSelected,
             onSelect = { onSelect(true) },
         )
@@ -417,7 +421,7 @@ private fun IgnoreScopeOptionRow(
 
 private data class IgnoreOptionCopy(val label: String, val sub: String, val isBlastRadius: Boolean)
 
-private fun IgnoreScope.optionCopy(): IgnoreOptionCopy = when (this) {
+private fun IgnoreScope.optionCopy(sourceTransactionCount: Int): IgnoreOptionCopy = when (this) {
     IgnoreScope.ThisOnly -> IgnoreOptionCopy(
         label = "Só esta notificação",
         sub = "Ela sai da lista \"Para revisar\".",
@@ -432,9 +436,20 @@ private fun IgnoreScope.optionCopy(): IgnoreOptionCopy = when (this) {
 
     is IgnoreScope.Source -> IgnoreOptionCopy(
         label = "Nunca capturar notificações do $app",
-        sub = "Nada vindo do $app será capturado — inclusive compras, se houver.",
+        sub = sourceBlockWarning(app, sourceTransactionCount),
         isBlastRadius = true,
     )
+}
+
+/** Names what the block costs: an app that already produced transactions says so, in its own count. */
+private fun sourceBlockWarning(app: String, transactionCount: Int): String {
+    if (transactionCount <= 0) {
+        return "Nada vindo do $app será capturado — inclusive compras, se houver."
+    }
+    if (transactionCount == 1) {
+        return "Este app já registrou 1 transação sua. Nada vindo dele será capturado."
+    }
+    return "Este app já registrou $transactionCount transações suas. Nada vindo dele será capturado."
 }
 
 @Composable

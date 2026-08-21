@@ -5,9 +5,11 @@ import com.resolveprogramming.pocketcounter.data.local.DataStoreBlockedSourceSto
 import com.resolveprogramming.pocketcounter.data.local.DataStoreIssuerCardStore
 import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodDictionaryStore
 import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodPrefsStore
+import com.resolveprogramming.pocketcounter.data.local.DataStoreProductiveSourceStore
 import com.resolveprogramming.pocketcounter.data.local.IssuerCardStore
 import com.resolveprogramming.pocketcounter.data.local.PaymentMethodDictionaryStore
 import com.resolveprogramming.pocketcounter.data.local.PaymentMethodPrefsStore
+import com.resolveprogramming.pocketcounter.data.local.ProductiveSourceStore
 import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleSignIn
 import com.resolveprogramming.pocketcounter.data.remote.GoogleSignInClient
 import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
@@ -22,9 +24,11 @@ import com.resolveprogramming.pocketcounter.data.repository.LocalCardLast4Reposi
 import com.resolveprogramming.pocketcounter.data.repository.LocalIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.LocalPaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.LocalPaymentMethodPrefsRepository
+import com.resolveprogramming.pocketcounter.data.repository.LocalProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
+import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAssistantRepository
@@ -145,4 +149,14 @@ abstract class DataModule {
     abstract fun bindBlockedSourceRepository(
         impl: LocalBlockedSourceRepository,
     ): BlockedSourceRepository
+
+    @Binds
+    abstract fun bindProductiveSourceStore(
+        impl: DataStoreProductiveSourceStore,
+    ): ProductiveSourceStore
+
+    @Binds
+    abstract fun bindProductiveSourceRepository(
+        impl: LocalProductiveSourceRepository,
+    ): ProductiveSourceRepository
 }

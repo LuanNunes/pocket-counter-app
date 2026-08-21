@@ -11,6 +11,7 @@ import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceReposit
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
@@ -123,6 +124,7 @@ class HomeViewModel @Inject constructor(
     private val ledgerRefresh: LedgerRefreshSignal,
     private val appMessageRelay: AppMessageRelay,
     private val blockedSourceRepository: BlockedSourceRepository,
+    private val productiveSourceRepository: ProductiveSourceRepository,
 ) : ViewModel() {
 
     // The full month's rows, before listType/groupBy filtering — the source for recomputed().
@@ -468,6 +470,7 @@ class HomeViewModel @Inject constructor(
             }
             confirmClassifiedNotification(item.notificationId, item.draft, item.pendingTransactionId)
                 .onSuccess { transactionId ->
+                    recordProductiveSource(item.notification.app)
                     // pendingMatch is set only on the invoice-payment path — the toast has to say
                     // which of the two things happened: an invoice was settled, or a transaction saved.
                     val toast = item.pendingMatch?.let(::paidToast) ?: "Transação confirmada"
@@ -492,6 +495,14 @@ class HomeViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    /**
+     * Counts [app] as productive, so the wizard's "Ignorar" dialog can warn before silencing a source
+     * that already pays off. Best-effort — a device-local counter never fails a confirm.
+     */
+    private suspend fun recordProductiveSource(app: String) {
+        runCatching { productiveSourceRepository.record(app) }
     }
 
     /**
@@ -596,6 +607,7 @@ class HomeViewModel @Inject constructor(
                 invoice.id,
             )
                 .onSuccess {
+                    recordProductiveSource(prompt.notification.app)
                     invoice.cardId?.let { cardId ->
                         // Teach the key resolve() would actually have used, not the raw app label —
                         // an SMS/aggregator delivery resolves via the text's leading token instead.
