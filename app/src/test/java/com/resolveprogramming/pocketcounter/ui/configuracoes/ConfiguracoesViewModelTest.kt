@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.configuracoes
 
 import androidx.fragment.app.FragmentActivity
 import com.resolveprogramming.pocketcounter.data.local.BiometricSettingsStore
+import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.domain.model.BiometricAvailability
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
@@ -13,6 +14,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -22,6 +24,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConfiguracoesViewModelTest {
@@ -30,6 +33,7 @@ class ConfiguracoesViewModelTest {
     private val authenticator: BiometricAuthenticator = mockk()
     private val settingsStore: BiometricSettingsStore = mockk()
     private val activity: FragmentActivity = mockk()
+    private val blockedSourceRepository = FakeBlockedSourceRepository()
 
     private val lockEnabledFlow = MutableStateFlow(false)
 
@@ -46,7 +50,7 @@ class ConfiguracoesViewModelTest {
     }
 
     private fun makeViewModel(repo: FakePaymentMethodPrefsRepository) =
-        ConfiguracoesViewModel(repo, authenticator, settingsStore)
+        ConfiguracoesViewModel(repo, authenticator, settingsStore, blockedSourceRepository)
 
     @Test
     fun `state reflects repo emission`() = runTest {
@@ -81,5 +85,29 @@ class ConfiguracoesViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify { settingsStore.setLockEnabled(false) }
+    }
+
+    @Test
+    fun `state blockedSources reflects the repo emission, most-recently-blocked first`() = runTest {
+        blockedSourceRepository.block("Google", Instant.EPOCH)
+        blockedSourceRepository.block("Nubank", Instant.EPOCH.plusSeconds(100))
+
+        val vm = makeViewModel(FakePaymentMethodPrefsRepository())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf("nubank", "google"), vm.state.value.blockedSources.map { it.key })
+    }
+
+    @Test
+    fun `unblockSource delegates to the repository`() = runTest {
+        blockedSourceRepository.block("Google", Instant.EPOCH)
+
+        val vm = makeViewModel(FakePaymentMethodPrefsRepository())
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.unblockSource("google")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(blockedSourceRepository.blocklist.first().entries.isEmpty())
     }
 }

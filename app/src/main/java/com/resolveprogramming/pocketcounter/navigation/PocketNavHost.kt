@@ -38,7 +38,7 @@ import com.resolveprogramming.pocketcounter.ui.resumo.ResumoScreen
 import com.resolveprogramming.pocketcounter.ui.contextos.ContextosTagsScreen
 import com.resolveprogramming.pocketcounter.ui.fixas.ContasFixasScreen
 import com.resolveprogramming.pocketcounter.ui.mais.MaisScreen
-import com.resolveprogramming.pocketcounter.ui.regras.RegrasScreen
+import com.resolveprogramming.pocketcounter.ui.regras.RulesScreen
 import com.resolveprogramming.pocketcounter.ui.relatorio.RelatorioScreen
 import com.resolveprogramming.pocketcounter.ui.session.RecoveryState
 import com.resolveprogramming.pocketcounter.ui.session.SessionRecoveryViewModel
@@ -240,7 +240,7 @@ fun PocketNavHost(
         }
 
         composable(Routes.REGRAS) {
-            RegrasScreen(
+            RulesScreen(
                 onBack = { navController.popBackStack() },
                 onNav = { tab -> navTab(navController, tab) },
             )

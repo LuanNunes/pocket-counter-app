@@ -2,13 +2,16 @@ package com.resolveprogramming.pocketcounter.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
+import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
+import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.model.ConfirmReadyItem
@@ -90,6 +93,8 @@ data class HomeUiState(
     val monthCount: Int = 0,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    /** Drives the Home banner that keeps a device-local source block from suppressing capture invisibly. */
+    val blockedSourceCount: Int = 0,
 )
 
 private data class InvoiceMatchContext(
@@ -117,6 +122,9 @@ class HomeViewModel @Inject constructor(
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val viewedMonth: ViewedMonthStore,
     private val ledgerRefresh: LedgerRefreshSignal,
+    private val appMessageRelay: AppMessageRelay,
+    private val blockedSourceRepository: BlockedSourceRepository,
+    private val productiveSourceRepository: ProductiveSourceRepository,
 ) : ViewModel() {
 
     // The full month's rows, before listType/groupBy filtering — the source for recomputed().
@@ -173,6 +181,20 @@ class HomeViewModel @Inject constructor(
         // the single reload path for every mutation: emitters just call signal() and are served here too.
         viewModelScope.launch {
             ledgerRefresh.events.collect { loadMonth(showLoading = false) }
+        }
+        // Feedback from a screen that was popped before it could render its own toast — the wizard
+        // signing off as its review queue empties lands here (see AppMessageRelay).
+        viewModelScope.launch {
+            appMessageRelay.messages.collect { message ->
+                _state.update { it.copy(toastMessage = message) }
+            }
+        }
+        // A device-local block only surfaces in Configurações, which nobody visits unprompted — Home
+        // carries the reminder so a mis-tapped block can't silence a real bank indefinitely.
+        viewModelScope.launch {
+            blockedSourceRepository.blocklist.collect { blocklist ->
+                _state.update { it.copy(blockedSourceCount = blocklist.entries.size) }
+            }
         }
     }
 
@@ -448,6 +470,7 @@ class HomeViewModel @Inject constructor(
             }
             confirmClassifiedNotification(item.notificationId, item.draft, item.pendingTransactionId)
                 .onSuccess { transactionId ->
+                    recordProductiveSource(item.notification.app)
                     // pendingMatch is set only on the invoice-payment path — the toast has to say
                     // which of the two things happened: an invoice was settled, or a transaction saved.
                     val toast = item.pendingMatch?.let(::paidToast) ?: "Transação confirmada"
@@ -472,6 +495,14 @@ class HomeViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    /**
+     * Counts [app] as productive, so the wizard's "Ignorar" dialog can warn before silencing a source
+     * that already pays off. Best-effort — a device-local counter never fails a confirm.
+     */
+    private suspend fun recordProductiveSource(app: String) {
+        runCatching { productiveSourceRepository.record(app) }
     }
 
     /**
@@ -576,6 +607,7 @@ class HomeViewModel @Inject constructor(
                 invoice.id,
             )
                 .onSuccess {
+                    recordProductiveSource(prompt.notification.app)
                     invoice.cardId?.let { cardId ->
                         // Teach the key resolve() would actually have used, not the raw app label —
                         // an SMS/aggregator delivery resolves via the text's leading token instead.

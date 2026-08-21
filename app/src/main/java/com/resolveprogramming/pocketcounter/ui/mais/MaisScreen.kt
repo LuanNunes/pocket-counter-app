@@ -82,7 +82,7 @@ fun MaisScreen(
         Entry("Assistente", "Tire dúvidas sobre suas finanças", Icons.Filled.AutoAwesome) { onOpenRoute("assistente") },
     )
     val settingsEntry =
-        Entry("Configurações", "Segurança e formas de pagamento", Icons.Filled.Settings) { onOpenRoute("configuracoes") }
+        Entry("Configurações", "Segurança, pagamentos e captura", Icons.Filled.Settings) { onOpenRoute("configuracoes") }
 
     Box(Modifier.fillMaxSize()) {
         Scaffold(

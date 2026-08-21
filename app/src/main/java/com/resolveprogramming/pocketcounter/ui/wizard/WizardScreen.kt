@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,6 +29,8 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -35,11 +38,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,12 +56,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.resolveprogramming.pocketcounter.domain.model.IgnoreScope
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -75,7 +80,7 @@ fun WizardScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showIgnoreConfirm by remember { mutableStateOf(false) }
-    var ignoreLearn by remember { mutableStateOf(true) }
+    var ignoreLearn by remember { mutableStateOf(false) }
     val toastState = remember { PocketToastState() }
 
     LaunchedEffect(state.toastMessage) {
@@ -129,7 +134,10 @@ fun WizardScreen(
         WizardTopBar(
             step = state.step,
             onBack = onDismiss,
-            onIgnore = { showIgnoreConfirm = true },
+            onIgnore = {
+                ignoreLearn = state.ignoreDefaultLearn
+                showIgnoreConfirm = true
+            },
         )
 
         // Slim, unobtrusive loading hint while the next queued item resolves in place.
@@ -296,22 +304,30 @@ fun WizardScreen(
     PocketToastHost(state = toastState)
 
     if (showIgnoreConfirm) {
+        val option = state.ignoreOption
         IgnoreConfirmDialog(
-            learn = ignoreLearn,
-            onLearnChange = { ignoreLearn = it },
+            option = option,
+            sourceTransactionCount = state.sourceTransactionCount,
+            learnSelected = ignoreLearn,
+            onSelect = { ignoreLearn = it },
             onConfirm = {
                 showIgnoreConfirm = false
-                viewModel.ignore(learn = ignoreLearn, onDone = onBackToApp)
+                viewModel.ignore(scope = ignoreScopeOf(option, ignoreLearn), onDone = onBackToApp)
             },
             onDismiss = { showIgnoreConfirm = false },
         )
     }
 }
 
+internal fun ignoreScopeOf(option: IgnoreScope?, learnSelected: Boolean): IgnoreScope =
+    option.takeIf { learnSelected } ?: IgnoreScope.ThisOnly
+
 @Composable
-private fun IgnoreConfirmDialog(
-    learn: Boolean,
-    onLearnChange: (Boolean) -> Unit,
+internal fun IgnoreConfirmDialog(
+    option: IgnoreScope?,
+    sourceTransactionCount: Int,
+    learnSelected: Boolean,
+    onSelect: (Boolean) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -319,24 +335,12 @@ private fun IgnoreConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text("Ignorar notificação?", color = PocketTheme.colors.text) },
         text = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onLearnChange(!learn) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Checkbox(
-                    checked = learn,
-                    onCheckedChange = onLearnChange,
-                    colors = CheckboxDefaults.colors(checkedColor = PocketTheme.colors.accent),
-                )
-                Text(
-                    "Ignorar notificações similares no futuro",
-                    style = PocketTheme.typography.body,
-                    color = PocketTheme.colors.text2,
-                )
-            }
+            IgnoreScopeOptions(
+                option = option,
+                sourceTransactionCount = sourceTransactionCount,
+                learnSelected = learnSelected,
+                onSelect = onSelect,
+            )
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
@@ -350,6 +354,102 @@ private fun IgnoreConfirmDialog(
         },
         containerColor = PocketTheme.colors.surface,
     )
+}
+
+@Composable
+private fun IgnoreScopeOptions(
+    option: IgnoreScope?,
+    sourceTransactionCount: Int,
+    learnSelected: Boolean,
+    onSelect: (Boolean) -> Unit,
+) {
+    if (option == null) {
+        Text(
+            text = "Não foi possível identificar um padrão nesta mensagem. " +
+                "Só é possível ignorar esta notificação.",
+            style = PocketTheme.typography.bodyXs,
+            color = PocketTheme.colors.text3,
+        )
+        return
+    }
+    Column(
+        modifier = Modifier.selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        IgnoreScopeOptionRow(
+            copy = IgnoreScope.ThisOnly.optionCopy(sourceTransactionCount),
+            selected = !learnSelected,
+            onSelect = { onSelect(false) },
+        )
+        IgnoreScopeOptionRow(
+            copy = option.optionCopy(sourceTransactionCount),
+            selected = learnSelected,
+            onSelect = { onSelect(true) },
+        )
+    }
+}
+
+@Composable
+private fun IgnoreScopeOptionRow(
+    copy: IgnoreOptionCopy,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null,
+            colors = RadioButtonDefaults.colors(selectedColor = PocketTheme.colors.accent),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(copy.label, style = PocketTheme.typography.body, color = PocketTheme.colors.text)
+            Text(
+                text = copy.sub,
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.warn.takeIf { copy.isBlastRadius } ?: PocketTheme.colors.text3,
+            )
+        }
+    }
+}
+
+private data class IgnoreOptionCopy(val label: String, val sub: String, val isBlastRadius: Boolean)
+
+private fun IgnoreScope.optionCopy(sourceTransactionCount: Int): IgnoreOptionCopy = when (this) {
+    IgnoreScope.ThisOnly -> IgnoreOptionCopy(
+        label = "Só esta notificação",
+        sub = "Ela sai da lista \"Para revisar\".",
+        isBlastRadius = false,
+    )
+
+    is IgnoreScope.Pattern -> IgnoreOptionCopy(
+        label = "Ignorar sempre \"$pattern\"",
+        sub = "Novas notificações com \"$pattern\" entram já ignoradas.",
+        isBlastRadius = false,
+    )
+
+    is IgnoreScope.Source -> IgnoreOptionCopy(
+        label = "Nunca capturar notificações do $app",
+        sub = sourceBlockWarning(app, sourceTransactionCount),
+        isBlastRadius = true,
+    )
+}
+
+/** Names what the block costs: an app that already produced transactions says so, in its own count. */
+private fun sourceBlockWarning(app: String, transactionCount: Int): String {
+    if (transactionCount <= 0) {
+        return "Nada vindo do $app será capturado — inclusive compras, se houver."
+    }
+    if (transactionCount == 1) {
+        return "Este app já registrou 1 transação sua. Nada vindo dele será capturado."
+    }
+    return "Este app já registrou $transactionCount transações suas. Nada vindo dele será capturado."
 }
 
 @Composable

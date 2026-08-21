@@ -204,8 +204,14 @@ object BrNotificationParser {
     // (e.g. "CompraR$50,00"). Bare "RS"/"BRL" are ambiguous (RS is also a state code), so they
     // require a letter-boundary AND two decimal places to avoid matching things like a CEP
     // ("Porto Alegre RS 90000-000").
+    // Integer part: dotted thousands ("1.234", "1.234.567") OR a plain digit run ("1234").
+    private const val AMOUNT_INT = """(?:\d{1,3}(?:\.\d{3})+|\d+)"""
+    // Rejects a match immediately continued by more number ("R$23.25", "R$ 50,5"). Fail-closed:
+    // a malformed amount yields no capture, never a wrong one.
+    private const val AMOUNT_TAIL = """(?![.,]?\d)"""
     private val AMOUNT_REGEX = Regex(
-        """R\$\s?\d{1,3}(\.\d{3})*(,\d{2})?|(?<![\p{L}])(RS|BRL)\s?\d{1,3}(\.\d{3})*,\d{2}""",
+        """R\$\s?$AMOUNT_INT(?:,\d{2})?$AMOUNT_TAIL""" +
+            """|(?<![\p{L}])(?:RS|BRL)\s?$AMOUNT_INT,\d{2}$AMOUNT_TAIL""",
     )
 
     private val EXPENSE_PHRASES = listOf("pix enviado", "transferência enviada", "transferencia enviada", "você pagou", "voce pagou")

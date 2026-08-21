@@ -56,6 +56,7 @@ import com.resolveprogramming.pocketcounter.ui.components.NotificationAccessDisc
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
+import com.resolveprogramming.pocketcounter.ui.home.components.BlockedSourcesBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.ClassifyingSkeleton
 import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadySection
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
@@ -191,6 +192,17 @@ fun HomeContent(
                     item {
                         NotificationAccessBanner(
                             onEnable = { showAccessDisclosure = true },
+                        )
+                    }
+                }
+
+                // Only with access granted: without it capture is dead anyway, and stacking both
+                // banners would bury the more urgent one.
+                if (notificationAccessGranted && state.blockedSourceCount > 0) {
+                    item {
+                        BlockedSourcesBanner(
+                            count = state.blockedSourceCount,
+                            onManage = { onNavigate(Routes.CONFIGURACOES) },
                         )
                     }
                 }

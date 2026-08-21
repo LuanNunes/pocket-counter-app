@@ -1,7 +1,6 @@
 package com.resolveprogramming.pocketcounter.domain.notification
 
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
-import java.text.Normalizer
 
 /**
  * Pure Kotlin utility for resolving a push notification's issuer (the app label, e.g. "Nubank")
@@ -80,14 +79,8 @@ object IssuerCardMatcher {
 
     private fun tokenize(raw: String): List<String> = raw.trim().split(WHITESPACE_REGEX).filter { it.isNotBlank() }
 
-    fun normalizeIssuer(raw: String): String {
-        val normalized = Normalizer.normalize(raw.lowercase(), Normalizer.Form.NFD)
-        val withoutDiacritics = DIACRITIC_REGEX.replace(normalized, "")
-        return NON_ALPHANUMERIC_REGEX.replace(withoutDiacritics, "")
-    }
+    fun normalizeIssuer(raw: String): String = SourceKey.normalize(raw)
 
-    private val DIACRITIC_REGEX = Regex("\\p{Mn}+")
-    private val NON_ALPHANUMERIC_REGEX = Regex("[^\\p{L}\\p{N}]")
     private val WHITESPACE_REGEX = Regex("\\s+")
 
     // Below this, containment is dropped for exact equality — otherwise a 1-2 char normalized
