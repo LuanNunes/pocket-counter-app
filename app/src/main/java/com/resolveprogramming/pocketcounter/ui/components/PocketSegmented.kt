@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -73,7 +75,10 @@ fun PocketSegmented(
                         indication = null,
                         role = Role.Tab,
                         onClick = { onSelect(index) },
-                    ),
+                    )
+                    // Which segment is active is carried by colour alone otherwise — invisible to a
+                    // screen reader, and untestable.
+                    .semantics { this.selected = selected },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
