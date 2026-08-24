@@ -50,6 +50,27 @@ class CaptureSectionTest {
     }
 
     @Test
+    fun `a single block is counted in the sub-line`() {
+        render(blocked("Google", LocalDate.of(2026, 6, 3)))
+
+        compose
+            .onNodeWithText("1 app bloqueado. Apps bloqueados não geram nada para revisar.")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun `several blocks are counted in the sub-line`() {
+        render(
+            blocked("Google", LocalDate.of(2026, 6, 3)),
+            blocked("Promo Bank", LocalDate.of(2026, 5, 20)),
+        )
+
+        compose
+            .onNodeWithText("2 apps bloqueados. Apps bloqueados não geram nada para revisar.")
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun `a blocked source shows its label and the day it was blocked`() {
         render(blocked("Google", LocalDate.of(2026, 6, 3)))
 

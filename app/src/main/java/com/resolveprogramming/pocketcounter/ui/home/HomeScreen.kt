@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,10 +55,10 @@ import com.resolveprogramming.pocketcounter.ui.components.NotificationAccessDisc
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.home.components.BalanceHero
-import com.resolveprogramming.pocketcounter.ui.home.components.BlockedSourcesBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.ClassifyingSkeleton
 import com.resolveprogramming.pocketcounter.ui.home.components.ConfirmReadySection
 import com.resolveprogramming.pocketcounter.ui.home.components.FlashEffect
+import com.resolveprogramming.pocketcounter.ui.home.components.HomeLoadErrorCard
 import com.resolveprogramming.pocketcounter.ui.home.components.HomeQuickTiles
 import com.resolveprogramming.pocketcounter.ui.home.components.InvoicePaymentSection
 import com.resolveprogramming.pocketcounter.ui.home.components.InvoicePickerSheet
@@ -67,6 +66,7 @@ import com.resolveprogramming.pocketcounter.ui.home.components.MonthNavBar
 import com.resolveprogramming.pocketcounter.ui.home.components.NotificationAccessBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.RevisarBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.SwipeCue
+import com.resolveprogramming.pocketcounter.ui.home.components.homeGreeting
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
@@ -124,18 +124,6 @@ fun HomeContent(
         viewModel.refresh()
     }
 
-    if (state.isLoading && state.shownItems.isEmpty() && state.isEmptyMonth.not()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(color = PocketTheme.colors.accent)
-        }
-        return
-    }
-
     // Rebuilt only when a lookup changes, so the per-item meta builder stays memoizable.
     val lookups = remember(state.cards, state.tags, state.contexts) {
         LedgerLookups(
@@ -144,6 +132,7 @@ fun HomeContent(
             contexts = state.contexts.associateBy { it.id },
         )
     }
+    val figuresKnown = state.hasLoadedMonth && !state.monthLoadFailed
 
     Box(Modifier.fillMaxSize()) {
         val pullState = rememberPullToRefreshState()
@@ -196,23 +185,19 @@ fun HomeContent(
                     }
                 }
 
-                // Only with access granted: without it capture is dead anyway, and stacking both
-                // banners would bury the more urgent one.
-                if (notificationAccessGranted && state.blockedSourceCount > 0) {
-                    item {
-                        BlockedSourcesBanner(
-                            count = state.blockedSourceCount,
-                            onManage = { onNavigate(Routes.CONFIGURACOES) },
-                        )
-                    }
+                if (state.monthLoadFailed) {
+                    item { HomeLoadErrorCard(onRetry = viewModel::retryMonth) }
                 }
 
-                item {
-                    BalanceHero(
-                        monthLabel = state.monthLabel,
-                        kpis = state.kpis,
-                        balance = state.balance,
-                    )
+                if (!state.monthLoadFailed) {
+                    item {
+                        BalanceHero(
+                            monthLabel = state.monthLabel,
+                            kpis = state.kpis,
+                            balance = state.balance,
+                            hasLoadedMonth = figuresKnown,
+                        )
+                    }
                 }
 
                 if (state.isCurrentMonth && state.classifying && state.confirmReady.isEmpty()) {
@@ -271,6 +256,9 @@ fun HomeContent(
                 item {
                     SwipeCue(
                         count = state.monthCount,
+                        // figuresKnown, not hasLoadedMonth: after a failed month flip monthCount
+                        // still holds the previous month's rows.
+                        hasLoadedMonth = figuresKnown,
                         onClick = onOpenTransacoes,
                     )
                 }
@@ -293,12 +281,13 @@ fun HomeContent(
 }
 
 @Composable
-private fun HeaderSection(
+internal fun HeaderSection(
     userName: String,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
     onAssistant: () -> Unit = {},
 ) {
+    val greeting = homeGreeting(userName)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -311,7 +300,7 @@ private fun HeaderSection(
                 color = PocketTheme.colors.text3,
             )
             Text(
-                text = userName.ifBlank { "Bem-vindo" },
+                text = greeting,
                 style = PocketTheme.typography.body.copy(
                     fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -338,10 +327,10 @@ private fun HeaderSection(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Refresh,
-                        contentDescription = if (isRefreshing) "Atualizando" else "Atualizar",
+                        contentDescription = "Atualizando".takeIf { isRefreshing } ?: "Atualizar",
                         modifier = Modifier.size(20.dp),
                         // Dim while a refresh is in flight so the disabled icon reads as busy.
-                        tint = PocketTheme.colors.accent.copy(alpha = if (isRefreshing) 0.4f else 1f),
+                        tint = PocketTheme.colors.accent.copy(alpha = 0.4f.takeIf { isRefreshing } ?: 1f),
                     )
                 }
             }
@@ -384,7 +373,7 @@ private fun HeaderSection(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = userName.firstOrNull()?.uppercase() ?: "?",
+                text = greeting.first().uppercase(),
                 style = PocketTheme.typography.button,
                 color = PocketTheme.colors.accentInk,
             )

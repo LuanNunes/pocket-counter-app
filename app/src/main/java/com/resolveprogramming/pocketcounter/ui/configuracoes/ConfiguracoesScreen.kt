@@ -154,7 +154,7 @@ internal fun CaptureSection(
     )
     Spacer(Modifier.height(4.dp))
     Text(
-        text = "Apps bloqueados não geram nada para revisar.",
+        text = captureSubline(blockedSources.size),
         style = PocketTheme.typography.bodyXs,
         color = PocketTheme.colors.text3,
     )
@@ -174,6 +174,13 @@ internal fun CaptureSection(
             BlockedSourceRow(source = source, onUnblock = { onUnblock(source.key) })
         }
     }
+}
+
+private fun captureSubline(blockedCount: Int): String {
+    val suffix = "Apps bloqueados não geram nada para revisar."
+    if (blockedCount == 0) return suffix
+    if (blockedCount == 1) return "1 app bloqueado. $suffix"
+    return "$blockedCount apps bloqueados. $suffix"
 }
 
 @Composable
