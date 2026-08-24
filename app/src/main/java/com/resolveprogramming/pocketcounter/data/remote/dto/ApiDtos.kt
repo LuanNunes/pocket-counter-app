@@ -22,6 +22,12 @@ data class TransactionDto(
     val cardId: String? = null,               // UUID of the credit card
     val isInvoice: Boolean = false,
     val idSeries: String? = null,             // UUID of the recurring series
+    /**
+     * Create-only: ties the resulting invoice line item to the notification's bank text, which is what
+     * a later statement import matches on. Create returns the invoice id, not the item id, so this can
+     * never be set afterwards. An id the backend cannot resolve is ignored, not an error.
+     */
+    val idNotification: String? = null,       // UUID of the source notification
     val dateDue: String? = null,              // ISO yyyy-MM-dd
     // The date the purchase was made, ISO yyyy-MM-dd. The backend picks which card invoice a credit
     // purchase nests into from this; dateDue is only accepted as a deprecated fallback for it.

@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -20,14 +21,26 @@ class ConfirmClassifiedNotificationUseCaseTest {
     @Test
     fun `create path saves the draft then marks the notification classified`() = runTest {
         val draft = WizardDraft()
-        coEvery { transactionRepository.save(draft) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(draft, "n1") } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified("n1", "tx-new") } returns Result.success(Unit)
 
         val result = useCase("n1", draft, pendingTransactionId = null)
 
         assertEquals("tx-new", result.getOrNull())
-        coVerify(exactly = 1) { transactionRepository.save(draft) }
+        coVerify(exactly = 1) { transactionRepository.save(draft, "n1") }
         coVerify(exactly = 1) { notificationRepository.markClassified("n1", "tx-new") }
+    }
+
+    /** The one-tap AUTO confirm shares this core, and it is the majority of charges. */
+    @Test
+    fun `the created row is attributed to the notification, not left to be correlated later`() = runTest {
+        val draft = WizardDraft()
+        val attributedTo = slot<String>()
+        coEvery { transactionRepository.save(draft, capture(attributedTo)) } returns Result.success("tx-new")
+
+        useCase("n1", draft, pendingTransactionId = null)
+
+        assertEquals("n1", attributedTo.captured)
     }
 
     @Test
@@ -40,13 +53,13 @@ class ConfirmClassifiedNotificationUseCaseTest {
         assertEquals("tx-99", result.getOrNull())
         coVerify(exactly = 1) { transactionRepository.markPaid("tx-99") }
         coVerify(exactly = 1) { notificationRepository.markClassified("n1", "tx-99") }
-        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        coVerify(exactly = 0) { transactionRepository.save(any(), any()) }
     }
 
     @Test
     fun `markClassified failure is swallowed and the transaction id is still returned`() = runTest {
         val draft = WizardDraft()
-        coEvery { transactionRepository.save(draft) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(draft, "n1") } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns
             Result.failure(RuntimeException("link failed"))
 
@@ -58,7 +71,7 @@ class ConfirmClassifiedNotificationUseCaseTest {
     @Test
     fun `save failure propagates and the notification is not marked classified`() = runTest {
         val draft = WizardDraft()
-        coEvery { transactionRepository.save(draft) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(draft, "n1") } returns Result.failure(RuntimeException("save failed"))
 
         val result = useCase("n1", draft, pendingTransactionId = null)
 

@@ -37,9 +37,9 @@ class RetrofitTransactionRepository @Inject constructor(
         }
     }
 
-    override suspend fun save(draft: WizardDraft): Result<String> = runCatching {
+    override suspend fun save(draft: WizardDraft, notificationId: String?): Result<String> = runCatching {
         val type = draft.type ?: error("Type is required")
-        val dto = draft.toDto()
+        val dto = draft.toDto(notificationId)
         run {
             if (type == TransactionType.INCOME) return@run api.addIncome(dto)
             api.addExpense(dto)
@@ -81,7 +81,7 @@ class RetrofitTransactionRepository @Inject constructor(
         api.delete(transactionId)
     }
 
-    private fun WizardDraft.toDto(): TransactionDto {
+    private fun WizardDraft.toDto(notificationId: String? = null): TransactionDto {
         val type = type ?: error("Type is required")
         val amount = amount?.abs() ?: error("Amount is required")
         val date = date ?: error("Date is required")
@@ -106,6 +106,8 @@ class RetrofitTransactionRepository @Inject constructor(
             paymentMethod = paymentMethod?.name,
             cardId = cardId,
             idSeries = seriesId,
+            // The wizard holds "" with no notification behind it; the backend parses this as a UUID.
+            idNotification = notificationId?.takeIf { it.isNotBlank() },
         )
     }
 
