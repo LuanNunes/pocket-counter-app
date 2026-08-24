@@ -18,10 +18,7 @@ import org.robolectric.annotation.Config
 import java.math.BigDecimal
 import java.time.LocalDate
 
-/**
- * The edit sheet must open on the status the row actually has: reopening a settled expense and
- * seeing "Pendente" is a lie the user can commit by simply pressing Salvar.
- */
+/** The sheet must open on the row's real status — a wrong one is committed by just pressing Salvar. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp")
 class TransacaoFormSheetStatusTest {
