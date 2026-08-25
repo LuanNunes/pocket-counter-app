@@ -4,7 +4,8 @@ import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 
 interface TransactionRepository {
-    suspend fun save(draft: WizardDraft): Result<String>
+    /** [notificationId] attributes the row to the notification it came from — see `TransactionDto.idNotification`. */
+    suspend fun save(draft: WizardDraft, notificationId: String? = null): Result<String>
     suspend fun update(transactionId: String, draft: WizardDraft): Result<String>
 
     /** Sets a transaction's own tags. null = clear own tags; non-null = override with these tags. */

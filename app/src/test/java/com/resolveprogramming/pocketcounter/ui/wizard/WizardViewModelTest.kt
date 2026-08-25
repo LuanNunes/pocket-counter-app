@@ -505,7 +505,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new-99")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new-99")
         coEvery { notificationRepository.markClassified("notif-1", "tx-new-99") } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -515,6 +515,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { notificationRepository.markClassified("notif-1", "tx-new-99") }
+        coVerify(exactly = 1) { transactionRepository.save(any(), "notif-1") }
     }
 
     @Test
@@ -523,7 +524,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new-99")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new-99")
         coEvery { notificationRepository.markClassified("notif-1", "tx-new-99") } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -542,7 +543,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new-99")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new-99")
         coEvery { notificationRepository.markClassified("notif-1", "tx-new-99") } returns Result.failure(RuntimeException("server error"))
 
         val vm = makeViewModel()
@@ -561,7 +562,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("save failed"))
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -579,7 +580,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("HTTP 400 Bad Request"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("HTTP 400 Bad Request"))
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -596,7 +597,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException())
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException())
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -613,7 +614,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("save failed"))
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -631,7 +632,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("save failed"))
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -649,7 +650,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("save failed"))
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -800,7 +801,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -822,7 +823,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.create("IFOOD", TransactionType.EXPENSE, 10) } returns
             Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, 10))
@@ -841,7 +842,7 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerifyOrder {
-            transactionRepository.save(any())
+            transactionRepository.save(any(), any())
             seriesRepository.create("IFOOD", TransactionType.EXPENSE, 10)
             seriesRepository.setTags("s-new", listOf("t1"))
             seriesRepository.linkTransaction("s-new", "tx-1", false)
@@ -857,7 +858,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -879,7 +880,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -900,7 +901,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.linkTransaction("s-existing", "tx-1", false) } returns Result.success(Unit)
 
@@ -925,7 +926,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.create(any(), any(), any()) } returns
             Result.failure(RuntimeException("series create failed"))
@@ -940,7 +941,7 @@ class WizardViewModelTest {
         vm.save(onDone = { doneCalled = true })
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        coVerify(exactly = 1) { transactionRepository.save(any(), any()) }
         coVerify(exactly = 1) { notificationRepository.markClassified(any(), any()) }
         assertTrue(doneCalled)
     }
@@ -951,7 +952,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         coEvery { seriesRepository.create(any(), any(), any()) } returns
             Result.success(Series("s-new", "IFOOD", TransactionType.EXPENSE, 5))
@@ -982,7 +983,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-99")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-99")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(nextNotification))
 
@@ -1003,7 +1004,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-99")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-99")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
 
@@ -1461,7 +1462,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new-99")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new-99")
         val productiveSources = FakeProductiveSourceRepository()
 
         val vm = makeViewModel(productiveSources = productiveSources)
@@ -1479,7 +1480,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("save failed"))
         val productiveSources = FakeProductiveSourceRepository()
 
         val vm = makeViewModel(productiveSources = productiveSources)
@@ -1702,7 +1703,7 @@ class WizardViewModelTest {
             ),
         )
         // A save in flight that never completes keeps isSaving = true.
-        coEvery { transactionRepository.save(any()) } coAnswers { awaitCancellation() }
+        coEvery { transactionRepository.save(any(), any()) } coAnswers { awaitCancellation() }
 
         val vm = makeViewModel(notificationId = "notif-1")
         testDispatcher.scheduler.advanceUntilIdle()
@@ -2041,7 +2042,7 @@ class WizardViewModelTest {
         // No existing rules → TeachPlanner will Create
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2090,7 +2091,7 @@ class WizardViewModelTest {
         )
         coEvery { classificationRuleRepository.getAll() } returns Result.success(listOf(existingRule))
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2130,7 +2131,7 @@ class WizardViewModelTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2167,7 +2168,7 @@ class WizardViewModelTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2198,7 +2199,7 @@ class WizardViewModelTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2230,7 +2231,7 @@ class WizardViewModelTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2265,7 +2266,7 @@ class WizardViewModelTest {
         )
         coEvery { classificationRuleRepository.getAll() } returns Result.success(listOf(existingRule))
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2298,7 +2299,7 @@ class WizardViewModelTest {
 
         coEvery { classificationRuleRepository.getAll() } returns Result.failure(RuntimeException("boom"))
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2327,7 +2328,7 @@ class WizardViewModelTest {
         coEvery { tagRepository.getAllTags() } returns Result.success(listOf(categoryTag))
         coEvery { classificationRuleRepository.getAll() } returns Result.success(emptyList())
 
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2378,7 +2379,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2402,7 +2403,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2422,7 +2423,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2441,7 +2442,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2464,7 +2465,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()
@@ -2484,7 +2485,7 @@ class WizardViewModelTest {
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
         coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-1")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-1")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
 
         val vm = makeViewModel()

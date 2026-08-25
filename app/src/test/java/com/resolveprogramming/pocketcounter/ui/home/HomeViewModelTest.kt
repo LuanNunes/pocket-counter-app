@@ -292,7 +292,7 @@ class HomeViewModelTest {
 
     @Test
     fun `saveForm Add routes to save`() = runTest {
-        coEvery { transactionRepository.save(any()) } returns Result.success("new-id")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("new-id")
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -302,7 +302,7 @@ class HomeViewModelTest {
         vm.saveForm(WizardDraft(type = TransactionType.EXPENSE, amount = BigDecimal("10.00")))
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        coVerify(exactly = 1) { transactionRepository.save(any(), any()) }
         coVerify(exactly = 0) { transactionRepository.update(any(), any()) }
         assertEquals("new-id", vm.state.value.flashId)
         assertNull(vm.state.value.formMode)
@@ -319,7 +319,7 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { transactionRepository.update(eq("exp-paid"), any()) }
-        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        coVerify(exactly = 0) { transactionRepository.save(any(), any()) }
     }
 
     @Test
@@ -494,7 +494,7 @@ class HomeViewModelTest {
             Result.success(listOf(recognizedNotification("pend-1")))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
             Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -505,7 +505,7 @@ class HomeViewModelTest {
         vm.confirm(item)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        coVerify(exactly = 1) { transactionRepository.save(any(), "pend-1") }
         coVerify { notificationRepository.markClassified("pend-1", "tx-new") }
         assertEquals("Transação confirmada", vm.state.value.toastMessage)
         assertTrue(vm.state.value.confirmReady.isEmpty())
@@ -517,7 +517,7 @@ class HomeViewModelTest {
             Result.success(listOf(recognizedNotification("pend-1")))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
             Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
-        coEvery { transactionRepository.save(any()) } returns Result.success("tx-new")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
         coEvery { notificationRepository.markClassified(any(), any()) } returns Result.success(Unit)
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -535,7 +535,7 @@ class HomeViewModelTest {
             Result.success(listOf(recognizedNotification("pend-1")))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
             Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("boom"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("boom"))
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
         val item = vm.state.value.confirmReady.single()
@@ -563,7 +563,7 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { transactionRepository.markPaid("tx-99") }
-        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        coVerify(exactly = 0) { transactionRepository.save(any(), any()) }
         assertEquals("Transação confirmada", vm.state.value.toastMessage)
     }
 
@@ -573,7 +573,7 @@ class HomeViewModelTest {
             Result.success(listOf(recognizedNotification("pend-1")))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
             Result.success(ClassifiedNotification(recognizedNotification("pend-1"), pendingTransactionId = null))
-        coEvery { transactionRepository.save(any()) } returns Result.failure(RuntimeException("save failed"))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.failure(RuntimeException("save failed"))
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
         val item = vm.state.value.confirmReady.single()
@@ -701,7 +701,7 @@ class HomeViewModelTest {
 
         coVerify(exactly = 1) { transactionRepository.markPaid("inv-1") }
         // The whole point of the feature: confirming must never create a second expense.
-        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        coVerify(exactly = 0) { transactionRepository.save(any(), any()) }
     }
 
     @Test
@@ -955,7 +955,7 @@ class HomeViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { transactionRepository.markPaid("inv-2") }
-        coVerify(exactly = 0) { transactionRepository.save(any()) }
+        coVerify(exactly = 0) { transactionRepository.save(any(), any()) }
         // Normalized: production's IssuerCardMatcher.resolve looks the learned map up by
         // normalizeIssuer(app), never by the raw app label.
         assertEquals(mapOf("nubank" to "card-1"), issuerCardRepository.getMap())

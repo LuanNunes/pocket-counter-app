@@ -890,7 +890,7 @@ class TransacoesViewModelTest {
 
     @Test
     fun `saveForm in Add mode calls save and clears formMode then reloads`() = runTest {
-        coEvery { transactionRepository.save(any()) } returns Result.success("new-id")
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("new-id")
 
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -899,7 +899,7 @@ class TransacoesViewModelTest {
         vm.saveForm(WizardDraft(type = TransactionType.EXPENSE, amount = BigDecimal("10.00")))
         testDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { transactionRepository.save(any()) }
+        coVerify(exactly = 1) { transactionRepository.save(any(), null) }
         assertNull(vm.state.value.formMode)
         // getMonth called at least twice: init + after save
         coVerify(atLeast = 2) { transactionRepository.getMonth(any()) }

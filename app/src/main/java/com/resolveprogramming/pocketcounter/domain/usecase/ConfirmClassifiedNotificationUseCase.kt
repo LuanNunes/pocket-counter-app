@@ -12,7 +12,8 @@ import javax.inject.Inject
  * Two paths:
  *  - [pendingTransactionId] != null → the notification matches an existing PENDING transaction; mark
  *    that transaction paid (no new row is created) and return its id.
- *  - otherwise → create a new transaction from [draft] and return the new id.
+ *  - otherwise → create a new transaction from [draft], attributed to [notificationId] (see
+ *    `TransactionDto.idNotification`), and return the new id.
  *
  * In both cases the notification is then linked to the transaction via `markClassified` so it leaves
  * the review queue. That link is **best-effort**: the transaction is the source of truth and is never
@@ -33,7 +34,7 @@ class ConfirmClassifiedNotificationUseCase @Inject constructor(
         val result = if (pendingTransactionId != null) {
             transactionRepository.markPaid(pendingTransactionId).map { pendingTransactionId }
         } else {
-            transactionRepository.save(draft)
+            transactionRepository.save(draft, notificationId)
         }
         return result.onSuccess { transactionId ->
             runCatching { notificationRepository.markClassified(notificationId, transactionId) }
