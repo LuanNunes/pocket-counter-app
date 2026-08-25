@@ -87,6 +87,18 @@ fun categoriesFor(
 }
 
 /**
+ * One-phrase announcement for a category row, e.g. "Alimentação, 6 tags, 2 selecionadas".
+ * The counts are separate visual badges, which screen readers would otherwise read as loose numbers.
+ */
+fun categoryA11yLabel(category: TagPickerCategory): String {
+    val tags = "${category.tagCount} " + ("tag".takeIf { category.tagCount == 1 } ?: "tags")
+    if (category.selectedCount == 0) return "${category.name}, $tags"
+    val selected = "${category.selectedCount} " +
+        ("selecionada".takeIf { category.selectedCount == 1 } ?: "selecionadas")
+    return "${category.name}, $tags, $selected"
+}
+
+/**
  * Returns the tags for a single drill-down view.
  *
  * - [contextId] == [ORPHAN_CONTEXT_ID] → orphan tags (null/blank idContext or unknown context)

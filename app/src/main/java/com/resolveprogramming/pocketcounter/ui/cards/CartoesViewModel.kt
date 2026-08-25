@@ -17,6 +17,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.buildFaturaBreakdown
 import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -108,17 +109,27 @@ class CartoesViewModel @Inject constructor(
     private fun refOf(monthKey: String): Int =
         YearMonth.parse(monthKey).let { it.year * 100 + it.monthValue }
 
+    // Tags and contexts land in a single emission: a state with tags but no contexts yet buckets
+    // every tag under "Sem categoria".
     private fun loadTags() {
         viewModelScope.launch {
-            tagRepository.getAllTags().onSuccess { tags ->
-                // Invoice items (and the rules learned from them) are expense-only; never offer
-                // income categories in the fatura classify sheet.
-                _state.update {
-                    it.copy(allTags = tags.filter { t -> t.kind == TransactionType.EXPENSE }).withCategories()
-                }
-            }
-            tagRepository.getAllContexts().onSuccess { contexts ->
-                _state.update { it.copy(allContexts = contexts).withCategories() }
+            val tagsDeferred = async { tagRepository.getAllTags() }
+            val contextsDeferred = async { tagRepository.getAllContexts() }
+            // Invoice items (and the rules learned from them) are expense-only; never offer
+            // income categories in the fatura classify sheet.
+            val tagsResult = tagsDeferred.await()
+            val contextsResult = contextsDeferred.await()
+            val tags = tagsResult.getOrNull()?.filter { it.kind == TransactionType.EXPENSE }
+            val contexts = contextsResult.getOrNull()
+            // Without this the picker's empty state claims the user has no tags at all.
+            val loadError = "Não foi possível carregar as tags"
+                .takeIf { tagsResult.isFailure || contextsResult.isFailure }
+            _state.update {
+                it.copy(
+                    allTags = tags ?: it.allTags,
+                    allContexts = contexts ?: it.allContexts,
+                    toastMessage = loadError ?: it.toastMessage,
+                ).withCategories()
             }
         }
     }
