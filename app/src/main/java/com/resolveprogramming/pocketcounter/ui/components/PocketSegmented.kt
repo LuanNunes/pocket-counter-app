@@ -76,8 +76,7 @@ fun PocketSegmented(
                         role = Role.Tab,
                         onClick = { onSelect(index) },
                     )
-                    // Which segment is active is carried by colour alone otherwise — invisible to a
-                    // screen reader, and untestable.
+                    // Otherwise the active segment is carried by colour alone.
                     .semantics { this.selected = selected },
                 contentAlignment = Alignment.Center,
             ) {

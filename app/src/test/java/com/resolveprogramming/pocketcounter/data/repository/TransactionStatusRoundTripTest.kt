@@ -16,12 +16,7 @@ import org.junit.Test
 import java.math.BigDecimal
 import java.time.LocalDate
 
-/**
- * Payment status must survive the write→read round trip: what the form saved is what the ledger
- * (and therefore the edit sheet, which seeds from it) shows next. The fake API echoes the stored
- * body back the way the backend does — it copies `statusPayment` verbatim — so a status that flips
- * here is the app's own doing, not the server's.
- */
+/** Payment status must survive the write→read round trip — the edit sheet seeds from what comes back. */
 class TransactionStatusRoundTripTest {
 
     private val api = mockk<TransactionApi>()
@@ -40,7 +35,7 @@ class TransactionStatusRoundTripTest {
         name = "Mercado",
     )
 
-    /** Saves the draft, echoes the stored row back through the month read, returns what the UI sees. */
+    /** Saves, then echoes the stored row back through the month read the way the backend would. */
     private suspend fun roundTrip(status: PaymentStatus, method: PaymentMethod? = PaymentMethod.PIX): PaymentStatus {
         val sent = slot<TransactionDto>()
         coEvery { api.addExpense(capture(sent)) } returns "tx-1"
@@ -78,7 +73,7 @@ class TransactionStatusRoundTripTest {
         repo.save(draft(PaymentStatus.PAID)).getOrThrow()
 
         assertEquals("PAID", sent.captured.statusPayment)
-        // The backend rejects PAID with no datePaid ("Payment date is required when status is PAID").
+        // The backend rejects PAID with no datePaid.
         assertNotNull(sent.captured.datePaid)
     }
 }
