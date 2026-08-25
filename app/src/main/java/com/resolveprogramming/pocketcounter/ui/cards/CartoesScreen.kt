@@ -12,13 +12,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,11 +34,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -60,8 +62,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -76,15 +81,15 @@ import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.UNCATEGORIZED_GROUP_IDS
 import com.resolveprogramming.pocketcounter.domain.model.faturaDonutSlices
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.MonthStepperRow
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
+import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketCard
-import com.resolveprogramming.pocketcounter.ui.components.PocketChip
-import com.resolveprogramming.pocketcounter.ui.components.PocketChipVariant
 import com.resolveprogramming.pocketcounter.ui.components.PocketDonutChart
 import com.resolveprogramming.pocketcounter.ui.components.PocketSegmented
 import com.resolveprogramming.pocketcounter.ui.components.SegmentOption
@@ -92,6 +97,7 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketTabBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.components.TabId
+import com.resolveprogramming.pocketcounter.ui.components.TagPicker
 import com.resolveprogramming.pocketcounter.ui.relatorio.ProportionBar
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -100,6 +106,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+
+private const val SHEET_MAX_HEIGHT_FRACTION = 0.86f
 
 @Composable
 fun CartoesScreen(
@@ -176,6 +184,7 @@ fun CartoesScreen(
             card = target.card,
             item = target.item,
             allTags = state.allTags,
+            contexts = state.allContexts,
             formatter = formatter,
             onDismiss = { classifyTarget = null },
             onSave = { selectedTags, learnRule ->
@@ -982,129 +991,162 @@ private fun InvoiceItemRow(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ClassifyPurchaseSheet(
+internal fun ClassifyPurchaseSheet(
     card: CreditCard,
     item: InvoiceItem,
     allTags: List<Tag>,
+    contexts: List<TagContext>,
     formatter: NumberFormat,
     onDismiss: () -> Unit,
     onSave: (selectedTags: List<Tag>, learnRule: Boolean) -> Unit,
 ) {
-    var selectedIds by remember { mutableStateOf(item.tags.map { it.id }.toSet()) }
-    var learnRule by remember { mutableStateOf(item.tags.isEmpty()) }
+    val itemKey = item.itemId ?: item.transactionId
+    var selectedIds by remember(itemKey) { mutableStateOf(item.tags.map { it.id }.distinct()) }
+    var learnRule by remember(itemKey) { mutableStateOf(item.tags.isEmpty()) }
 
     val dayFormatter = DateTimeFormatter.ofPattern("dd MMM", Locale("pt", "BR"))
     val dateStr = item.date.format(dayFormatter).lowercase(Locale("pt", "BR"))
 
+    // The catalog is expense-only, so a tag the item already carries can be missing from it.
+    // Saving replaces tagIds wholesale, so anything dropped here would be erased server-side.
+    val catalog = remember(allTags, item.tags) { (allTags + item.tags).distinctBy { it.id } }
+    val selectedTags = remember(selectedIds, catalog) {
+        val byId = catalog.associateBy { it.id }
+        selectedIds.mapNotNull(byId::get)
+    }
+    val canSave = selectedTags.isNotEmpty()
+    val ctaLabel = "Salvar e criar regra".takeIf { learnRule } ?: "Salvar classificação"
+
+    // Capped at 86% of the window (spec): unbounded, a long tag list pushes the sheet flush to the
+    // top, hiding the grabber behind the status bar and leaving no scrim to tap out of.
+    val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX_HEIGHT_FRACTION
+
     PocketBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            text = "Classificar compra",
-            style = PocketTheme.typography.stepQuestion,
-            color = PocketTheme.colors.text,
-        )
+        Column(modifier = Modifier.fillMaxWidth().heightIn(max = maxSheetHeight)) {
+            Text(
+                text = "Classificar compra",
+                style = PocketTheme.typography.stepQuestion,
+                color = PocketTheme.colors.text,
+                modifier = Modifier.semantics { heading() },
+            )
 
-        Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
 
-        SummaryRow(
-            label = "Compra",
-            value = item.name + (item.installmentLabel?.let { " · $it" } ?: ""),
-        )
-        Spacer(Modifier.height(8.dp))
-        SummaryRow(
-            label = "Valor",
-            value = "${formatter.format(item.amount)} · $dateStr",
-            mono = true,
-        )
-        Spacer(Modifier.height(8.dp))
-        SummaryRow(label = "Cartão", value = card.name)
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.card)
+                        .background(PocketTheme.colors.surface, PocketTheme.shapes.card)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SummaryRow(
+                        label = "Compra",
+                        value = item.name + (item.installmentLabel?.let { " · $it" } ?: ""),
+                        maxLines = 3,
+                    )
+                    SummaryRow(
+                        label = "Valor",
+                        value = "${formatter.format(item.amount)} · $dateStr",
+                        mono = true,
+                    )
+                    SummaryRow(label = "Cartão", value = card.name)
+                }
 
-        Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(20.dp))
 
-        Text(
-            text = "Tags",
-            style = PocketTheme.typography.sectionHeader,
-            color = PocketTheme.colors.text3,
-        )
-        Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Tags",
+                    style = PocketTheme.typography.sectionHeader,
+                    color = PocketTheme.colors.text3,
+                )
+                Spacer(Modifier.height(10.dp))
 
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            allTags.forEach { tag ->
-                val isSelected = tag.id in selectedIds
-                PocketChip(
-                    label = tag.name,
-                    variant = PocketChipVariant.ON.takeIf { isSelected } ?: PocketChipVariant.DEFAULT,
-                    onClick = {
-                        selectedIds = (selectedIds - tag.id).takeIf { isSelected } ?: (selectedIds + tag.id)
+                TagPicker(
+                    type = TransactionType.EXPENSE,
+                    tags = catalog,
+                    contexts = contexts,
+                    selectedTagIds = selectedIds,
+                    onToggleTag = { tagId ->
+                        val isSelected = tagId in selectedIds
+                        selectedIds = (selectedIds - tagId).takeIf { isSelected } ?: (selectedIds + tagId)
                     },
                 )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(PocketTheme.colors.accentBg, PocketTheme.shapes.card)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Aprender este padrão",
+                            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
+                            color = PocketTheme.colors.text,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Próximas compras contendo \"${item.name}\" no ${card.name} serão classificadas sozinhas.",
+                            style = PocketTheme.typography.bodyXs,
+                            color = PocketTheme.colors.text2,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(
+                        checked = learnRule,
+                        onCheckedChange = { learnRule = it },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = PocketTheme.colors.accent,
+                            checkedThumbColor = PocketTheme.colors.accentInk,
+                        ),
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
             }
-        }
 
-        Spacer(Modifier.height(20.dp))
+            HorizontalDivider(color = PocketTheme.colors.line)
+            Spacer(Modifier.height(12.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(PocketTheme.colors.accentBg, PocketTheme.shapes.card)
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
+            // Also spoken as the CTA's state: a disabled button alone announces "desativado",
+            // and the reason sits in a sibling node the user never reaches.
+            val disabledHint = "Escolha ao menos uma tag.".takeUnless { canSave }
+            disabledHint?.let { hint ->
                 Text(
-                    text = "Aprender este padrão",
-                    style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                    color = PocketTheme.colors.text,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Próximas compras contendo \"${item.name}\" no ${card.name} serão classificadas sozinhas.",
+                    text = hint,
                     style = PocketTheme.typography.bodyXs,
-                    color = PocketTheme.colors.text2,
+                    color = PocketTheme.colors.text3,
                 )
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.width(12.dp))
-            Switch(
-                checked = learnRule,
-                onCheckedChange = { learnRule = it },
-                colors = SwitchDefaults.colors(
-                    checkedTrackColor = PocketTheme.colors.accent,
-                    checkedThumbColor = PocketTheme.colors.accentInk,
-                ),
-            )
-        }
 
-        Spacer(Modifier.height(16.dp))
-
-        val selectedTags = allTags.filter { it.id in selectedIds }
-        val canSave = selectedTags.isNotEmpty()
-        val ctaLabel = "Salvar e criar regra".takeIf { learnRule } ?: "Salvar classificação"
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(PocketTheme.shapes.card)
-                .background(
-                    PocketTheme.colors.accent.takeIf { canSave } ?: PocketTheme.colors.surface2,
-                )
-                .let { base -> run { if (canSave) return@run base.clickable { onSave(selectedTags, learnRule) }; base } }
-                .padding(vertical = 16.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
+            PocketButton(
                 text = ctaLabel,
-                style = PocketTheme.typography.button,
-                color = PocketTheme.colors.accentInk.takeIf { canSave } ?: PocketTheme.colors.text3,
+                onClick = { onSave(selectedTags, learnRule) },
+                enabled = canSave,
+                fillMaxWidth = true,
+                modifier = Modifier.semantics {
+                    disabledHint?.let { stateDescription = it }
+                },
+                leading = {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
             )
         }
-
-        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -1213,10 +1255,12 @@ private fun SummaryRow(
     label: String,
     value: String,
     mono: Boolean = false,
+    maxLines: Int = 1,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1230,9 +1274,11 @@ private fun SummaryRow(
             style = PocketTheme.typography.monoSm.takeIf { mono }
                 ?: PocketTheme.typography.bodySm.copy(fontWeight = FontWeight.Medium),
             color = PocketTheme.colors.text,
-            maxLines = 1,
+            maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
-            softWrap = false,
+            softWrap = maxLines > 1,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
         )
     }
 }

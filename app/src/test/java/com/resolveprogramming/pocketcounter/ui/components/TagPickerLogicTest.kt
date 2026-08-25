@@ -165,4 +165,34 @@ class TagPickerLogicTest {
 
         assertEquals(emptyList<Tag>(), tags)
     }
+
+    // -- categoryA11yLabel --
+
+    @Test
+    fun `categoryA11yLabel omits the selected clause when nothing is selected`() {
+        val category = TagPickerCategory("c1", "Alimentação", 0xFF_AA_00_00L, tagCount = 3, selectedCount = 0)
+
+        assertEquals("Alimentação, 3 tags", categoryA11yLabel(category))
+    }
+
+    @Test
+    fun `categoryA11yLabel uses singular tag for a single-tag category`() {
+        val category = TagPickerCategory("c1", "Alimentação", 0xFF_AA_00_00L, tagCount = 1, selectedCount = 0)
+
+        assertEquals("Alimentação, 1 tag", categoryA11yLabel(category))
+    }
+
+    @Test
+    fun `categoryA11yLabel uses plural selecionadas for multiple selected tags`() {
+        val category = TagPickerCategory("c1", "Alimentação", 0xFF_AA_00_00L, tagCount = 3, selectedCount = 2)
+
+        assertEquals("Alimentação, 3 tags, 2 selecionadas", categoryA11yLabel(category))
+    }
+
+    @Test
+    fun `categoryA11yLabel uses singular selecionada for a single selected tag`() {
+        val category = TagPickerCategory("c1", "Alimentação", 0xFF_AA_00_00L, tagCount = 3, selectedCount = 1)
+
+        assertEquals("Alimentação, 3 tags, 1 selecionada", categoryA11yLabel(category))
+    }
 }

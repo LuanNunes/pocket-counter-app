@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.domain.model.Tag
@@ -116,8 +121,8 @@ fun TagPicker(
             )
         }
         if (!isSearching && type == TransactionType.INCOME) {
-            TagChipFlow(
-                tags = universe,
+            IncomeTagFlow(
+                universe = universe,
                 contexts = contexts,
                 selectedSet = selectedSet,
                 onToggleTag = onToggleTag,
@@ -146,12 +151,7 @@ private fun SearchResults(
     onToggleTag: (String) -> Unit,
 ) {
     if (matches.isEmpty()) {
-        Text(
-            text = "Nada encontrado. Crie tags em Mais › Contextos & Tags.",
-            style = PocketTheme.typography.bodySm,
-            color = PocketTheme.colors.text3,
-            modifier = Modifier.padding(bottom = 16.dp),
-        )
+        EmptyHint("Nada encontrado. Crie tags em Mais › Contextos & Tags.")
         return
     }
     TagChipFlow(
@@ -159,6 +159,35 @@ private fun SearchResults(
         contexts = contexts,
         selectedSet = selectedSet,
         onToggleTag = onToggleTag,
+    )
+}
+
+@Composable
+private fun IncomeTagFlow(
+    universe: List<Tag>,
+    contexts: List<TagContext>,
+    selectedSet: Set<String>,
+    onToggleTag: (String) -> Unit,
+) {
+    if (universe.isEmpty()) {
+        EmptyHint("Nenhuma categoria de renda ainda. Crie em Mais › Contextos & Tags.")
+        return
+    }
+    TagChipFlow(
+        tags = universe,
+        contexts = contexts,
+        selectedSet = selectedSet,
+        onToggleTag = onToggleTag,
+    )
+}
+
+@Composable
+private fun EmptyHint(text: String) {
+    Text(
+        text = text,
+        style = PocketTheme.typography.bodySm,
+        color = PocketTheme.colors.text3,
+        modifier = Modifier.padding(bottom = 16.dp),
     )
 }
 
@@ -174,6 +203,10 @@ private fun ExpenseDrill(
 ) {
     if (openCtx == null) {
         val categories = categoriesFor(universe, contexts, selectedSet)
+        if (categories.isEmpty()) {
+            EmptyHint("Nenhuma tag ainda. Crie em Mais › Contextos & Tags.")
+            return
+        }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             categories.forEach { category ->
                 CategoryRow(category = category, onClick = { onOpenCtx(category.id) })
@@ -228,9 +261,11 @@ private fun CategoryRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 44.dp)
             .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.chip)
             .background(PocketTheme.colors.surface, PocketTheme.shapes.chip)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = categoryA11yLabel(category) }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -323,9 +358,14 @@ fun TagOptionChip(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
+            .heightIn(min = 38.dp)
             .border(1.dp, borderColor, PocketTheme.shapes.chip)
             .background(bg, PocketTheme.shapes.chip)
-            .clickable(onClick = onClick)
+            .toggleable(
+                value = selected,
+                role = Role.Checkbox,
+                onValueChange = { onClick() },
+            )
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         if (dotColor != null) {
@@ -360,6 +400,7 @@ fun SelectedTagPills(
 ) {
     if (selectedTagIds.isEmpty()) return
     val contextMap = contexts.associateBy { it.id }
+    val tagMap = tags.associateBy { it.id }
     FlowRow(
         modifier = modifier
             .fillMaxWidth()
@@ -369,13 +410,15 @@ fun SelectedTagPills(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         selectedTagIds.forEach { tagId ->
-            val tag = tags.firstOrNull { it.id == tagId } ?: return@forEach
+            val tag = tagMap[tagId] ?: return@forEach
             val dotArgb = tag.idContext?.let { contextMap[it]?.color } ?: tag.color
             val dotColor = dotArgb?.let { Color(it) } ?: PocketTheme.colors.text3
             Row(
                 modifier = Modifier
+                    .heightIn(min = 32.dp)
                     .background(PocketTheme.colors.accent, PocketTheme.shapes.chip)
-                    .clickable { onRemove(tagId) }
+                    .clickable(role = Role.Button) { onRemove(tagId) }
+                    .semantics { contentDescription = "Remover ${tag.name}" }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -389,7 +432,7 @@ fun SelectedTagPills(
                 Spacer(Modifier.width(6.dp))
                 Icon(
                     imageVector = Icons.Filled.Close,
-                    contentDescription = "Remover",
+                    contentDescription = null,
                     modifier = Modifier.size(16.dp),
                     tint = PocketTheme.colors.accentInk.copy(alpha = 0.7f),
                 )

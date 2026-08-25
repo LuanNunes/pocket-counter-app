@@ -16,6 +16,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -140,6 +141,28 @@ class CartoesViewModelTest {
         dueLabel = "15 jul",
         items = items,
     )
+
+    // ── loadTags race window ─────────────────────────────────────────────────
+
+    @Test
+    fun `tags never surface before their contexts have arrived`() = runTest {
+        // Tags resolve immediately; contexts stall. A single combined update means allTags
+        // must stay empty until both are ready — never a window where every tag looks orphaned.
+        val contextsLatch = CompletableDeferred<Result<List<TagContext>>>()
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(tagBurger))
+        coEvery { tagRepository.getAllContexts() } coAnswers { contextsLatch.await() }
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue("allTags must not be populated before allContexts", vm.state.value.allTags.isEmpty())
+
+        contextsLatch.complete(Result.success(listOf(contextFood)))
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf(tagBurger), vm.state.value.allTags)
+        assertEquals(listOf(contextFood), vm.state.value.allContexts)
+    }
 
     // ── categoriesByCardId ────────────────────────────────────────────────────
 
