@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceReposit
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
@@ -31,10 +32,11 @@ import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
-import com.resolveprogramming.pocketcounter.domain.notification.CardLast4Matcher
+import com.resolveprogramming.pocketcounter.domain.notification.CardEvidence
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import com.resolveprogramming.pocketcounter.domain.notification.PaymentMethodResolver
 import com.resolveprogramming.pocketcounter.domain.notification.SourceBlocklist
+import com.resolveprogramming.pocketcounter.domain.notification.resolveDraftCard
 import com.resolveprogramming.pocketcounter.domain.rules.IgnoreOptions
 import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternResolver
@@ -124,6 +126,7 @@ class WizardViewModel @Inject constructor(
     private val classificationRuleRepository: ClassificationRuleRepository,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val cardLast4Repository: CardLast4Repository,
+    private val issuerCardRepository: IssuerCardRepository,
     private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
     private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository,
     private val blockedSourceRepository: BlockedSourceRepository,
@@ -168,6 +171,9 @@ class WizardViewModel @Inject constructor(
             }
             val last4MapDeferred = async { cardLast4Repository.getMap() }
             val dictDeferred = async { paymentMethodDictionaryRepository.getMap() }
+            val issuerDeferred = async {
+                runCatching { issuerCardRepository.getMap() }.getOrDefault(emptyMap())
+            }
 
             val base = baseDeferred.await()
             if (base == null) {
@@ -221,20 +227,25 @@ class WizardViewModel @Inject constructor(
                 NotificationTokenizer.tokenize(notification.text, notification.parsed)
             }
 
-            // Prefill payment method + card from the local last-4 map when the notification
-            // carries a "final NNNN" hint and the draft was not already resolved by a rule.
-            val last4Map = last4MapDeferred.await()
-            val learnedMap = dictDeferred.await()
-            val (last4Draft, unknownLast4) = prefillFromLast4(baseDraft, notification, last4Map)
-            // Resolve the payment method: learned dictionary first, then the built-in word list.
-            val draft = last4Draft.withResolvedPaymentMethod(notification, learnedMap)
+            // Resolve the payment method first — learned dictionary, then the built-in word list —
+            // so a CREDIT derived from the text also qualifies for issuer card resolution.
+            val methodDraft = baseDraft.withResolvedPaymentMethod(notification, dictDeferred.await())
+            val resolved = resolveDraftCard(
+                draft = methodDraft,
+                notification = notification,
+                evidence = CardEvidence(
+                    last4Map = last4MapDeferred.await(),
+                    cards = cards,
+                    learnedIssuers = issuerDeferred.await(),
+                ),
+            )
 
             // Switching to a different item resets to that item's fresh draft/step/tokens; only the
             // on-screen transition kept the previous item visible until this point.
             // enabledMethods is a cross-concern that survives the item reset.
             _state.value = WizardUiState(
                 notification = notification,
-                draft = draft,
+                draft = resolved.draft,
                 step = resolveStartStep(notification),
                 queue = queue,
                 cards = cards,
@@ -244,7 +255,7 @@ class WizardViewModel @Inject constructor(
                 tokens = tokens,
                 isLoading = false,
                 error = degradeError,
-                unknownCardLast4 = unknownLast4,
+                unknownCardLast4 = resolved.unknownLast4,
                 enabledMethods = _state.value.enabledMethods,
                 toastMessage = _state.value.toastMessage,
                 sourceTransactionCount = productiveDeferred.await(),
@@ -640,9 +651,9 @@ class WizardViewModel @Inject constructor(
      * [RuleTeachPlanner] targets the oldest active SUGGEST rule holding a pattern that both matches
      * this notification and names the same merchant as the taught one, so a correction edits the rule
      * the user saw go wrong instead of a gateway's — see [RuleTeachPlanner.plan]. The taught payment
-     * method and card ride along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing
-     * to derive them from, and a merchant's method is a property of the merchant. Best-effort —
-     * failures are swallowed.
+     * method rides along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing to
+     * derive it from, and a merchant's method is a property of the merchant. The card does not — it
+     * comes from each notification's own evidence. Best-effort — failures are swallowed.
      */
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
@@ -660,7 +671,6 @@ class WizardViewModel @Inject constructor(
             pattern = pattern,
             type = draft.type,
             paymentMethod = draft.paymentMethod,
-            cardId = draft.cardId,
             tags = ruleTags,
         )
         runCatching {
@@ -763,16 +773,6 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * Applies CREDIT + [cardId] to this draft, keeping the card only when the credit guard holds
-     * (an income draft must not carry a card id). Mirrors [WizardDraft.fromNotification].
-     */
-    private fun WizardDraft.withCard(cardId: String): WizardDraft {
-        val withMethod = withPaymentMethod(PaymentMethod.CREDIT)
-        if (withMethod.paymentMethod != PaymentMethod.CREDIT) return withMethod
-        return withMethod.copy(cardId = cardId)
-    }
-
-    /**
      * Resolves the payment method from the learned dictionary and, as a fallback, the built-in
      * word list ([BrNotificationParser.parsePaymentMethod]). No-op when [paymentMethod] is already
      * set. Routed through [WizardDraft.withPaymentMethod] so the credit guard still holds.
@@ -791,36 +791,6 @@ class WizardViewModel @Inject constructor(
      */
     fun dismissUnknownCard() {
         _state.update { it.copy(unknownCardLast4 = null) }
-    }
-
-    /**
-     * Applies the last-4 prefill to [draft] based on [notification]'s payment hint and the
-     * local [last4Map].
-     *
-     * Returns a pair of (possibly-updated draft, unknownLast4):
-     * - If the draft already has CREDIT + cardId (set by a classification rule), it is not
-     *   overridden and unknownLast4 is null.
-     * - If the hint resolves to a known card, the draft is prefilled with CREDIT + that cardId
-     *   and unknownLast4 is null.
-     * - If the hint has a 4-digit suffix but it is not in the map, the draft is unchanged and
-     *   unknownLast4 is the 4-digit string.
-     * - If the hint carries no 4-digit suffix ("cartão", "conta", null), both outputs are
-     *   unchanged / null.
-     */
-    private fun prefillFromLast4(
-        draft: WizardDraft,
-        notification: NotificationItem,
-        last4Map: Map<String, String>,
-    ): Pair<WizardDraft, String?> {
-        // Classification rule already resolved a specific card — respect it.
-        if (draft.paymentMethod == PaymentMethod.CREDIT && draft.cardId != null) {
-            return Pair(draft, null)
-        }
-        val last4 = CardLast4Matcher.extractLast4(notification.parsed.paymentHint)
-            ?: return Pair(draft, null)
-        val matchedId = CardLast4Matcher.matchCardId(last4, last4Map)
-            ?: return Pair(draft, last4)
-        return Pair(draft.withCard(matchedId), null)
     }
 
     private companion object {

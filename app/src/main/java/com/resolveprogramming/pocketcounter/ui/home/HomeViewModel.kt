@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
@@ -28,6 +29,7 @@ import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.model.groupLedger
+import com.resolveprogramming.pocketcounter.domain.notification.CardEvidence
 import com.resolveprogramming.pocketcounter.domain.notification.InvoicePaymentDetector
 import com.resolveprogramming.pocketcounter.domain.notification.IssuerCardMatcher
 import com.resolveprogramming.pocketcounter.domain.notification.confirmReadyItemOf
@@ -96,10 +98,9 @@ data class HomeUiState(
     val monthLoadFailed: Boolean = false,
 )
 
-private data class InvoiceMatchContext(
+private data class ClassifyContext(
+    val cardEvidence: CardEvidence = CardEvidence(),
     val pendingRows: List<HistoryItem> = emptyList(),
-    val cards: Collection<CreditCard> = emptyList(),
-    val learnedIssuers: Map<String, String> = emptyMap(),
     /** False when a neighbour-month fetch failed, so [pendingRows] is a truncated window. */
     val windowComplete: Boolean = true,
 )
@@ -117,6 +118,7 @@ class HomeViewModel @Inject constructor(
     private val tagRepository: TagRepository,
     private val cardRepository: CardRepository,
     private val issuerCardRepository: IssuerCardRepository,
+    private val cardLast4Repository: CardLast4Repository,
     private val tokenStore: TokenStore,
     private val confirmClassifiedNotification: ConfirmClassifiedNotificationUseCase,
     private val viewedMonth: ViewedMonthStore,
@@ -335,7 +337,7 @@ class HomeViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val batch = pending.take(CONFIRM_READY_CLASSIFY_CAP)
-            val context = invoiceMatchContext(batch, month)
+            val context = classifyContext(batch, month)
             val outcomes = batch
                 .map { base -> async { classifyOne(base, context) } }
                 .awaitAll()
@@ -369,7 +371,7 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private suspend fun classifyOne(base: NotificationItem, context: InvoiceMatchContext): ClassifyOutcome? {
+    private suspend fun classifyOne(base: NotificationItem, context: ClassifyContext): ClassifyOutcome? {
         val classified = notificationRepository.classify(base.id, base).getOrNull() ?: return null
         val isInvoiceShaped = InvoicePaymentDetector.isInvoicePaymentText(classified.notification.text)
         // A truncated pending-rows window must never resolve an invoice-shaped push: a same-amount
@@ -381,11 +383,11 @@ class HomeViewModel @Inject constructor(
         val match = matchInvoicePayment(
             notification = classified.notification,
             pendingRows = context.pendingRows,
-            cards = context.cards,
-            learnedIssuers = context.learnedIssuers,
+            cards = context.cardEvidence.cards,
+            learnedIssuers = context.cardEvidence.learnedIssuers,
         )
         if (match != null) return invoiceOutcome(classified.notification, match)
-        val ready = confirmReadyItemOf(classified) ?: return null
+        val ready = confirmReadyItemOf(classified, context.cardEvidence) ?: return null
         // The matcher declining (no cent-exact invoice, no resolvable card) must not fall through to
         // a one-tap CREATE: an invoice-shaped push may only settle a row, never create one. A backend-
         // echoed pendingTransactionId is a different, already-safe settle path and stays untouched.
@@ -400,6 +402,7 @@ class HomeViewModel @Inject constructor(
         is InvoicePaymentMatch.Matched -> ClassifyOutcome.Ready(
             ConfirmReadyItem(
                 notificationId = notification.id,
+                // Inert: a non-null pendingTransactionId makes the confirm a markPaid, never a save.
                 draft = WizardDraft.fromNotification(notification),
                 pendingTransactionId = match.invoice.id,
                 notification = notification,
@@ -415,24 +418,33 @@ class HomeViewModel @Inject constructor(
         )
     }
 
-    /** The pending rows, cards and learned issuers to resolve an invoice-payment match against. */
-    private suspend fun invoiceMatchContext(
+    /**
+     * The card evidence every classified notification needs, plus the pending rows an
+     * invoice-shaped one is matched against.
+     */
+    private suspend fun classifyContext(
         batch: List<NotificationItem>,
         month: YearMonth,
-    ): InvoiceMatchContext {
-        if (batch.none { InvoicePaymentDetector.isInvoicePaymentText(it.text) }) return InvoiceMatchContext()
+    ): ClassifyContext {
         // Bounded wait: an unresolved cardsReady must not park this classify pass forever, and an
         // empty cards map must never be misread as "no cards on file".
         val cardsLoaded = withTimeoutOrNull(CARDS_READY_TIMEOUT_MS) { cardsReady.await() } == true
-        if (!cardsLoaded) return InvoiceMatchContext(windowComplete = false)
-        val pendingRows = pendingRowsAround(month)
         // A failed read must degrade like a failed cards/pending-rows load, not silently fall back to
         // an empty map that could resolve a match a stale learned entry would have vetoed or narrowed.
         val learnedIssuers = runCatching { issuerCardRepository.getMap() }
-        return InvoiceMatchContext(
-            pendingRows = pendingRows.orEmpty(),
-            cards = _state.value.cards.values,
+        val evidence = CardEvidence(
+            last4Map = runCatching { cardLast4Repository.getMap() }.getOrDefault(emptyMap()),
+            cards = _state.value.cards.values.toList(),
             learnedIssuers = learnedIssuers.getOrDefault(emptyMap()),
+        )
+        if (batch.none { InvoicePaymentDetector.isInvoicePaymentText(it.text) }) {
+            return ClassifyContext(cardEvidence = evidence)
+        }
+        if (!cardsLoaded) return ClassifyContext(cardEvidence = evidence, windowComplete = false)
+        val pendingRows = pendingRowsAround(month)
+        return ClassifyContext(
+            cardEvidence = evidence,
+            pendingRows = pendingRows.orEmpty(),
             windowComplete = pendingRows != null && learnedIssuers.isSuccess,
         )
     }
@@ -604,6 +616,7 @@ class HomeViewModel @Inject constructor(
             }
             confirmClassifiedNotification(
                 prompt.notificationId,
+                // Inert: the non-null invoice id below makes this a markPaid, never a save.
                 WizardDraft.fromNotification(prompt.notification),
                 invoice.id,
             )
@@ -811,7 +824,7 @@ class HomeViewModel @Inject constructor(
         const val MIN_REFRESH_INDICATOR_MS = 600L
 
         // Bounds how long an invoice-shaped classify pass waits on loadLookups's first pass to
-        // settle state.cards. See invoiceMatchContext.
+        // settle state.cards. See classifyContext.
         const val CARDS_READY_TIMEOUT_MS = 5_000L
     }
 }

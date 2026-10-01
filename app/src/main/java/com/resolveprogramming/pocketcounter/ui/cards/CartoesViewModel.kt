@@ -7,7 +7,6 @@ import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
@@ -150,7 +149,6 @@ class CartoesViewModel @Inject constructor(
 
     fun classifyPurchase(
         item: InvoiceItem,
-        card: CreditCard,
         selectedTags: List<Tag>,
         learnRule: Boolean,
     ) {
@@ -162,7 +160,7 @@ class CartoesViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            cardRepository.classifyPurchase(item.invoiceId, itemId, selectedTags, learnRule, card)
+            cardRepository.classifyPurchase(item.invoiceId, itemId, selectedTags, learnRule)
                 .onSuccess { outcome ->
                     val message = run {
                         if (outcome.ruleRequested && outcome.ruleCreated) return@run "Classificada ✓ + regra criada"

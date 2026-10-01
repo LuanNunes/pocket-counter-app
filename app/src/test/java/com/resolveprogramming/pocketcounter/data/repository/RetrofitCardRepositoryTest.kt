@@ -109,7 +109,6 @@ package com.resolveprogramming.pocketcounter.data.repository
  *        itemId: String,
  *        tags: List<Tag>,
  *        learnRule: Boolean,
- *        card: CreditCard,
  *    ): Result<ClassifyOutcome>
  *
  *    (The old `transactionId` param is replaced by two params: invoiceId + itemId.)
@@ -144,7 +143,6 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
 import com.resolveprogramming.pocketcounter.domain.billing.BillingCycle
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -185,17 +183,6 @@ class RetrofitCardRepositoryTest {
         name = "Nubank",
         brand = "Visa",
         closingDay = 8,
-    )
-
-    private val card = CreditCard(
-        id = cardId,
-        name = "Nubank",
-        brand = "Visa",
-        last4 = "",
-        gradientStart = 0L,
-        gradientEnd = 0L,
-        limit = BigDecimal.ZERO,
-        billDay = 8,
     )
 
     @Before
@@ -521,7 +508,6 @@ class RetrofitCardRepositoryTest {
             itemId = "it1",
             tags = listOf(Tag(id = "t1", name = "x", kind = TransactionType.EXPENSE, idContext = "cat1")),
             learnRule = false,
-            card = card,
         )
 
         coVerify(exactly = 1) {
@@ -550,7 +536,6 @@ class RetrofitCardRepositoryTest {
             itemId = "it1",
             tags = listOf(expenseTag),
             learnRule = true,
-            card = card,
         )
 
         assertTrue(result.isSuccess)
@@ -575,7 +560,7 @@ class RetrofitCardRepositoryTest {
                         dto.matchType == "CONTAINS" &&
                         dto.transactionType == "EXPENSE" &&
                         dto.paymentMethod == "CREDIT" &&
-                        dto.cardId == cardId &&
+                        dto.cardId == null &&
                         dto.tagIds == listOf(ClassificationRuleTagDto(idTag = "t1", idCategory = "cat1"))
                 },
             )
@@ -593,7 +578,6 @@ class RetrofitCardRepositoryTest {
             itemId = "it1",
             tags = listOf(tag),
             learnRule = false,
-            card = card,
         )
 
         assertTrue(result.isSuccess)
@@ -622,7 +606,6 @@ class RetrofitCardRepositoryTest {
             itemId = "it1",
             tags = listOf(tagWithoutContext),
             learnRule = true,
-            card = card,
         )
 
         assertTrue(result.isSuccess)
@@ -649,7 +632,6 @@ class RetrofitCardRepositoryTest {
             itemId = "it1",
             tags = listOf(categorized, uncategorized),
             learnRule = true,
-            card = card,
         )
 
         assertTrue(result.isSuccess)
@@ -686,7 +668,6 @@ class RetrofitCardRepositoryTest {
             itemId = "it1",
             tags = listOf(categorized),
             learnRule = true,
-            card = card,
         )
 
         assertEquals(Result.success(ClassifyOutcome(ruleRequested = true, ruleCreated = false)), result)

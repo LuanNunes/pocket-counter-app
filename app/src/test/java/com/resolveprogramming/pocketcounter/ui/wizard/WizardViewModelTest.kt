@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeBlockedSourceRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
@@ -75,6 +76,7 @@ class WizardViewModelTest {
     private val seriesRepository: SeriesRepository = mockk()
     private val classificationRuleRepository: ClassificationRuleRepository = mockk()
     private val cardLast4Repository: CardLast4Repository = mockk()
+    private val issuerCardRepository = FakeIssuerCardRepository()
     private val fakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository()
     private val paymentMethodDictionaryRepository: PaymentMethodDictionaryRepository = mockk()
     private val blockedSourceRepository: BlockedSourceRepository = mockk()
@@ -193,6 +195,7 @@ class WizardViewModelTest {
                 notificationRepository,
             ),
             cardLast4Repository = cardLast4Repository,
+            issuerCardRepository = issuerCardRepository,
             paymentMethodPrefsRepository = paymentMethodPrefsRepository,
             paymentMethodDictionaryRepository = dictionaryRepository,
             blockedSourceRepository = blockedSources,
@@ -1935,8 +1938,8 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `loadNotification does not override existing CREDIT plus cardId from classification`() = runTest {
-        // Classification already returned CREDIT+card-from-rule — last4 map should not override it.
+    fun `loadNotification overrides a rule's cardId with the last4 the notification itself names`() = runTest {
+        // The rule's card is only a fallback: a "final NNNN" the device can resolve wins over it.
         val notification = makeNotification(
             paymentHint = "final 3685",
             paymentMethod = PaymentMethod.CREDIT,
@@ -1950,9 +1953,58 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // draft must keep the classification result, not be overridden by the last4 match
-        assertEquals("card-from-rule", vm.state.value.draft.cardId)
+        assertEquals("card-a", vm.state.value.draft.cardId)
         assertNull(vm.state.value.unknownCardLast4)
+    }
+
+    private fun TestScope.loadedDraftCard(
+        notification: NotificationItem,
+        cards: List<CreditCard>,
+    ): String? {
+        val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
+        coEvery { cardRepository.getCards() } returns Result.success(cards)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns Result.success(classified)
+
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        return vm.state.value.draft.cardId
+    }
+
+    @Test
+    fun `loadNotification resolves the card from the issuer when there is no last4 hint`() = runTest {
+        val notification = makeNotification(paymentMethod = PaymentMethod.CREDIT)
+
+        val cardId = loadedDraftCard(notification, listOf(makeCreditCard("card-itau").copy(name = "Itaú")))
+
+        assertEquals("card-itau", cardId)
+    }
+
+    @Test
+    fun `loadNotification keeps the rule's card when neither last4 nor issuer resolves`() = runTest {
+        val notification = makeNotification(
+            app = "Banco Desconhecido",
+            paymentMethod = PaymentMethod.CREDIT,
+            cardId = "card-from-rule",
+        )
+
+        val cardId = loadedDraftCard(notification, listOf(makeCreditCard("card-itau").copy(name = "Itaú")))
+
+        assertEquals("card-from-rule", cardId)
+    }
+
+    @Test
+    fun `loadNotification falls through to the rule's card when the issuer is ambiguous`() = runTest {
+        val notification = makeNotification(paymentMethod = PaymentMethod.CREDIT, cardId = "card-from-rule")
+        val twins = listOf(
+            makeCreditCard("card-itau-1").copy(name = "Itaú"),
+            makeCreditCard("card-itau-2").copy(name = "Itaú"),
+        )
+
+        val cardId = loadedDraftCard(notification, twins)
+
+        assertEquals("card-from-rule", cardId)
     }
 
     // -------------------------------------------------------------------------
@@ -2028,7 +2080,7 @@ class WizardViewModelTest {
     )
 
     @Test
-    fun `learnRuleIfRequested_noRuleMatchesNotification_callsCreate_withDraftPaymentAndCard`() = runTest {
+    fun `learnRuleIfRequested_noRuleMatchesNotification_callsCreate_withPaymentMethodButNoCard`() = runTest {
         // Notification text must contain the merchant so learnPattern resolves it
         val notification = makeNotification(id = "notif-1").copy(text = "Compra RAPPI aprovada R$ 49,90")
         val classified = ClassifiedNotification(notification = notification, pendingTransactionId = null)
@@ -2063,7 +2115,7 @@ class WizardViewModelTest {
             classificationRuleRepository.create(
                 match { rule ->
                     rule.paymentMethod == PaymentMethod.CREDIT &&
-                        rule.cardId == "card-x" &&
+                        rule.cardId == null &&
                         rule.patterns.contains("RAPPI") &&
                         rule.action == RuleAction.SUGGEST
                 },

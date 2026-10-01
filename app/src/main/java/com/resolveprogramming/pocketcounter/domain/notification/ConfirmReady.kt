@@ -18,9 +18,13 @@ import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
  *    wizard rather than create an invalid transaction.
  *
  * NEEDS_TAGS / NEEDS_REVIEW are never confirm-ready.
+ *
+ * [evidence] has no default on purpose: a call site that skipped it would silently file the charge
+ * on whatever card the matched rule pinned.
  */
-fun confirmReadyItemOf(classified: ClassifiedNotification): ConfirmReadyItem? {
-    val draft = WizardDraft.fromNotification(classified.notification)
+fun confirmReadyItemOf(classified: ClassifiedNotification, evidence: CardEvidence): ConfirmReadyItem? {
+    val base = WizardDraft.fromNotification(classified.notification)
+    val draft = resolveDraftCard(base, classified.notification, evidence).draft
     if (!isConfirmReady(classified, draft)) return null
     return ConfirmReadyItem(
         notificationId = classified.notification.id,

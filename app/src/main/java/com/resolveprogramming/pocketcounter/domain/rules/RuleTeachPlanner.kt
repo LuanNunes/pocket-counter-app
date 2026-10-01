@@ -40,7 +40,6 @@ object RuleTeachPlanner {
         pattern: String,
         type: TransactionType?,
         paymentMethod: PaymentMethod?,
-        cardId: String?,
         tags: List<Tag>,
     ): TeachPlan {
         val target = existing.firstOrNull { rule ->
@@ -50,7 +49,7 @@ object RuleTeachPlanner {
                     RulePatterns.matches(it, notificationText) && RulePatterns.sameSubject(it, pattern)
                 }
         } ?: return TeachPlan.Create(
-            ClassificationRule.learned(pattern, type, paymentMethod, cardId, tags),
+            ClassificationRule.learned(pattern, type, paymentMethod, tags),
         )
 
         val candidate = target.copy(
@@ -58,7 +57,7 @@ object RuleTeachPlanner {
             // Never null out a type the rule already learned.
             transactionType = type ?: target.transactionType,
             paymentMethod = paymentMethod ?: target.paymentMethod,
-            cardId = resolveCardId(paymentMethod, cardId, target.cardId),
+            cardId = resolveCardId(paymentMethod, target.cardId),
             // Overwritten, not unioned: a union would make a wrong tag impossible to remove through
             // the wizard, which is exactly how the rule set drifted in the first place.
             tags = tags,
@@ -79,11 +78,11 @@ object RuleTeachPlanner {
     private fun tagIdentity(tags: List<Tag>): List<Pair<String, String?>> = tags.map { it.id to it.idContext }
 
     /**
-     * Method and card move as a pair: a null taught method leaves both untouched (never pairing a new
-     * method with a stale card), a concrete one overwrites both and keeps the card only for CREDIT.
+     * Teaching never pins a card, but it must not strip a scope the user set by hand in Regras: the
+     * existing card survives, except when the taught method says the merchant is not credit at all.
      */
-    private fun resolveCardId(method: PaymentMethod?, cardId: String?, current: String?): String? {
+    private fun resolveCardId(method: PaymentMethod?, current: String?): String? {
         if (method == null) return current
-        return cardId.takeIf { method == PaymentMethod.CREDIT }
+        return current.takeIf { method == PaymentMethod.CREDIT }
     }
 }

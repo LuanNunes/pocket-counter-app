@@ -188,7 +188,7 @@ fun CartoesScreen(
             formatter = formatter,
             onDismiss = { classifyTarget = null },
             onSave = { selectedTags, learnRule ->
-                viewModel.classifyPurchase(target.item, target.card, selectedTags, learnRule)
+                viewModel.classifyPurchase(target.item, selectedTags, learnRule)
                 classifyTarget = null
             },
         )

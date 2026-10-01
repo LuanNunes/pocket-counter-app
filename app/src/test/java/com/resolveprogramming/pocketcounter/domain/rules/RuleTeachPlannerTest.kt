@@ -58,7 +58,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = tags,
         )
 
@@ -79,7 +78,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -87,40 +85,22 @@ class RuleTeachPlannerTest {
     }
 
     // -------------------------------------------------------------------------
-    // Create: draft payment method / card carried on the new rule
+    // Create: draft payment method carried on the new rule, card never pinned
     // -------------------------------------------------------------------------
 
     @Test
-    fun `plan_create_carriesDraftPaymentMethodAndCard`() {
+    fun `plan_create_carriesDraftPaymentMethod_butNeverPinsACard`() {
         val result = RuleTeachPlanner.plan(
             existing = emptyList(),
             notificationText = "Compra IFOOD aprovada R$ 49,90",
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = PaymentMethod.CREDIT,
-            cardId = "card-x",
             tags = listOf(makeTag()),
         )
 
         val created = (result as TeachPlan.Create).rule
         assertEquals(PaymentMethod.CREDIT, created.paymentMethod)
-        assertEquals("card-x", created.cardId)
-    }
-
-    @Test
-    fun `plan_create_dropsCardId_whenMethodIsNotCredit`() {
-        val result = RuleTeachPlanner.plan(
-            existing = emptyList(),
-            notificationText = "Compra IFOOD aprovada R$ 49,90",
-            pattern = "IFOOD",
-            type = TransactionType.EXPENSE,
-            paymentMethod = PaymentMethod.PIX,
-            cardId = "card-x",
-            tags = listOf(makeTag()),
-        )
-
-        val created = (result as TeachPlan.Create).rule
-        assertEquals(PaymentMethod.PIX, created.paymentMethod)
         assertNull(created.cardId)
     }
 
@@ -138,7 +118,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag(id = "tag-2")),
         )
 
@@ -160,7 +139,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag(id = "tag-2")),
         )
 
@@ -184,7 +162,6 @@ class RuleTeachPlannerTest {
             pattern = "PADARIA DE TESTE",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -205,7 +182,6 @@ class RuleTeachPlannerTest {
             pattern = "Mp *SHUKAI SUSHI",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -226,7 +202,6 @@ class RuleTeachPlannerTest {
             pattern = "PADARIA DE TESTE",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -244,7 +219,6 @@ class RuleTeachPlannerTest {
             pattern = "PADARIA DE TESTE",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag(id = "tag-2")),
         )
 
@@ -266,7 +240,6 @@ class RuleTeachPlannerTest {
             pattern = "RAPPI",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -276,11 +249,11 @@ class RuleTeachPlannerTest {
     }
 
     // -------------------------------------------------------------------------
-    // Update: payment method / card overwritten as a pair, tags overwritten not unioned
+    // Update: payment method overwritten, existing card scope untouched, tags overwritten
     // -------------------------------------------------------------------------
 
     @Test
-    fun `plan_update_overwritesPaymentMethodAndCard_whenDraftHasThem`() {
+    fun `plan_update_overwritesPaymentMethod_andNeverPinsACard`() {
         val existingRule = makeRule(
             id = "rule-1",
             patterns = listOf("IFOOD"),
@@ -294,13 +267,57 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = PaymentMethod.CREDIT,
-            cardId = "card-y",
             tags = listOf(makeTag()),
         )
 
         val updated = (result as TeachPlan.Update).rule
         assertEquals(PaymentMethod.CREDIT, updated.paymentMethod)
-        assertEquals("card-y", updated.cardId)
+        assertNull(updated.cardId)
+    }
+
+    @Test
+    fun `plan_update_keepsAHandSetCardScope_whenTeachingCredit`() {
+        val existingRule = makeRule(
+            id = "rule-1",
+            patterns = listOf("IFOOD"),
+            paymentMethod = PaymentMethod.CREDIT,
+            cardId = "card-old",
+        )
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(existingRule),
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
+            type = TransactionType.EXPENSE,
+            paymentMethod = PaymentMethod.CREDIT,
+            tags = listOf(makeTag(id = "tag-2")),
+        )
+
+        val updated = (result as TeachPlan.Update).rule
+        assertEquals("card-old", updated.cardId)
+    }
+
+    @Test
+    fun `plan_update_dropsTheCardScope_whenTeachingAMethodThatIsNotCredit`() {
+        val existingRule = makeRule(
+            id = "rule-1",
+            patterns = listOf("IFOOD"),
+            paymentMethod = PaymentMethod.CREDIT,
+            cardId = "card-old",
+        )
+
+        val result = RuleTeachPlanner.plan(
+            existing = listOf(existingRule),
+            notificationText = "Compra IFOOD CLUB aprovada R$ 49,90",
+            pattern = "IFOOD CLUB",
+            type = TransactionType.EXPENSE,
+            paymentMethod = PaymentMethod.PIX,
+            tags = listOf(makeTag(id = "tag-2")),
+        )
+
+        val updated = (result as TeachPlan.Update).rule
+        assertEquals(PaymentMethod.PIX, updated.paymentMethod)
+        assertNull(updated.cardId)
     }
 
     @Test
@@ -318,7 +335,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag(id = "tag-2")),
         )
 
@@ -339,7 +355,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(taughtTag),
         )
 
@@ -367,7 +382,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -391,7 +405,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -414,7 +427,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag()),
         )
 
@@ -431,7 +443,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD CLUB",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag(id = "tag-2")),
         )
 
@@ -454,7 +465,6 @@ class RuleTeachPlannerTest {
             pattern = "Uber",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(foodTag),
         )
 
@@ -476,7 +486,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -494,7 +503,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -512,7 +520,6 @@ class RuleTeachPlannerTest {
             pattern = "UberRides",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -530,7 +537,6 @@ class RuleTeachPlannerTest {
             pattern = "UBERRIDES",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -551,7 +557,6 @@ class RuleTeachPlannerTest {
             pattern = "DL     *UberRides",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -570,7 +575,6 @@ class RuleTeachPlannerTest {
             pattern = "dl *uberrides",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -588,7 +592,6 @@ class RuleTeachPlannerTest {
             pattern = "DL*UberRides",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(tag),
         )
 
@@ -614,7 +617,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(populated),
         )
 
@@ -631,7 +633,6 @@ class RuleTeachPlannerTest {
             pattern = "IFOOD",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(makeTag(id = "tag-2")),
         )
 
@@ -655,7 +656,6 @@ class RuleTeachPlannerTest {
             pattern = "UBER EATS",
             type = TransactionType.EXPENSE,
             paymentMethod = null,
-            cardId = null,
             tags = listOf(eatsTag),
         )
 
@@ -687,7 +687,6 @@ class RuleTeachPlannerTest {
             pattern = "UberRides",
             type = TransactionType.EXPENSE,
             paymentMethod = PaymentMethod.CREDIT,
-            cardId = "card-x",
             tags = listOf(tag),
         )
 
@@ -695,6 +694,5 @@ class RuleTeachPlannerTest {
         val updated = (result as TeachPlan.Update).rule
         assertEquals(listOf("Uber"), updated.patterns)
         assertEquals(PaymentMethod.CREDIT, updated.paymentMethod)
-        assertEquals("card-x", updated.cardId)
     }
 }

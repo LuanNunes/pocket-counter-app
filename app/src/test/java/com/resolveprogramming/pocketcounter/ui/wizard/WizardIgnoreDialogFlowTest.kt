@@ -12,6 +12,7 @@ import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceReposit
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
@@ -116,6 +117,7 @@ class WizardIgnoreDialogFlowTest {
             notificationRepository,
         ),
         cardLast4Repository = cardLast4Repository,
+        issuerCardRepository = FakeIssuerCardRepository(),
         paymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
         paymentMethodDictionaryRepository = FakePaymentMethodDictionaryRepository(),
         blockedSourceRepository = blockedSourceRepository,
