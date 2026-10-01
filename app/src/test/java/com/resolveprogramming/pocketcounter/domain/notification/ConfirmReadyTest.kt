@@ -25,6 +25,7 @@ class ConfirmReadyTest {
         cardId: String? = null,
         suggestedType: TransactionType? = null,
         tagIds: List<String> = listOf("tag-1"),
+        paymentHint: String? = null,
     ) = NotificationItem(
         id = "n1",
         app = "App",
@@ -38,7 +39,7 @@ class ConfirmReadyTest {
             amount = amount,
             date = LocalDate.of(2026, 6, 29),
             merchantRaw = "DL*UberRides",
-            paymentHint = null,
+            paymentHint = paymentHint,
         ),
         suggestions = ClassificationSuggestion(
             tagIds = tagIds,
@@ -53,6 +54,7 @@ class ConfirmReadyTest {
     fun `AUTO notification with a saveable draft is confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(notification(NotificationStatus.AUTO), pendingTransactionId = null),
+            CardEvidence(),
         )
 
         assertNotNull(item)
@@ -69,6 +71,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT, cardId = null),
                 pendingTransactionId = null,
             ),
+            CardEvidence(),
         )
 
         assertNull(item)
@@ -81,6 +84,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT, cardId = "card-1"),
                 pendingTransactionId = null,
             ),
+            CardEvidence(),
         )
 
         assertNotNull(item)
@@ -91,6 +95,7 @@ class ConfirmReadyTest {
     fun `NEEDS_TAGS notification is not confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(notification(NotificationStatus.NEEDS_TAGS), pendingTransactionId = null),
+            CardEvidence(),
         )
 
         assertNull(item)
@@ -100,6 +105,7 @@ class ConfirmReadyTest {
     fun `NEEDS_REVIEW notification is not confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(notification(NotificationStatus.NEEDS_REVIEW), pendingTransactionId = null),
+            CardEvidence(),
         )
 
         assertNull(item)
@@ -112,6 +118,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.NEEDS_REVIEW),
                 pendingTransactionId = "tx-99",
             ),
+            CardEvidence(),
         )
 
         assertNotNull(item)
@@ -125,6 +132,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, type = null, suggestedType = null),
                 pendingTransactionId = null,
             ),
+            CardEvidence(),
         )
 
         assertNull(item)
@@ -137,6 +145,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, type = null, suggestedType = TransactionType.EXPENSE),
                 pendingTransactionId = null,
             ),
+            CardEvidence(),
         )
 
         assertNotNull(item)
@@ -157,6 +166,44 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, type = parsed.type, amount = parsed.amount, suggestedType = null),
                 pendingTransactionId = null,
             ),
+            CardEvidence(),
+        )
+
+        assertNull(item)
+    }
+
+    @Test
+    fun `evidence from the notification overrides the rule's card`() {
+        val item = confirmReadyItemOf(
+            ClassifiedNotification(
+                notification(
+                    NotificationStatus.AUTO,
+                    paymentMethod = PaymentMethod.CREDIT,
+                    cardId = "card-rule",
+                    paymentHint = "final 3685",
+                ),
+                pendingTransactionId = null,
+            ),
+            CardEvidence(last4Map = mapOf("card-itau" to "3685")),
+        )
+
+        assertNotNull(item)
+        assertEquals("card-itau", item!!.draft.cardId)
+    }
+
+    @Test
+    fun `an unmapped last4 demotes an otherwise AUTO item`() {
+        val item = confirmReadyItemOf(
+            ClassifiedNotification(
+                notification(
+                    NotificationStatus.AUTO,
+                    paymentMethod = PaymentMethod.CREDIT,
+                    cardId = "card-rule",
+                    paymentHint = "final 9999",
+                ),
+                pendingTransactionId = null,
+            ),
+            CardEvidence(last4Map = mapOf("card-itau" to "3685")),
         )
 
         assertNull(item)

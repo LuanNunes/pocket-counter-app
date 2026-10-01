@@ -18,20 +18,19 @@ data class ClassificationRule(
     companion object {
         /**
          * A brand-new learned rule created by teaching: an active SUGGEST rule that matches
-         * [pattern] via CONTAINS and applies [type], [paymentMethod] (+ [cardId]) and [tags].
+         * [pattern] via CONTAINS and applies [type], [paymentMethod] and [tags].
          *
          * The payment method is learned on purpose. Deriving it per-notification from a "final NNNN"
          * hint only works for card notifications: Uber, PIX and débito messages carry no such hint,
          * leaving classify nothing to work from, so the user re-fixed the method on every single
          * capture. A merchant's payment method is a property of the merchant, not of the message.
          *
-         * [cardId] is kept only for [PaymentMethod.CREDIT], mirroring `WizardDraft.withPaymentMethod`.
+         * The card is not: it comes from the notification's own last-4/issuer evidence, never a rule.
          */
         fun learned(
             pattern: String,
             type: TransactionType?,
             paymentMethod: PaymentMethod?,
-            cardId: String?,
             tags: List<Tag>,
         ): ClassificationRule = ClassificationRule(
             id = null,
@@ -41,7 +40,7 @@ data class ClassificationRule(
             appliedCount = 0,
             transactionType = type,
             paymentMethod = paymentMethod,
-            cardId = cardId.takeIf { paymentMethod == PaymentMethod.CREDIT },
+            cardId = null,
             tags = tags,
             action = RuleAction.SUGGEST,
         )

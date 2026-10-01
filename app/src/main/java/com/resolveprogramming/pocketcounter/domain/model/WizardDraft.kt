@@ -44,6 +44,18 @@ data class WizardDraft(
         )
     }
 
+    /**
+     * Applies CREDIT + [cardId], keeping the card only when the credit guard holds — an income
+     * draft must not carry a card id.
+     */
+    fun withCard(cardId: String): WizardDraft {
+        val withMethod = withPaymentMethod(PaymentMethod.CREDIT)
+        if (withMethod.paymentMethod != PaymentMethod.CREDIT) return withMethod
+        return withMethod.copy(cardId = cardId)
+    }
+
+    fun withoutCard(): WizardDraft = copy(cardId = null)
+
     fun withTagToggled(tagId: String): WizardDraft {
         if (tagId in tagIds) return copy(tagIds = tagIds - tagId)
         return copy(tagIds = tagIds + tagId)

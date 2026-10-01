@@ -4,6 +4,7 @@ import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
 import com.resolveprogramming.pocketcounter.data.local.TokenStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
@@ -62,6 +63,7 @@ class HomeViewModelTest {
     private val tagRepository: TagRepository = mockk()
     private val cardRepository: CardRepository = mockk()
     private val issuerCardRepository = FakeIssuerCardRepository()
+    private val cardLast4Repository: CardLast4Repository = mockk()
     private val productiveSourceRepository = FakeProductiveSourceRepository()
     private val tokenStore: TokenStore = mockk()
 
@@ -102,6 +104,7 @@ class HomeViewModelTest {
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
         every { tagRepository.refreshLookups() } returns Unit
         coEvery { cardRepository.getCards() } returns Result.success(emptyList())
+        coEvery { cardLast4Repository.getMap() } returns emptyMap()
         coEvery { cardRepository.getOpenInvoices(any()) } returns Result.success(emptyList())
         coEvery { tokenStore.getUserName() } returns "Guilherme"
         coEvery { notificationRepository.getPendingReview() } returns Result.success(emptyList())
@@ -129,6 +132,7 @@ class HomeViewModelTest {
         tagRepository = tagRepository,
         cardRepository = cardRepository,
         issuerCardRepository = issuerCardRepository,
+        cardLast4Repository = cardLast4Repository,
         tokenStore = tokenStore,
         confirmClassifiedNotification = ConfirmClassifiedNotificationUseCase(
             transactionRepository,
@@ -476,6 +480,58 @@ class HomeViewModelTest {
         assertEquals("pend-1", ready.single().notificationId)
         // The banner counts only items still needing the wizard.
         assertEquals(0, vm.state.value.pendingReviewCount)
+    }
+
+    private fun creditRuleNotification(id: String, hint: String): NotificationItem {
+        val base = recognizedNotification(id)
+        return base.copy(
+            parsed = base.parsed.copy(paymentHint = hint),
+            suggestions = base.suggestions.copy(paymentMethod = PaymentMethod.CREDIT, cardId = "card-B"),
+        )
+    }
+
+    @Test
+    fun `an AUTO push whose last4 names card A beats the card its rule pinned`() = runTest {
+        val notification = creditRuleNotification("pend-1", "final 3685")
+        coEvery { cardLast4Repository.getMap() } returns mapOf("card-A" to "3685", "card-B" to "1111")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("card-A", vm.state.value.confirmReady[0].draft.cardId)
+    }
+
+    @Test
+    fun `an AUTO push with no hint takes the card its issuer names over the card its rule pinned`() = runTest {
+        val notification = creditRuleNotification("pend-1", "final 0000").let {
+            it.copy(app = "Nubank", parsed = it.parsed.copy(paymentHint = null))
+        }
+        coEvery { cardRepository.getCards() } returns Result.success(
+            listOf(CreditCard("card-A", "Nubank", "Mastercard", "0000", 0L, 0L, BigDecimal("1000"), 10)),
+        )
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("card-A", vm.state.value.confirmReady[0].draft.cardId)
+    }
+
+    @Test
+    fun `an AUTO push with an unmapped last4 is not confirm-ready despite its rule card`() = runTest {
+        val notification = creditRuleNotification("pend-1", "final 9999")
+        coEvery { cardLast4Repository.getMap() } returns mapOf("card-A" to "3685")
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
     }
 
     @Test

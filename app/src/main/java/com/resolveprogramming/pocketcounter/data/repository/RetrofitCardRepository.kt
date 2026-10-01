@@ -116,7 +116,6 @@ class RetrofitCardRepository @Inject constructor(
         itemId: String,
         tags: List<Tag>,
         learnRule: Boolean,
-        card: CreditCard,
     ): Result<ClassifyOutcome> = runCatching {
         // Fetch the item so the tags-only edit round-trips its name/amount unchanged. If the
         // fetch fails or the item is gone, fail the call — never PUT empty name/zero amount,
@@ -160,7 +159,6 @@ class RetrofitCardRepository @Inject constructor(
                 matchType = "CONTAINS",
                 transactionType = "EXPENSE",
                 paymentMethod = "CREDIT",
-                cardId = card.id,
                 tagIds = ruleTags.map { ClassificationRuleTagDto(idTag = it.id, idCategory = it.idContext!!) },
             )
             classificationRuleApi.create(dto)

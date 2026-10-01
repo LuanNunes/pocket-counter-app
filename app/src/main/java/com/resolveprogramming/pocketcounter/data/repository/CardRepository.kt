@@ -22,7 +22,6 @@ interface CardRepository {
         itemId: String,
         tags: List<Tag>,
         learnRule: Boolean,
-        card: CreditCard,
     ): Result<ClassifyOutcome>
 
     /** Creates a credit card and returns the mapped domain model. */
