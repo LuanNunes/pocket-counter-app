@@ -507,4 +507,12 @@ class WizardDraftTest {
 
         assertEquals(TransactionType.INCOME, draft.type)
     }
+
+    @Test
+    fun `hasUsableName requires a non-blank name with at least one letter`() {
+        val results = listOf(null, "", "   ", "29", "Mercado 29")
+            .map { WizardDraft(name = it).hasUsableName() }
+
+        assertEquals(listOf(false, false, false, false, true), results)
+    }
 }

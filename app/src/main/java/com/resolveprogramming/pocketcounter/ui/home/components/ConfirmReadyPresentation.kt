@@ -54,7 +54,7 @@ fun confirmReadyPresentation(
     )
     // The card authorizes marking THIS row paid, so every number on it describes that row. The
     // notification's own amount and timestamp describe nothing the user can go and verify.
-    val title = matched?.displayTitle() ?: resolveTitle(draft, item.notification.parsed.merchantRaw, lookups.tags)
+    val title = matched?.displayTitle() ?: resolveTitle(draft, lookups.tags)
     // A backend-echoed pending match (pendingTransactionId set, but the backend — not this client —
     // resolved it, so matched is null) carries no draft.type either: BrNotificationParser nulls the
     // type for this text. Falling back to EXPENSE mirrors how it rendered before this feature.
@@ -97,13 +97,11 @@ private fun signedAmount(amount: BigDecimal?, type: TransactionType?): BigDecima
 }
 
 /**
- * A title has to read as a name. A stored merchant with no letters ("29", from an old pre-fix
- * parse) is junk — fall back to the recognized tag, then a neutral label, so the card that
- * authorizes a ledger write never shows nonsense.
+ * A title has to read as a name. Only the backend-echoed pending path still reaches the fallbacks —
+ * `confirmReadyItemOf` keeps a nameless AUTO push out of one-tap entirely.
  */
-private fun resolveTitle(draft: WizardDraft, merchantRaw: String?, tags: Map<String, Tag>): String =
-    listOfNotNull(draft.name, merchantRaw)
-        .firstOrNull { text -> text.isNotBlank() && text.any(Char::isLetter) }
+private fun resolveTitle(draft: WizardDraft, tags: Map<String, Tag>): String =
+    draft.name?.takeIf { draft.hasUsableName() }
         ?: draft.tagIds.firstNotNullOfOrNull { tags[it]?.name }
         ?: "Lançamento"
 

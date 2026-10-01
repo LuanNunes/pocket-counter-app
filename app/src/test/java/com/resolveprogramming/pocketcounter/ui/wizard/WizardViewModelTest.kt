@@ -18,6 +18,8 @@ import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepo
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.domain.notification.NotificationEvidence
+import com.resolveprogramming.pocketcounter.domain.notification.resolveDraftFromNotification
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
@@ -141,13 +143,14 @@ class WizardViewModelTest {
         paymentHint: String? = null,
         app: String = "Banco Itaú",
         channel: NotificationChannel = NotificationChannel.SMS,
+        text: String = "Compra aprovada R$ 49,90",
     ) = NotificationItem(
         id = id,
         app = app,
         channel = channel,
         time = "agora",
         received = "10:00",
-        text = "Compra aprovada R$ 49,90",
+        text = text,
         status = status,
         parsed = ParsedNotification(
             type = type,
@@ -462,7 +465,57 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `loadNotification classify failure sets non-null error message`() = runTest {
+    fun `the wizard opens on the same draft the one-tap path builds from the same evidence`() = runTest {
+        val itau = makeCreditCard("card-itau").copy(name = "Itaú")
+        data class Case(
+            val notification: NotificationItem,
+            val evidence: NotificationEvidence,
+        )
+        val cases = listOf(
+            Case(
+                makeNotification(text = "Compra parcelado R$ 49,90"),
+                NotificationEvidence(
+                    cards = listOf(itau),
+                    paymentMethodDictionary = mapOf("parcelado" to PaymentMethod.CREDIT),
+                ),
+            ),
+            Case(
+                makeNotification(text = "Compra no crédito R$ 49,90", paymentHint = "final 3685"),
+                NotificationEvidence(cards = listOf(itau), last4Map = mapOf("card-itau" to "3685")),
+            ),
+            Case(
+                makeNotification(text = "Compra no débito R$ 49,90", paymentMethod = PaymentMethod.PIX),
+                NotificationEvidence(cards = listOf(itau)),
+            ),
+            Case(
+                makeNotification(
+                    text = "Crédito em conta R$ 49,90",
+                    type = TransactionType.INCOME,
+                ),
+                NotificationEvidence(cards = listOf(itau)),
+            ),
+        )
+
+        cases.forEach { (notification, evidence) ->
+            coEvery { cardRepository.getCards() } returns Result.success(evidence.cards)
+            coEvery { cardLast4Repository.getMap() } returns evidence.last4Map
+            coEvery { paymentMethodDictionaryRepository.getMap() } returns evidence.paymentMethodDictionary
+            coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+            coEvery { notificationRepository.classify("notif-1", notification) } returns
+                Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+
+            val vm = makeViewModel()
+            testDispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(
+                resolveDraftFromNotification(notification, evidence).draft,
+                vm.state.value.draft,
+            )
+        }
+    }
+
+    @Test
+    fun `loadNotification classify failure toasts the cause and leaves error null`() = runTest {
         val base = makeNotification()
         coEvery { notificationRepository.getById("notif-1") } returns Result.success(base)
         coEvery { notificationRepository.classify("notif-1", base) } returns Result.failure(RuntimeException("classify failed"))
@@ -470,8 +523,9 @@ class WizardViewModelTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertNotNull(vm.state.value.error)
-        assertEquals("classify failed", vm.state.value.error)
+        assertNotNull(vm.state.value.toastMessage)
+        assertTrue(vm.state.value.toastMessage!!.contains("classify failed"))
+        assertNull(vm.state.value.error)
     }
 
     @Test

@@ -71,12 +71,11 @@ class ConfirmReadyPresentationTest {
     private fun item(
         draft: WizardDraft = draft(),
         pendingTransactionId: String? = null,
-        merchantRaw: String? = "Mercado Central",
     ) = ConfirmReadyItem(
         notificationId = "n1",
         draft = draft,
         pendingTransactionId = pendingTransactionId,
-        notification = notification(merchantRaw = merchantRaw),
+        notification = notification(),
     )
 
     private fun presentationOf(item: ConfirmReadyItem) = confirmReadyPresentation(item, lookups, today)
@@ -112,29 +111,24 @@ class ConfirmReadyPresentationTest {
 
     @Test
     fun `title prefers the draft name`() {
-        val presentation = presentationOf(item(draft(name = "Mercado Central"), merchantRaw = "Other Store"))
+        val presentation = presentationOf(item(draft(name = "Mercado Central")))
 
         assertEquals("Mercado Central", presentation.title)
     }
 
     @Test
-    fun `title falls back to the parsed merchant when draft name is null`() {
-        val presentation = presentationOf(item(draft(name = null), merchantRaw = "Uber Trip"))
-
-        assertEquals("Uber Trip", presentation.title)
-    }
-
-    @Test
-    fun `title falls back to the parsed merchant when draft name is blank`() {
-        val presentation = presentationOf(item(draft(name = "   "), merchantRaw = "Uber Trip"))
-
-        assertEquals("Uber Trip", presentation.title)
-    }
-
-    @Test
-    fun `title rejects a stored merchant with no letters and falls back to the first tag name`() {
+    fun `title falls back to the first tag name when the draft name is blank`() {
         val presentation = presentationOf(
-            item(draft(name = null, tagIds = listOf(tagMercado.id)), merchantRaw = "29"),
+            item(draft(name = "   ", tagIds = listOf(tagMercado.id))),
+        )
+
+        assertEquals(tagMercado.name, presentation.title)
+    }
+
+    @Test
+    fun `title rejects a name with no letters and falls back to the first tag name`() {
+        val presentation = presentationOf(
+            item(draft(name = "29", tagIds = listOf(tagMercado.id))),
         )
 
         assertEquals(tagMercado.name, presentation.title)
@@ -142,7 +136,7 @@ class ConfirmReadyPresentationTest {
 
     @Test
     fun `title falls back to Lancamento when nothing usable is available`() {
-        val presentation = presentationOf(item(draft(name = null, tagIds = emptyList()), merchantRaw = "29"))
+        val presentation = presentationOf(item(draft(name = null, tagIds = emptyList())))
 
         assertEquals("Lançamento", presentation.title)
     }

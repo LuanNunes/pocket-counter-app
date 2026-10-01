@@ -32,11 +32,11 @@ import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
-import com.resolveprogramming.pocketcounter.domain.notification.CardEvidence
+import com.resolveprogramming.pocketcounter.domain.notification.NotificationEvidence
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
 import com.resolveprogramming.pocketcounter.domain.notification.PaymentMethodResolver
 import com.resolveprogramming.pocketcounter.domain.notification.SourceBlocklist
-import com.resolveprogramming.pocketcounter.domain.notification.resolveDraftCard
+import com.resolveprogramming.pocketcounter.domain.notification.resolveDraftFromNotification
 import com.resolveprogramming.pocketcounter.domain.rules.IgnoreOptions
 import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternResolver
@@ -170,7 +170,9 @@ class WizardViewModel @Inject constructor(
                 notificationRepository.getPendingReview().getOrDefault(emptyList()).map { it.id }
             }
             val last4MapDeferred = async { cardLast4Repository.getMap() }
-            val dictDeferred = async { paymentMethodDictionaryRepository.getMap() }
+            val dictDeferred = async {
+                runCatching { paymentMethodDictionaryRepository.getMap() }.getOrDefault(emptyMap())
+            }
             val issuerDeferred = async {
                 runCatching { issuerCardRepository.getMap() }.getOrDefault(emptyMap())
             }
@@ -220,23 +222,19 @@ class WizardViewModel @Inject constructor(
             }
 
             val notification = classified?.notification ?: base
-            val baseDraft = WizardDraft.fromNotification(notification)
-            val degradeError = classifyResult.exceptionOrNull()?.message
+            val degradeToast = classifyResult.exceptionOrNull()?.let(::classifyFailureMessage)
 
             val tokens = notification.tokens.ifEmpty {
                 NotificationTokenizer.tokenize(notification.text, notification.parsed)
             }
 
-            // Resolve the payment method first — learned dictionary, then the built-in word list —
-            // so a CREDIT derived from the text also qualifies for issuer card resolution.
-            val methodDraft = baseDraft.withResolvedPaymentMethod(notification, dictDeferred.await())
-            val resolved = resolveDraftCard(
-                draft = methodDraft,
+            val resolved = resolveDraftFromNotification(
                 notification = notification,
-                evidence = CardEvidence(
+                evidence = NotificationEvidence(
                     last4Map = last4MapDeferred.await(),
                     cards = cards,
                     learnedIssuers = issuerDeferred.await(),
+                    paymentMethodDictionary = dictDeferred.await(),
                 ),
             )
 
@@ -254,10 +252,9 @@ class WizardViewModel @Inject constructor(
                 availableSeries = series,
                 tokens = tokens,
                 isLoading = false,
-                error = degradeError,
                 unknownCardLast4 = resolved.unknownLast4,
                 enabledMethods = _state.value.enabledMethods,
-                toastMessage = _state.value.toastMessage,
+                toastMessage = degradeToast ?: _state.value.toastMessage,
                 sourceTransactionCount = productiveDeferred.await(),
             )
         }
@@ -538,6 +535,18 @@ class WizardViewModel @Inject constructor(
         return "Não foi possível salvar: ${detail.take(DETAIL_MAX_CHARS)}"
     }
 
+    /**
+     * Feedback for a /classify that failed: the wizard falls back to the unclassified notification,
+     * so the draft opens with no suggested tags, method or card. Says that outright — the user has
+     * to fill those in, and a bare "falhou" would leave them trusting an empty draft.
+     */
+    private fun classifyFailureMessage(e: Throwable): String {
+        val suffix = "Confira tipo, pagamento e tags."
+        val detail = e.message?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return "Classificação indisponível. $suffix"
+        return "Classificação indisponível: ${detail.take(DETAIL_MAX_CHARS)}. $suffix"
+    }
+
     fun consumeToast() = _state.update { it.copy(toastMessage = null) }
 
     /**
@@ -770,20 +779,6 @@ class WizardViewModel @Inject constructor(
                 state.copy(draft = state.draft.withCard(cardId), unknownCardLast4 = null)
             }
         }
-    }
-
-    /**
-     * Resolves the payment method from the learned dictionary and, as a fallback, the built-in
-     * word list ([BrNotificationParser.parsePaymentMethod]). No-op when [paymentMethod] is already
-     * set. Routed through [WizardDraft.withPaymentMethod] so the credit guard still holds.
-     */
-    private fun WizardDraft.withResolvedPaymentMethod(
-        notification: NotificationItem,
-        learnedMap: Map<String, PaymentMethod>,
-    ): WizardDraft {
-        if (paymentMethod != null) return this
-        val method = PaymentMethodResolver.resolve(notification.text, learnedMap) ?: return this
-        return withPaymentMethod(method)
     }
 
     /**
