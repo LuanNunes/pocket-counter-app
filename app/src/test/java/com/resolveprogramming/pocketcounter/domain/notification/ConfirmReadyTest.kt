@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.domain.notification
 
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.NotificationChannel
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
@@ -26,19 +27,22 @@ class ConfirmReadyTest {
         suggestedType: TransactionType? = null,
         tagIds: List<String> = listOf("tag-1"),
         paymentHint: String? = null,
+        text: String = "Compra aprovada DL*UberRides",
+        merchant: String? = "DL*UberRides",
+        app: String = "App",
     ) = NotificationItem(
         id = "n1",
-        app = "App",
+        app = app,
         channel = NotificationChannel.PUSH,
         time = "agora",
         received = "2026-06-30T13:25:00Z",
-        text = "Compra aprovada DL*UberRides",
+        text = text,
         status = status,
         parsed = ParsedNotification(
             type = type,
             amount = amount,
             date = LocalDate.of(2026, 6, 29),
-            merchantRaw = "DL*UberRides",
+            merchantRaw = merchant,
             paymentHint = paymentHint,
         ),
         suggestions = ClassificationSuggestion(
@@ -54,7 +58,7 @@ class ConfirmReadyTest {
     fun `AUTO notification with a saveable draft is confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(notification(NotificationStatus.AUTO), pendingTransactionId = null),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNotNull(item)
@@ -71,7 +75,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT, cardId = null),
                 pendingTransactionId = null,
             ),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNull(item)
@@ -84,7 +88,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT, cardId = "card-1"),
                 pendingTransactionId = null,
             ),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNotNull(item)
@@ -95,7 +99,7 @@ class ConfirmReadyTest {
     fun `NEEDS_TAGS notification is not confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(notification(NotificationStatus.NEEDS_TAGS), pendingTransactionId = null),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNull(item)
@@ -105,7 +109,7 @@ class ConfirmReadyTest {
     fun `NEEDS_REVIEW notification is not confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(notification(NotificationStatus.NEEDS_REVIEW), pendingTransactionId = null),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNull(item)
@@ -118,7 +122,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.NEEDS_REVIEW),
                 pendingTransactionId = "tx-99",
             ),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNotNull(item)
@@ -132,7 +136,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, type = null, suggestedType = null),
                 pendingTransactionId = null,
             ),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNull(item)
@@ -145,7 +149,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, type = null, suggestedType = TransactionType.EXPENSE),
                 pendingTransactionId = null,
             ),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNotNull(item)
@@ -166,7 +170,7 @@ class ConfirmReadyTest {
                 notification(NotificationStatus.AUTO, type = parsed.type, amount = parsed.amount, suggestedType = null),
                 pendingTransactionId = null,
             ),
-            CardEvidence(),
+            NotificationEvidence(),
         )
 
         assertNull(item)
@@ -184,7 +188,7 @@ class ConfirmReadyTest {
                 ),
                 pendingTransactionId = null,
             ),
-            CardEvidence(last4Map = mapOf("card-itau" to "3685")),
+            NotificationEvidence(last4Map = mapOf("card-itau" to "3685")),
         )
 
         assertNotNull(item)
@@ -203,9 +207,98 @@ class ConfirmReadyTest {
                 ),
                 pendingTransactionId = null,
             ),
-            CardEvidence(last4Map = mapOf("card-itau" to "3685")),
+            NotificationEvidence(last4Map = mapOf("card-itau" to "3685")),
         )
 
         assertNull(item)
+    }
+
+    private fun classified(
+        status: NotificationStatus = NotificationStatus.AUTO,
+        pendingTransactionId: String? = null,
+        paymentMethod: PaymentMethod? = null,
+        text: String = "Compra no crédito R$ 26,74",
+        merchant: String? = "DL*UberRides",
+        paymentHint: String? = null,
+        app: String = "App",
+    ) = ClassifiedNotification(
+        notification(
+            status,
+            paymentMethod = paymentMethod,
+            text = text,
+            merchant = merchant,
+            paymentHint = paymentHint,
+            app = app,
+        ),
+        pendingTransactionId,
+    )
+
+    private val itau = CreditCard(
+        id = "card-itau",
+        name = "Itaú",
+        brand = "Mastercard",
+        last4 = "0000",
+        gradientStart = 0xFF000000L,
+        gradientEnd = 0xFF000000L,
+        limit = BigDecimal("1000.00"),
+        billDay = 10,
+    )
+
+    @Test
+    fun `a text-derived credit with no card is not confirm-ready`() {
+        assertNull(confirmReadyItemOf(classified(), NotificationEvidence()))
+    }
+
+    @Test
+    fun `a text-derived credit with a matching issuer card is confirm-ready`() {
+        val item = confirmReadyItemOf(
+            classified(app = "Banco Itaú"),
+            NotificationEvidence(cards = listOf(itau)),
+        )
+
+        assertNotNull(item)
+        assertEquals(PaymentMethod.CREDIT, item!!.draft.paymentMethod)
+        assertEquals("card-itau", item.draft.cardId)
+    }
+
+    @Test
+    fun `a text-derived credit with an unmapped last4 is not confirm-ready`() {
+        val item = confirmReadyItemOf(
+            classified(paymentHint = "final 9999", app = "Banco Itaú"),
+            NotificationEvidence(last4Map = mapOf("card-itau" to "3685"), cards = listOf(itau)),
+        )
+
+        assertNull(item)
+    }
+
+    @Test
+    fun `an AUTO push with no merchant is not confirm-ready`() {
+        val item = confirmReadyItemOf(
+            classified(paymentMethod = PaymentMethod.PIX, merchant = null),
+            NotificationEvidence(),
+        )
+
+        assertNull(item)
+    }
+
+    @Test
+    fun `an AUTO push whose merchant is only digits is not confirm-ready`() {
+        val item = confirmReadyItemOf(
+            classified(paymentMethod = PaymentMethod.PIX, merchant = "29"),
+            NotificationEvidence(),
+        )
+
+        assertNull(item)
+    }
+
+    @Test
+    fun `a pending match with no merchant is still confirm-ready`() {
+        val item = confirmReadyItemOf(
+            classified(paymentMethod = PaymentMethod.PIX, merchant = null, pendingTransactionId = "tx-99"),
+            NotificationEvidence(),
+        )
+
+        assertNotNull(item)
+        assertEquals("tx-99", item!!.pendingTransactionId)
     }
 }

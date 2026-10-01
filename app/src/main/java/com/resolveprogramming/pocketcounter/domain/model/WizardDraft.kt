@@ -36,6 +36,15 @@ data class WizardDraft(
 
     fun isStep4Valid(): Boolean = true
 
+    /**
+     * Whether [name] — the only title `toDto` persists — will read as one. A blank or letterless
+     * name saves a row that renders as [HistoryItem.displayTitle]'s `"—"`.
+     *
+     * Deliberately outside every `isStepNValid`: Descrição lives on step 2, and step 1 is shared
+     * with the manual form.
+     */
+    fun hasUsableName(): Boolean = name?.let { it.isNotBlank() && it.any(Char::isLetter) } == true
+
     fun withPaymentMethod(method: PaymentMethod?): WizardDraft {
         if (method == PaymentMethod.CREDIT && type == TransactionType.INCOME) return this
         return copy(

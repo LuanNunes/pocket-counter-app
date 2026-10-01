@@ -8,6 +8,7 @@ import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeIssuerCardRepository
 import com.resolveprogramming.pocketcounter.data.repository.IssuerCardRepository
+import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakeProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.NotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
@@ -64,6 +65,7 @@ class HomeViewModelTest {
     private val cardRepository: CardRepository = mockk()
     private val issuerCardRepository = FakeIssuerCardRepository()
     private val cardLast4Repository: CardLast4Repository = mockk()
+    private val paymentMethodDictionaryRepository = FakePaymentMethodDictionaryRepository()
     private val productiveSourceRepository = FakeProductiveSourceRepository()
     private val tokenStore: TokenStore = mockk()
 
@@ -133,6 +135,7 @@ class HomeViewModelTest {
         cardRepository = cardRepository,
         issuerCardRepository = issuerCardRepository,
         cardLast4Repository = cardLast4Repository,
+        paymentMethodDictionaryRepository = paymentMethodDictionaryRepository,
         tokenStore = tokenStore,
         confirmClassifiedNotification = ConfirmClassifiedNotificationUseCase(
             transactionRepository,
@@ -532,6 +535,38 @@ class HomeViewModelTest {
 
         assertTrue(vm.state.value.confirmReady.isEmpty())
         assertEquals(1, vm.state.value.pendingReviewCount)
+    }
+
+    @Test
+    fun `a learned dictionary entry reaches the confirm-ready draft's payment method`() = runTest {
+        paymentMethodDictionaryRepository.learn("mercado", PaymentMethod.CASH)
+        val base = recognizedNotification("pend-1")
+        val notification = base.copy(
+            text = "Compra aprovada MERCADO",
+            suggestions = base.suggestions.copy(paymentMethod = null),
+        )
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(PaymentMethod.CASH, vm.state.value.confirmReady.single().draft.paymentMethod)
+    }
+
+    @Test
+    fun `a merchant-less AUTO push goes to pending review instead of confirm-ready`() = runTest {
+        val base = recognizedNotification("pend-1")
+        val notification = base.copy(parsed = base.parsed.copy(merchantRaw = null))
+        coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
+        coEvery { notificationRepository.classify("pend-1", any()) } returns
+            Result.success(ClassifiedNotification(notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.confirmReady.isEmpty())
+        assertEquals(1, vm.state.value.pendingReviewCount)
+        assertEquals("pend-1", vm.state.value.pendingReviewFirstId)
     }
 
     @Test
