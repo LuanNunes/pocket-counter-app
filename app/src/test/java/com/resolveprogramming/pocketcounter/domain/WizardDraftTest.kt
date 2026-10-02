@@ -243,6 +243,28 @@ class WizardDraftTest {
     }
 
     // -------------------------------------------------------------------------
+    // withTagSelected
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `withTagSelected adds tag when not present`() {
+        val draft = WizardDraft(tagIds = listOf("tag-1"))
+
+        val updated = draft.withTagSelected("tag-2")
+
+        assertEquals(listOf("tag-1", "tag-2"), updated.tagIds)
+    }
+
+    @Test
+    fun `withTagSelected keeps draft unchanged when tag already present`() {
+        val draft = WizardDraft(tagIds = listOf("tag-1", "tag-2"))
+
+        val updated = draft.withTagSelected("tag-1")
+
+        assertEquals(draft, updated)
+    }
+
+    // -------------------------------------------------------------------------
     // Default field values
     // -------------------------------------------------------------------------
 

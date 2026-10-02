@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
@@ -100,4 +102,13 @@ fun PocketButton(
             }
         }
     }
+}
+
+/** In-progress indicator sized for [PocketButton]'s `leading` slot. */
+fun ctaSpinner(): @Composable () -> Unit = {
+    CircularProgressIndicator(
+        modifier = Modifier.size(14.dp),
+        strokeWidth = 2.dp,
+        color = PocketTheme.colors.accentInk,
+    )
 }

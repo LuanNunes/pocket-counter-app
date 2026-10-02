@@ -26,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,9 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.ui.components.AmountText
+import com.resolveprogramming.pocketcounter.ui.components.FormErrorNote
 import com.resolveprogramming.pocketcounter.ui.components.LedgerLookups
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
+import com.resolveprogramming.pocketcounter.ui.components.ctaSpinner
 import com.resolveprogramming.pocketcounter.ui.home.InvoicePickerState
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -163,15 +164,7 @@ fun InvoicePickerSheet(
 
         picker.errorMessage?.let { message ->
             Spacer(Modifier.height(10.dp))
-            Text(
-                text = message,
-                style = PocketTheme.typography.bodySm,
-                color = colors.expense,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(colors.expenseBg, PocketTheme.shapes.chip)
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-            )
+            FormErrorNote(message)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -315,12 +308,4 @@ private fun PickerEmptyState() {
             textAlign = TextAlign.Center,
         )
     }
-}
-
-private fun ctaSpinner(): @Composable () -> Unit = {
-    CircularProgressIndicator(
-        modifier = Modifier.size(14.dp),
-        strokeWidth = 2.dp,
-        color = PocketTheme.colors.accentInk,
-    )
 }

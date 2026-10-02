@@ -64,8 +64,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.IgnoreScope
-import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
+import com.resolveprogramming.pocketcounter.ui.contextos.TagFormSheet
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepAmount
 import com.resolveprogramming.pocketcounter.ui.wizard.steps.StepPayment
@@ -82,6 +83,10 @@ fun WizardScreen(
     var showIgnoreConfirm by remember { mutableStateOf(false) }
     var ignoreLearn by remember { mutableStateOf(false) }
     val toastState = remember { PocketToastState() }
+    // Kept a stable identity so StepTags/TagPicker can still skip recomposition.
+    val onCreateTag = remember(viewModel, state.canCreateTag) {
+        viewModel::openCreateTag.takeIf { state.canCreateTag }
+    }
 
     LaunchedEffect(state.toastMessage) {
         val message = state.toastMessage ?: return@LaunchedEffect
@@ -255,13 +260,14 @@ fun WizardScreen(
                             )
 
                             WizardStep.TAGS -> StepTags(
-                                type = state.draft.type ?: TransactionType.EXPENSE,
+                                type = state.effectiveTagType,
                                 tags = state.allTags,
                                 contexts = state.contexts,
                                 selectedTagIds = state.draft.tagIds,
                                 searchQuery = state.tagSearchQuery,
                                 onSearchChange = viewModel::updateTagSearch,
                                 onToggleTag = viewModel::toggleTag,
+                                onCreateTag = onCreateTag,
                             )
                         }
                     }
@@ -302,6 +308,24 @@ fun WizardScreen(
     }
 
     PocketToastHost(state = toastState)
+
+    // Root sibling, not a child of the step transition: a ModalBottomSheet placed inside the
+    // AnimatedContent would be disposed mid-life when the step animates.
+    state.tagForm?.let { mode ->
+        TagFormSheet(
+            mode = mode,
+            editing = null,
+            contexts = state.contexts,
+            palette = CuratedPalette.argb,
+            onSave = viewModel::saveNewTag,
+            onDelete = {},
+            onDismiss = viewModel::closeCreateTag,
+            initialName = state.tagFormInitialName,
+            isSaving = state.isSavingTag,
+            errorMessage = state.tagFormError,
+            onNameEdited = viewModel::clearTagFormError,
+        )
+    }
 
     if (showIgnoreConfirm) {
         val option = state.ignoreOption

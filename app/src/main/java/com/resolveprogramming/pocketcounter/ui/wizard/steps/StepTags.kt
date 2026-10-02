@@ -36,6 +36,7 @@ fun StepTags(
     onSearchChange: (String) -> Unit,
     onToggleTag: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onCreateTag: ((contextId: String?, name: String) -> Unit)? = null,
 ) {
     Column(modifier = modifier) {
         Text(
@@ -70,6 +71,7 @@ fun StepTags(
             contexts = contexts,
             selectedTagIds = selectedTagIds,
             onToggleTag = onToggleTag,
+            onCreateTag = onCreateTag,
         )
     }
 }

@@ -23,17 +23,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.ui.components.ColorSwatchPicker
+import com.resolveprogramming.pocketcounter.ui.components.FormErrorNote
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketButtonVariant
+import com.resolveprogramming.pocketcounter.ui.components.ctaSpinner
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -46,6 +50,10 @@ fun TagFormSheet(
     onSave: (TagInput) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
+    initialName: String = "",
+    isSaving: Boolean = false,
+    errorMessage: String? = null,
+    onNameEdited: () -> Unit = {},
 ) {
     val isIncome = when (mode) {
         is TagFormMode.AddIncome -> true
@@ -53,7 +61,7 @@ fun TagFormSheet(
         is TagFormMode.Edit -> editing?.kind == TransactionType.INCOME
     }
 
-    var name by remember { mutableStateOf(editing?.name.orEmpty()) }
+    var name by remember { mutableStateOf(editing?.name ?: initialName) }
     var contextId by remember {
         mutableStateOf(editing?.idContext ?: (mode as? TagFormMode.Add)?.idContext.orEmpty())
     }
@@ -73,6 +81,7 @@ fun TagFormSheet(
             },
             style = PocketTheme.typography.stepQuestion,
             color = PocketTheme.colors.text,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(Modifier.height(16.dp))
 
@@ -80,7 +89,10 @@ fun TagFormSheet(
         Spacer(Modifier.height(8.dp))
         FormTextField(
             value = name,
-            onValueChange = { name = it },
+            onValueChange = {
+                name = it
+                onNameEdited()
+            },
             placeholder = "Ex: Salário".takeIf { isIncome } ?: "Ex: supermercado",
         )
         Spacer(Modifier.height(16.dp))
@@ -123,6 +135,11 @@ fun TagFormSheet(
             }
         }
 
+        errorMessage?.let { message ->
+            Spacer(Modifier.height(10.dp))
+            FormErrorNote(message)
+        }
+
         Spacer(Modifier.height(20.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PocketButton(
@@ -133,7 +150,7 @@ fun TagFormSheet(
                 modifier = Modifier.weight(1f),
             )
             PocketButton(
-                text = "Salvar",
+                text = "Salvar".takeUnless { isSaving } ?: "Salvando…",
                 onClick = {
                     val input = run {
                         if (isIncome) {
@@ -143,9 +160,10 @@ fun TagFormSheet(
                     }
                     onSave(input)
                 },
-                enabled = canSave,
+                enabled = canSave && !isSaving,
                 fillMaxWidth = true,
                 modifier = Modifier.weight(1.5f),
+                leading = ctaSpinner().takeIf { isSaving },
             )
         }
         if (mode is TagFormMode.Edit) {
