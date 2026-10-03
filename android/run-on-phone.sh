@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Connect to the phone over Wireless Debugging, install the debug APK, and launch it.
 #
+# Lives in android/ since the monorepo split; it cd's to its own directory, so it works
+# from anywhere. Prefix with ./android/ when invoking from the repo root.
+#
 # Usage:
 #   ./run-on-phone.sh               # auto-discover the phone over mDNS, install, launch
 #   ./run-on-phone.sh <port>        # connect to $PHONE_IP:<port>
