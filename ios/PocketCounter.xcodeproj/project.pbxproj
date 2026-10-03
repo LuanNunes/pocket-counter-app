@@ -1,0 +1,439 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXFileReference section */
+		DD1000000000000000000000 /* PocketCounter.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PocketCounter.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DD2000000000000000000000 /* PocketCounterTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PocketCounterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A1000000000000000000000 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		1A2000000000000000000000 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
+		1A3000000000000000000000 /* Dev.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Dev.xcconfig; sourceTree = "<group>"; };
+		1A4000000000000000000000 /* Prod.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prod.xcconfig; sourceTree = "<group>"; };
+		1A5000000000000000000000 /* Local.private.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.private.xcconfig.example; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BB1000000000000000000000 /* PocketCounter */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PocketCounter;
+			sourceTree = "<group>";
+		};
+		BB2000000000000000000000 /* PocketCounterTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PocketCounterTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXGroup section */
+		AA1000000000000000000000 = {
+			isa = PBXGroup;
+			children = (
+				AA3000000000000000000000 /* Config */,
+				BB1000000000000000000000 /* PocketCounter */,
+				BB2000000000000000000000 /* PocketCounterTests */,
+				AA2000000000000000000000 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA2000000000000000000000 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DD1000000000000000000000 /* PocketCounter.app */,
+				DD2000000000000000000000 /* PocketCounterTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA3000000000000000000000 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				1A1000000000000000000000 /* Base.xcconfig */,
+				1A2000000000000000000000 /* Local.xcconfig */,
+				1A3000000000000000000000 /* Dev.xcconfig */,
+				1A4000000000000000000000 /* Prod.xcconfig */,
+				1A5000000000000000000000 /* Local.private.xcconfig.example */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXSourcesBuildPhase section */
+		EE1000000000000000000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EE4000000000000000000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		EE2000000000000000000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EE5000000000000000000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		EE3000000000000000000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EE6000000000000000000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		2A2000000000000000000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC1000000000000000000000;
+			remoteInfo = PocketCounter;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		2A1000000000000000000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CC1000000000000000000000 /* PocketCounter */;
+			targetProxy = 2A2000000000000000000000 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXNativeTarget section */
+		CC1000000000000000000000 /* PocketCounter */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FF2000000000000000000000 /* Build configuration list for PBXNativeTarget "PocketCounter" */;
+			buildPhases = (
+				EE1000000000000000000000 /* Sources */,
+				EE2000000000000000000000 /* Frameworks */,
+				EE3000000000000000000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BB1000000000000000000000 /* PocketCounter */,
+			);
+			name = PocketCounter;
+			productName = PocketCounter;
+			productReference = DD1000000000000000000000 /* PocketCounter.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CC2000000000000000000000 /* PocketCounterTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FF3000000000000000000000 /* Build configuration list for PBXNativeTarget "PocketCounterTests" */;
+			buildPhases = (
+				EE4000000000000000000000 /* Sources */,
+				EE5000000000000000000000 /* Frameworks */,
+				EE6000000000000000000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2A1000000000000000000000 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BB2000000000000000000000 /* PocketCounterTests */,
+			);
+			name = PocketCounterTests;
+			productName = PocketCounterTests;
+			productReference = DD2000000000000000000000 /* PocketCounterTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA0000000000000000000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					CC1000000000000000000000 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					CC2000000000000000000000 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = CC1000000000000000000000;
+					};
+				};
+			};
+			buildConfigurationList = FF1000000000000000000000 /* Build configuration list for PBXProject "PocketCounter" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				"pt-BR",
+				Base,
+			);
+			mainGroup = AA1000000000000000000000;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = AA2000000000000000000000 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CC1000000000000000000000 /* PocketCounter */,
+				CC2000000000000000000000 /* PocketCounterTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		3A1000000000000000000000 /* Debug-Local */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = "Debug-Local";
+		};
+		3A2000000000000000000000 /* Debug-Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = "Debug-Dev";
+		};
+		3A3000000000000000000000 /* Release-Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = "Release-Dev";
+		};
+		3A4000000000000000000000 /* Release-Prod */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = "Release-Prod";
+		};
+		3B1000000000000000000000 /* Debug-Local */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A2000000000000000000000 /* filLocal */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				ENABLE_PREVIEWS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = "Debug-Local";
+		};
+		3B2000000000000000000000 /* Debug-Dev */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A3000000000000000000000 /* filDev */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				ENABLE_PREVIEWS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = "Debug-Dev";
+		};
+		3B3000000000000000000000 /* Release-Dev */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A3000000000000000000000 /* filDev */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				ENABLE_PREVIEWS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = "Release-Dev";
+		};
+		3B4000000000000000000000 /* Release-Prod */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A4000000000000000000000 /* filProd */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				ENABLE_PREVIEWS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = "Release-Prod";
+		};
+		3C1000000000000000000000 /* Debug-Local */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
+			};
+			name = "Debug-Local";
+		};
+		3C2000000000000000000000 /* Debug-Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
+			};
+			name = "Debug-Dev";
+		};
+		3C3000000000000000000000 /* Release-Dev */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
+			};
+			name = "Release-Dev";
+		};
+		3C4000000000000000000000 /* Release-Prod */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
+			};
+			name = "Release-Prod";
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FF1000000000000000000000 /* Build configuration list for PBXProject "PocketCounter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3A1000000000000000000000 /* Debug-Local */,
+				3A2000000000000000000000 /* Debug-Dev */,
+				3A3000000000000000000000 /* Release-Dev */,
+				3A4000000000000000000000 /* Release-Prod */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = "Debug-Dev";
+		};
+		FF2000000000000000000000 /* Build configuration list for PBXNativeTarget "PocketCounter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B1000000000000000000000 /* Debug-Local */,
+				3B2000000000000000000000 /* Debug-Dev */,
+				3B3000000000000000000000 /* Release-Dev */,
+				3B4000000000000000000000 /* Release-Prod */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = "Debug-Dev";
+		};
+		FF3000000000000000000000 /* Build configuration list for PBXNativeTarget "PocketCounterTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3C1000000000000000000000 /* Debug-Local */,
+				3C2000000000000000000000 /* Debug-Dev */,
+				3C3000000000000000000000 /* Release-Dev */,
+				3C4000000000000000000000 /* Release-Prod */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = "Debug-Dev";
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AA0000000000000000000000 /* Project object */;
+}
