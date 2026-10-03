@@ -70,6 +70,12 @@ data class WizardDraft(
         return copy(tagIds = tagIds + tagId)
     }
 
+    /** Idempotent select: unlike [withTagToggled], re-applying never deselects. */
+    fun withTagSelected(tagId: String): WizardDraft {
+        if (tagId in tagIds) return this
+        return copy(tagIds = tagIds + tagId)
+    }
+
     /** Sets the type, dropping a credit payment that an income can't hold (mirrors [withPaymentMethod]). */
     fun withType(type: TransactionType): WizardDraft {
         if (type == TransactionType.INCOME && paymentMethod == PaymentMethod.CREDIT) {

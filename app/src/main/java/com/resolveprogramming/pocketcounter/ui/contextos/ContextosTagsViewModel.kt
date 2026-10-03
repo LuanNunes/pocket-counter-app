@@ -36,6 +36,9 @@ sealed interface TagFormMode {
     data class Edit(val id: String) : TagFormMode
 }
 
+/** A guess at the cause: the backend does not say which field collided. */
+private const val SAVE_FAILURE = "Não foi possível salvar (nome já existe?)"
+
 data class ContextDeleteTarget(val id: String, val name: String, val tagCount: Int)
 data class TagDeleteTarget(val id: String, val name: String)
 
@@ -46,8 +49,11 @@ data class ContextosTagsUiState(
     val palette: List<Long> = CuratedPalette.argb,
     val contextForm: ContextFormMode? = null,
     val editingContext: TagContext? = null,
+    /** Save failure, shown inside the open sheet: a toast would be drawn behind its own scrim. */
+    val contextFormError: String? = null,
     val tagForm: TagFormMode? = null,
     val editingTag: Tag? = null,
+    val tagFormError: String? = null,
     val confirmDeleteContext: ContextDeleteTarget? = null,
     val confirmDeleteTag: TagDeleteTarget? = null,
     val toastMessage: String? = null,
@@ -102,14 +108,22 @@ class ContextosTagsViewModel @Inject constructor(
     }
 
     // ── Context CRUD ─────────────────────────────────────────────
-    fun openAddContext() = _state.update { it.copy(contextForm = ContextFormMode.Add, editingContext = null) }
+    fun openAddContext() = _state.update {
+        it.copy(contextForm = ContextFormMode.Add, editingContext = null, contextFormError = null)
+    }
 
     fun openEditContext(id: String) {
         val ctx = _state.value.contexts.firstOrNull { it.id == id }
-        _state.update { it.copy(contextForm = ContextFormMode.Edit(id), editingContext = ctx) }
+        _state.update {
+            it.copy(contextForm = ContextFormMode.Edit(id), editingContext = ctx, contextFormError = null)
+        }
     }
 
-    fun closeContextForm() = _state.update { it.copy(contextForm = null, editingContext = null) }
+    fun closeContextForm() = _state.update {
+        it.copy(contextForm = null, editingContext = null, contextFormError = null)
+    }
+
+    fun clearContextFormError() = _state.update { it.copy(contextFormError = null) }
 
     fun saveContext(input: ContextInput) {
         val mode = _state.value.contextForm ?: return
@@ -120,10 +134,23 @@ class ContextosTagsViewModel @Inject constructor(
             }
             result
                 .onSuccess {
-                    _state.update { it.copy(contextForm = null, editingContext = null, toastMessage = "Contexto salvo") }
+                    _state.update {
+                        it.copy(
+                            contextForm = null,
+                            editingContext = null,
+                            contextFormError = null,
+                            toastMessage = "Contexto salvo",
+                        )
+                    }
                     load()
                 }
-                .onFailure { _state.update { it.copy(toastMessage = "Não foi possível salvar (nome já existe?)") } }
+                .onFailure {
+                    _state.update {
+                        // Dismissed mid-flight: no sheet means no scrim, so the toast is visible.
+                        it.contextForm ?: return@update it.copy(toastMessage = SAVE_FAILURE)
+                        it.copy(contextFormError = SAVE_FAILURE)
+                    }
+                }
         }
     }
 
@@ -153,17 +180,23 @@ class ContextosTagsViewModel @Inject constructor(
     }
 
     // ── Tag CRUD ─────────────────────────────────────────────────
-    fun openAddTag(idContext: String) = _state.update { it.copy(tagForm = TagFormMode.Add(idContext), editingTag = null) }
+    fun openAddTag(idContext: String) = _state.update {
+        it.copy(tagForm = TagFormMode.Add(idContext), editingTag = null, tagFormError = null)
+    }
 
-    fun openAddIncomeCategory() = _state.update { it.copy(tagForm = TagFormMode.AddIncome, editingTag = null) }
+    fun openAddIncomeCategory() = _state.update {
+        it.copy(tagForm = TagFormMode.AddIncome, editingTag = null, tagFormError = null)
+    }
 
     fun openEditTag(id: String) {
         val tag = (_state.value.sections.flatMap { it.tags } + _state.value.incomeCategories)
             .firstOrNull { it.id == id }
-        _state.update { it.copy(tagForm = TagFormMode.Edit(id), editingTag = tag) }
+        _state.update { it.copy(tagForm = TagFormMode.Edit(id), editingTag = tag, tagFormError = null) }
     }
 
-    fun closeTagForm() = _state.update { it.copy(tagForm = null, editingTag = null) }
+    fun closeTagForm() = _state.update { it.copy(tagForm = null, editingTag = null, tagFormError = null) }
+
+    fun clearTagFormError() = _state.update { it.copy(tagFormError = null) }
 
     fun saveTag(input: TagInput) {
         val mode = _state.value.tagForm ?: return
@@ -174,10 +207,17 @@ class ContextosTagsViewModel @Inject constructor(
             }
             result
                 .onSuccess {
-                    _state.update { it.copy(tagForm = null, editingTag = null, toastMessage = "Tag salva") }
+                    _state.update {
+                        it.copy(tagForm = null, editingTag = null, tagFormError = null, toastMessage = "Tag salva")
+                    }
                     load()
                 }
-                .onFailure { _state.update { it.copy(toastMessage = "Não foi possível salvar (nome já existe?)") } }
+                .onFailure {
+                    _state.update {
+                        it.tagForm ?: return@update it.copy(toastMessage = SAVE_FAILURE)
+                        it.copy(tagFormError = SAVE_FAILURE)
+                    }
+                }
         }
     }
 

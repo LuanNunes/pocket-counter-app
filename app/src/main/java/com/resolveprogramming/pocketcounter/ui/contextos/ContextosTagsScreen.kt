@@ -116,6 +116,8 @@ fun ContextosTagsScreen(
                 if (id != null) viewModel.requestDeleteContext(id)
             },
             onDismiss = viewModel::closeContextForm,
+            errorMessage = state.contextFormError,
+            onNameEdited = viewModel::clearContextFormError,
         )
     }
 
@@ -132,6 +134,8 @@ fun ContextosTagsScreen(
                 if (id != null) viewModel.requestDeleteTag(id)
             },
             onDismiss = viewModel::closeTagForm,
+            errorMessage = state.tagFormError,
+            onNameEdited = viewModel::clearTagFormError,
         )
     }
 

@@ -14,6 +14,7 @@ import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDiction
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
+import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -42,6 +43,7 @@ import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternResolver
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPlan
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
+import com.resolveprogramming.pocketcounter.ui.contextos.TagFormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -94,7 +96,28 @@ data class WizardUiState(
     val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
     /** Confirmed transactions this notification's source app has already produced on this device. */
     val sourceTransactionCount: Int = 0,
+    val tagForm: TagFormMode? = null,
+    val isSavingTag: Boolean = false,
+    /** Create-tag failure, shown inside the sheet: a toast would be drawn behind its own scrim. */
+    val tagFormError: String? = null,
+    /** Seeds the create-tag sheet's name field when the step opened it from a search query. */
+    val tagFormInitialName: String = "",
 ) {
+    /** Kind the tag step browses and a newly created tag takes; a notification can reach it with no type. */
+    val effectiveTagType: TransactionType
+        get() = draft.type ?: TransactionType.EXPENSE
+
+    /**
+     * Creating a tag under a merely guessed kind is irreversible and would strand it out of the
+     * other kind's universe; and the expense form cannot be saved with no context to pick.
+     */
+    val canCreateTag: Boolean
+        get() {
+            draft.type ?: return false
+            if (effectiveTagType == TransactionType.EXPENSE) return contexts.isNotEmpty()
+            return true
+        }
+
     val selectionRange: IntRange?
         get() = if (selectionAnchor != null && selectionFocus != null) {
             minOf(selectionAnchor, selectionFocus)..maxOf(selectionAnchor, selectionFocus)
@@ -342,6 +365,58 @@ class WizardViewModel @Inject constructor(
         _state.update { it.copy(draft = it.draft.withTagToggled(tagId)) }
     }
 
+    fun openCreateTag(idContext: String?, name: String = "") {
+        if (!_state.value.canCreateTag) return
+        _state.update {
+            it.copy(
+                tagForm = newTagForm(it.effectiveTagType, idContext),
+                tagFormError = null,
+                tagFormInitialName = name,
+            )
+        }
+    }
+
+    private fun newTagForm(kind: TransactionType, idContext: String?): TagFormMode {
+        if (kind == TransactionType.INCOME) return TagFormMode.AddIncome
+        return TagFormMode.Add(idContext.orEmpty())
+    }
+
+    fun closeCreateTag() {
+        _state.update { it.copy(tagForm = null, tagFormError = null, isSavingTag = false) }
+    }
+
+    fun clearTagFormError() {
+        _state.update { it.copy(tagFormError = null) }
+    }
+
+    fun saveNewTag(input: TagInput) {
+        if (_state.value.isSavingTag) return
+        _state.update { it.copy(isSavingTag = true, tagFormError = null) }
+        viewModelScope.launch {
+            tagRepository.createTag(input)
+                .onSuccess { tag ->
+                    _state.update {
+                        it.copy(
+                            allTags = it.allTags.filterNot { existing -> existing.id == tag.id } + tag,
+                            draft = it.draft.withTagSelected(tag.id),
+                            tagForm = null,
+                            isSavingTag = false,
+                            tagFormError = null,
+                            toastMessage = "Tag \"${tag.name}\" criada",
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    val message = tagCreateFailureMessage(e)
+                    _state.update {
+                        // Dismissed mid-flight: no sheet means no scrim, so the toast is visible.
+                        it.tagForm ?: return@update it.copy(isSavingTag = false, toastMessage = message)
+                        it.copy(isSavingTag = false, tagFormError = message)
+                    }
+                }
+        }
+    }
+
     fun toggleLearnRule(enabled: Boolean) {
         _state.update { it.copy(draft = it.draft.copy(learnRule = enabled)) }
     }
@@ -533,6 +608,11 @@ class WizardViewModel @Inject constructor(
     private fun failureMessage(e: Throwable): String {
         val detail = e.message?.trim()?.takeIf { it.isNotEmpty() } ?: return "Não foi possível salvar"
         return "Não foi possível salvar: ${detail.take(DETAIL_MAX_CHARS)}"
+    }
+
+    private fun tagCreateFailureMessage(e: Throwable): String {
+        val detail = e.message?.trim()?.takeIf { it.isNotEmpty() } ?: return "Não foi possível criar a tag"
+        return "Não foi possível criar a tag: ${detail.take(DETAIL_MAX_CHARS)}"
     }
 
     /**

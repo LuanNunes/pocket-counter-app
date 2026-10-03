@@ -18,6 +18,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -31,6 +34,24 @@ fun FormLabel(text: String, modifier: Modifier = Modifier) {
         style = PocketTheme.typography.label,
         color = PocketTheme.colors.text3,
         modifier = modifier,
+    )
+}
+
+/**
+ * Inline save error for a form inside a modal sheet, where a toast would render behind the scrim.
+ * Announced politely so it reaches TalkBack without stealing focus from the field being edited.
+ */
+@Composable
+fun FormErrorNote(message: String, modifier: Modifier = Modifier) {
+    Text(
+        text = message,
+        style = PocketTheme.typography.bodySm,
+        color = PocketTheme.colors.expense,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(PocketTheme.colors.expenseBg, PocketTheme.shapes.chip)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
     )
 }
 

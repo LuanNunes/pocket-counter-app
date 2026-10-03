@@ -16,11 +16,13 @@ import com.resolveprogramming.pocketcounter.data.repository.NotificationReposito
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
+import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationEvidence
 import com.resolveprogramming.pocketcounter.domain.notification.resolveDraftFromNotification
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
+import com.resolveprogramming.pocketcounter.ui.contextos.TagFormMode
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationSuggestion
 import com.resolveprogramming.pocketcounter.domain.model.ClassifiedNotification
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
@@ -34,6 +36,7 @@ import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -2643,5 +2646,290 @@ class WizardViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(PaymentMethod.PIX, vm.state.value.draft.paymentMethod)
+    }
+
+    // -------------------------------------------------------------------------
+    // Create a tag from the tag step
+    // -------------------------------------------------------------------------
+
+    private fun TestScope.loadedViewModel(type: TransactionType?): WizardViewModel {
+        val notification = makeNotification(type = type)
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification = notification, pendingTransactionId = null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        return vm
+    }
+
+    /** The create-tag gate needs a context to pick, so the expense create tests need one stubbed. */
+    private fun TestScope.taggableExpenseViewModel(): WizardViewModel {
+        coEvery { tagRepository.getAllContexts() } returns
+            Result.success(listOf(TagContext("ctx-food", "Comida", 1L)))
+        return loadedViewModel(TransactionType.EXPENSE)
+    }
+
+    @Test
+    fun `canCreateTag is false while the draft type is only guessed`() = runTest {
+        coEvery { tagRepository.getAllContexts() } returns Result.success(listOf(TagContext("ctx-food", "Comida", 1L)))
+        val vm = loadedViewModel(null)
+
+        assertFalse(vm.state.value.canCreateTag)
+    }
+
+    @Test
+    fun `canCreateTag is false for an expense draft with no contexts to pick`() = runTest {
+        val vm = loadedViewModel(TransactionType.EXPENSE)
+
+        assertFalse(vm.state.value.canCreateTag)
+    }
+
+    @Test
+    fun `canCreateTag is true for an expense draft once a context exists`() = runTest {
+        coEvery { tagRepository.getAllContexts() } returns Result.success(listOf(TagContext("ctx-food", "Comida", 1L)))
+        val vm = loadedViewModel(TransactionType.EXPENSE)
+
+        assertTrue(vm.state.value.canCreateTag)
+    }
+
+    @Test
+    fun `canCreateTag is true for an income draft with no contexts`() = runTest {
+        val vm = loadedViewModel(TransactionType.INCOME)
+
+        assertTrue(vm.state.value.canCreateTag)
+    }
+
+    @Test
+    fun `openCreateTag seeds the form name from a search query`() = runTest {
+        val vm = loadedViewModel(TransactionType.INCOME)
+
+        vm.openCreateTag(null, "Sal")
+
+        assertEquals("Sal", vm.state.value.tagFormInitialName)
+    }
+
+    @Test
+    fun `openCreateTag on an expense draft opens the add form under the given context`() = runTest {
+        val vm = taggableExpenseViewModel()
+
+        vm.openCreateTag("ctx-food")
+
+        assertEquals(TagFormMode.Add("ctx-food"), vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `openCreateTag on an income draft opens the income form`() = runTest {
+        val vm = loadedViewModel(TransactionType.INCOME)
+
+        vm.openCreateTag(null)
+
+        assertEquals(TagFormMode.AddIncome, vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `openCreateTag refuses to open while the draft type is only guessed`() = runTest {
+        coEvery { tagRepository.getAllContexts() } returns
+            Result.success(listOf(TagContext("ctx-food", "Comida", 1L)))
+        val vm = loadedViewModel(null)
+        assertNull(vm.state.value.draft.type)
+
+        vm.openCreateTag("ctx-food")
+
+        assertNull(vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `openCreateTag refuses to open an expense form with no context to pick`() = runTest {
+        val vm = loadedViewModel(TransactionType.EXPENSE)
+
+        vm.openCreateTag(null)
+
+        assertNull(vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `closeCreateTag clears the form`() = runTest {
+        val vm = taggableExpenseViewModel()
+        vm.openCreateTag("ctx-food")
+
+        vm.closeCreateTag()
+
+        assertNull(vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `saveNewTag success adds the tag to allTags and selects it without refetching`() = runTest {
+        val vm = taggableExpenseViewModel()
+        val created = Tag(id = "tag-new", name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.success(created)
+        vm.openCreateTag("ctx-food")
+
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.state.value
+        assertTrue(created in state.allTags)
+        assertTrue("tag-new" in state.draft.tagIds)
+        assertNull(state.tagForm)
+        assertFalse(state.isSavingTag)
+        assertNotNull(state.toastMessage)
+        coVerify(exactly = 1) { tagRepository.getAllTags() }
+    }
+
+    @Test
+    fun `saveNewTag failure keeps the sheet open with an inline error`() = runTest {
+        val vm = taggableExpenseViewModel()
+        vm.toggleTag("tag-existing")
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.failure(IOException("HTTP 409 Conflict"))
+        vm.openCreateTag("ctx-food")
+
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.state.value
+        assertEquals(listOf("tag-existing"), state.draft.tagIds)
+        assertTrue(state.allTags.isEmpty())
+        assertNotNull(state.tagForm)
+        assertFalse(state.isSavingTag)
+        assertNull(state.toastMessage)
+        assertTrue(state.tagFormError.orEmpty().contains("HTTP 409 Conflict"))
+        assertFalse(state.tagFormError.orEmpty().contains("Não foi possível salvar"))
+    }
+
+    @Test
+    fun `clearTagFormError drops the inline error and keeps the sheet open`() = runTest {
+        val vm = taggableExpenseViewModel()
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.failure(IOException("boom"))
+        vm.openCreateTag("ctx-food")
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.clearTagFormError()
+
+        assertNull(vm.state.value.tagFormError)
+        assertNotNull(vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `saveNewTag success clears a previous inline error`() = runTest {
+        val vm = taggableExpenseViewModel()
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.failure(IOException("boom"))
+        vm.openCreateTag("ctx-food")
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+        coEvery { tagRepository.createTag(input) } returns
+            Result.success(Tag("tag-new", "Mercado", TransactionType.EXPENSE, "ctx-food"))
+
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.tagFormError)
+        assertNull(vm.state.value.tagForm)
+    }
+
+    @Test
+    fun `saveNewTag failure after the sheet was dismissed falls back to a toast`() = runTest {
+        val vm = taggableExpenseViewModel()
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.failure(IOException("HTTP 409 Conflict"))
+        vm.openCreateTag("ctx-food")
+        vm.saveNewTag(input)
+
+        vm.closeCreateTag()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = vm.state.value
+        assertNull(state.tagForm)
+        assertNull(state.tagFormError)
+        assertFalse(state.isSavingTag)
+        assertTrue(state.toastMessage.orEmpty().contains("HTTP 409 Conflict"))
+    }
+
+    @Test
+    fun `closeCreateTag mid-save releases the double-tap guard`() = runTest {
+        val vm = taggableExpenseViewModel()
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.failure(IOException("boom"))
+        vm.openCreateTag("ctx-food")
+        vm.saveNewTag(input)
+
+        vm.closeCreateTag()
+
+        assertFalse(vm.state.value.isSavingTag)
+    }
+
+    @Test
+    fun `saveNewTag replaces an existing entry when the backend echoes its id`() = runTest {
+        val existing = Tag("tag-1", "Mercado", TransactionType.EXPENSE, "ctx-food")
+        coEvery { tagRepository.getAllContexts() } returns
+            Result.success(listOf(TagContext("ctx-food", "Comida", 1L)))
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(existing))
+        val vm = loadedViewModel(TransactionType.EXPENSE)
+        val input = TagInput(name = "Mercado ", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns Result.success(existing.copy(name = "Mercado"))
+        vm.openCreateTag("ctx-food")
+
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, vm.state.value.allTags.count { it.id == "tag-1" })
+    }
+
+    @Test
+    fun `saveNewTag while a save is in flight creates the tag once`() = runTest {
+        val vm = loadedViewModel(TransactionType.EXPENSE)
+        val input = TagInput(name = "Mercado", kind = TransactionType.EXPENSE, idContext = "ctx-food")
+        coEvery { tagRepository.createTag(input) } returns
+            Result.success(Tag("tag-new", "Mercado", TransactionType.EXPENSE, "ctx-food"))
+
+        vm.saveNewTag(input)
+        vm.saveNewTag(input)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { tagRepository.createTag(any()) }
+    }
+
+    private fun TestScope.learnWithNewTag(created: Tag, type: TransactionType) {
+        val notification = makeNotification(type = type, text = "Compra RAPPI aprovada R$ 49,90")
+        coEvery { notificationRepository.getById("notif-1") } returns Result.success(notification)
+        coEvery { notificationRepository.classify("notif-1", notification) } returns
+            Result.success(ClassifiedNotification(notification = notification, pendingTransactionId = null))
+        coEvery { transactionRepository.save(any(), any()) } returns Result.success("tx-new")
+        coEvery { tagRepository.createTag(any()) } returns Result.success(created)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.saveNewTag(TagInput(created.name, created.kind, created.idContext, created.color))
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.toggleLearnRule(true)
+        vm.selectPaymentMethod(PaymentMethod.PIX)
+        vm.updateName("RAPPI")
+        vm.save(onDone = {})
+        testDispatcher.scheduler.advanceUntilIdle()
+    }
+
+    @Test
+    fun `a newly created expense tag is taught to the rule`() = runTest {
+        val created = Tag("tag-new", "Mercado", TransactionType.EXPENSE, idContext = "ctx-food")
+
+        learnWithNewTag(created, TransactionType.EXPENSE)
+
+        coVerify(exactly = 1) {
+            classificationRuleRepository.create(match { rule -> rule.tags.map { it.id } == listOf("tag-new") })
+        }
+    }
+
+    @Test
+    fun `a newly created income tag is deliberately not taught to the rule`() = runTest {
+        val created = Tag("tag-inc", "Salário", TransactionType.INCOME, color = 0xFF00AA00L)
+
+        learnWithNewTag(created, TransactionType.INCOME)
+
+        coVerify(exactly = 0) { classificationRuleRepository.create(any()) }
+        coVerify(exactly = 0) { classificationRuleRepository.update(any()) }
     }
 }

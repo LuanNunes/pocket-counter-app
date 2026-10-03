@@ -55,6 +55,9 @@ import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
  *   Income is flat (no step 1) per the spec.
  *
  * State held locally: the search [query] and the open context id [openCtx].
+ *
+ * [onCreateTag] is optional: when supplied, each browse region ends with a create affordance that
+ * reports the context to create under (null outside a real context) and the name to seed.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -65,6 +68,7 @@ fun TagPicker(
     selectedTagIds: List<String>,
     onToggleTag: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onCreateTag: ((contextId: String?, name: String) -> Unit)? = null,
 ) {
     var query by remember { mutableStateOf("") }
     var openCtx by remember { mutableStateOf<String?>(null) }
@@ -117,7 +121,9 @@ fun TagPicker(
                 matches = matches,
                 contexts = contexts,
                 selectedSet = selectedSet,
+                query = query,
                 onToggleTag = onToggleTag,
+                onCreateTag = onCreateTag,
             )
         }
         if (!isSearching && type == TransactionType.INCOME) {
@@ -126,6 +132,7 @@ fun TagPicker(
                 contexts = contexts,
                 selectedSet = selectedSet,
                 onToggleTag = onToggleTag,
+                onCreateTag = onCreateTag,
             )
         }
         if (!isSearching && type != TransactionType.INCOME) {
@@ -137,6 +144,7 @@ fun TagPicker(
                 onOpenCtx = { openCtx = it },
                 onBack = { openCtx = null },
                 onToggleTag = onToggleTag,
+                onCreateTag = onCreateTag,
             )
         }
     }
@@ -148,10 +156,26 @@ private fun SearchResults(
     matches: List<Tag>,
     contexts: List<TagContext>,
     selectedSet: Set<String>,
+    query: String,
     onToggleTag: (String) -> Unit,
+    onCreateTag: ((String?, String) -> Unit)?,
 ) {
+    val typed = query.trim()
+    val createChip = onCreateTag?.let { create ->
+        @Composable {
+            CreateChip(
+                label = "+ Criar tag \"$typed\"",
+                a11yLabel = "Criar tag chamada $typed",
+                onClick = { create(null, typed) },
+            )
+        }
+    }
     if (matches.isEmpty()) {
-        EmptyHint("Nada encontrado. Crie tags em Mais › Contextos & Tags.")
+        EmptyBrowseState(
+            lead = "Nada encontrado.",
+            pointer = "Crie tags em Mais › Contextos & Tags.",
+            createChip = createChip,
+        )
         return
     }
     TagChipFlow(
@@ -159,6 +183,7 @@ private fun SearchResults(
         contexts = contexts,
         selectedSet = selectedSet,
         onToggleTag = onToggleTag,
+        trailing = createChip,
     )
 }
 
@@ -168,9 +193,23 @@ private fun IncomeTagFlow(
     contexts: List<TagContext>,
     selectedSet: Set<String>,
     onToggleTag: (String) -> Unit,
+    onCreateTag: ((String?, String) -> Unit)?,
 ) {
+    val createChip = onCreateTag?.let { create ->
+        @Composable {
+            CreateChip(
+                label = "+ Nova categoria",
+                a11yLabel = "Criar nova categoria de renda",
+                onClick = { create(null, "") },
+            )
+        }
+    }
     if (universe.isEmpty()) {
-        EmptyHint("Nenhuma categoria de renda ainda. Crie em Mais › Contextos & Tags.")
+        EmptyBrowseState(
+            lead = "Nenhuma categoria de renda ainda.",
+            pointer = "Crie em Mais › Contextos & Tags.",
+            createChip = createChip,
+        )
         return
     }
     TagChipFlow(
@@ -178,6 +217,7 @@ private fun IncomeTagFlow(
         contexts = contexts,
         selectedSet = selectedSet,
         onToggleTag = onToggleTag,
+        trailing = createChip,
     )
 }
 
@@ -192,6 +232,33 @@ private fun EmptyHint(text: String) {
 }
 
 @Composable
+private fun EmptyBrowseState(lead: String, pointer: String, createChip: (@Composable () -> Unit)?) {
+    if (createChip == null) {
+        EmptyHint("$lead $pointer")
+        return
+    }
+    Column(modifier = Modifier.padding(bottom = 16.dp)) {
+        Text(
+            text = lead,
+            style = PocketTheme.typography.bodySm,
+            color = PocketTheme.colors.text3,
+        )
+        Spacer(Modifier.height(8.dp))
+        createChip()
+    }
+}
+
+@Composable
+private fun CreateChip(label: String, a11yLabel: String, onClick: () -> Unit) {
+    PocketChip(
+        label = label,
+        modifier = Modifier.semantics { contentDescription = a11yLabel },
+        variant = PocketChipVariant.ADD,
+        onClick = onClick,
+    )
+}
+
+@Composable
 private fun ExpenseDrill(
     universe: List<Tag>,
     contexts: List<TagContext>,
@@ -200,17 +267,35 @@ private fun ExpenseDrill(
     onOpenCtx: (String) -> Unit,
     onBack: () -> Unit,
     onToggleTag: (String) -> Unit,
+    onCreateTag: ((String?, String) -> Unit)?,
 ) {
     if (openCtx == null) {
         val categories = categoriesFor(universe, contexts, selectedSet)
+        val rootCreateChip = onCreateTag?.let { create ->
+            @Composable {
+                CreateChip(
+                    label = "+ Nova tag",
+                    a11yLabel = "Criar nova tag",
+                    onClick = { create(null, "") },
+                )
+            }
+        }
         if (categories.isEmpty()) {
-            EmptyHint("Nenhuma tag ainda. Crie em Mais › Contextos & Tags.")
+            EmptyBrowseState(
+                lead = "Nenhuma tag ainda.",
+                pointer = "Crie em Mais › Contextos & Tags.",
+                createChip = rootCreateChip,
+            )
             return
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             categories.forEach { category ->
                 CategoryRow(category = category, onClick = { onOpenCtx(category.id) })
             }
+        }
+        rootCreateChip?.let { chip ->
+            Spacer(Modifier.height(8.dp))
+            chip()
         }
         return
     }
@@ -219,6 +304,18 @@ private fun ExpenseDrill(
         .firstOrNull { it.id == openCtx }?.name
         ?: "Categoria"
     val drillColor = contexts.firstOrNull { it.id == openCtx }?.color
+    // The orphan bucket is synthetic: a tag created from it has no context, not a context named it.
+    val drillContextId = openCtx.takeUnless { it == ORPHAN_CONTEXT_ID }
+    val drillCreateChip = onCreateTag?.let { create ->
+        @Composable {
+            val ctxName = drillContextId?.let { id -> contexts.firstOrNull { it.id == id }?.name }
+            CreateChip(
+                label = "+ Nova tag",
+                a11yLabel = ctxName?.let { "Criar nova tag em $it" } ?: "Criar nova tag",
+                onClick = { create(drillContextId, "") },
+            )
+        }
+    }
 
     Column {
         Row(
@@ -249,6 +346,7 @@ private fun ExpenseDrill(
             selectedSet = selectedSet,
             onToggleTag = onToggleTag,
             overrideColor = drillColor,
+            trailing = drillCreateChip,
         )
     }
 }
@@ -321,6 +419,7 @@ private fun TagChipFlow(
     selectedSet: Set<String>,
     onToggleTag: (String) -> Unit,
     overrideColor: Long? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val contextMap = contexts.associateBy { it.id }
     FlowRow(
@@ -340,6 +439,7 @@ private fun TagChipFlow(
                 onClick = { onToggleTag(tag.id) },
             )
         }
+        trailing?.invoke()
     }
 }
 
