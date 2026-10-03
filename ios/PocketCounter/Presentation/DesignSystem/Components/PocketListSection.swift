@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// The grouped card the design uses for every list — `.list` in `screens.css`.
+/// The grouped card the design uses for every list — `.list` in `glass.css`.
 ///
-/// Not `List`: the native inset-grouped style rounds at roughly 10pt and the design asks for
-/// 26, and these sections are short enough that a `LazyVStack` inside the screen's scroll
-/// view is simpler than fighting `List` configuration.
+/// Not `List`: the native inset-grouped style rounds at roughly 10pt where the spec asks for
+/// 26, and these sections are short enough to sit in the screen's own scroll view.
 struct PocketListSection<Content: View>: View {
     var header: String?
-    var accessory: (title: String, action: () -> Void)?
+    var linkTitle: String?
+    var linkAction: (() -> Void)?
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -15,13 +15,13 @@ struct PocketListSection<Content: View>: View {
             if let header {
                 HStack(alignment: .firstTextBaseline) {
                     Text(header)
-                        .pocketFont(PocketFont.sectionTitle, tracking: PocketFont.sectionTitleTracking)
+                        .pocketFont(PocketFont.sectionTitle)
 
                     Spacer(minLength: 8)
 
-                    if let accessory {
-                        Button(accessory.title, action: accessory.action)
-                            .font(PocketFont.link)
+                    if let linkTitle, let linkAction {
+                        Button(linkTitle, action: linkAction)
+                            .pocketFont(PocketFont.link)
                             .foregroundStyle(PocketColor.tint)
                     }
                 }
@@ -37,7 +37,33 @@ struct PocketListSection<Content: View>: View {
     }
 }
 
+/// A `PocketListSection` over a collection, placing the hairlines itself so a caller cannot
+/// forget one. The spec expresses it as an adjacency rule (`glass.css`, `.row + .row::before`),
+/// which makes it the container's job rather than the caller's.
+struct PocketList<Item: Identifiable, Row: View>: View {
+    var header: String?
+    var linkTitle: String?
+    var linkAction: (() -> Void)?
+    var items: [Item]
+    @ViewBuilder var row: (Item) -> Row
+
+    var body: some View {
+        PocketListSection(header: header, linkTitle: linkTitle, linkAction: linkAction) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    PocketRowSeparator()
+                }
+
+                row(item)
+            }
+        }
+    }
+}
+
 /// A row inside a `PocketListSection` — `.row`.
+///
+/// Reads as a single VoiceOver element: three separate stops per row would make a screen
+/// that is nothing but rows exhausting to navigate.
 struct PocketRow<Leading: View, Trailing: View>: View {
     var title: String
     var subtitle: String?
@@ -50,11 +76,11 @@ struct PocketRow<Leading: View, Trailing: View>: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .pocketFont(PocketFont.body, tracking: PocketFont.bodyTracking)
+                    .pocketFont(PocketFont.body)
 
                 if let subtitle {
                     Text(subtitle)
-                        .font(PocketFont.rowSubtitle)
+                        .pocketFont(PocketFont.caption)
                         .foregroundStyle(PocketColor.labelSecondary)
                 }
             }
@@ -66,9 +92,13 @@ struct PocketRow<Leading: View, Trailing: View>: View {
         .padding(.horizontal, PocketMetrics.rowPaddingH)
         .padding(.vertical, PocketMetrics.rowPaddingV)
         .frame(minHeight: PocketMetrics.rowMinHeight)
+        .accessibilityElement(children: .combine)
     }
 }
 
+/// Only the trailing shorthand exists: a matching `leading:`-only initialiser makes every
+/// trailing-closure call ambiguous, since both would be a single closure in last position.
+/// A row with a leading view spells out both.
 extension PocketRow where Leading == EmptyView {
     init(title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) {
         self.init(title: title, subtitle: subtitle, leading: { EmptyView() }, trailing: trailing)
@@ -88,24 +118,43 @@ struct PocketRowSeparator: View {
     var body: some View {
         Rectangle()
             .fill(PocketColor.separator)
-            .frame(height: 0.5)
+            .frame(height: PocketMetrics.hairline)
             .padding(.leading, inset)
+    }
+}
+
+/// An amount in a row's trailing position: tabular so digits do not jitter, and colored by
+/// what it is — `.inc` is the income ink, `.wrn` the warning ink, `.exp` the default label.
+struct PocketAmount: View {
+    enum Kind { case income, expense, pending }
+
+    var value: Decimal
+    var kind: Kind
+
+    var body: some View {
+        Text(PocketFormat.currency(value))
+            .pocketFont(PocketFont.body, tabularFigures: true)
+            .foregroundStyle(color)
+    }
+
+    private var color: Color {
+        switch kind {
+        case .income: PocketColor.incomeInk
+        case .pending: PocketColor.warningInk
+        case .expense: PocketColor.expense
+        }
     }
 }
 
 #Preview("List section") {
     ScrollView {
-        PocketListSection(header: "Transações", accessory: ("Ver tudo", {})) {
+        PocketListSection(header: "Transações", linkTitle: "Ver tudo", linkAction: {}) {
             PocketRow(title: "Mercado", subtitle: "Cartão · crédito") {
-                Text(PocketFormat.currency(Decimal(string: "-184.90")!))
-                    .pocketFont(PocketFont.body, tabularFigures: true)
-                    .foregroundStyle(PocketColor.expense)
+                PocketAmount(value: PreviewMoney.groceries, kind: .expense)
             }
             PocketRowSeparator()
             PocketRow(title: "Salário", subtitle: "Pix") {
-                Text(PocketFormat.currency(Decimal(string: "7200")!))
-                    .pocketFont(PocketFont.body, tabularFigures: true)
-                    .foregroundStyle(PocketColor.income)
+                PocketAmount(value: PreviewMoney.salary, kind: .income)
             }
         }
     }

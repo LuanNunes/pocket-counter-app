@@ -9,6 +9,9 @@ enum PocketMetrics {
     /// Horizontal inset shared by the hero, lists and tiles (`.list`, `.hero`: `margin 0 16px`).
     static let screenMargin: CGFloat = 16
 
+    /// `.5px` separators and borders throughout the spec.
+    static let hairline: CGFloat = 0.5
+
     // MARK: Lists
 
     /// `.list` — note this is far rounder than the native inset-grouped radius.
@@ -26,6 +29,9 @@ enum PocketMetrics {
 
     static let heroRadius: CGFloat = 30
     static let heroPadding = EdgeInsets(top: 22, leading: 22, bottom: 10, trailing: 22)
+    /// `.kd`
+    static let heroKpiDot: CGFloat = 8
+    static let heroKpiPaddingV: CGFloat = 10
 
     // MARK: Tiles
 
@@ -38,7 +44,16 @@ enum PocketMetrics {
 
     /// `.gbtn`, `.gcap` — also the minimum comfortable touch target.
     static let controlSize: CGFloat = 44
-    static let controlRadius: CGFloat = 22
+    /// Always half `controlSize` — derived so the two cannot drift apart.
+    static var controlRadius: CGFloat { controlSize / 2 }
+
+    /// `.gcap { padding: 0 2px }` and `.gcap>button { min-width: 42px }`.
+    static let capsulePadding: CGFloat = 2
+    static let capsuleButtonMinWidth: CGFloat = 42
+
+    /// `.badge`, `.mp-l em`
+    static let badgePadding = EdgeInsets(top: 2, leading: 7, bottom: 2, trailing: 7)
+    static let badgeRadius: CGFloat = 8
 
     /// `.mpill`
     static let monthPillHeight: CGFloat = 44
@@ -48,12 +63,4 @@ enum PocketMetrics {
     /// `.qa-home-b`
     static let quickAddHeight: CGFloat = 52
     static let quickAddRadius: CGFloat = 26
-
-    /// The iOS sheet corner radius the prototype reproduces by hand.
-    static let sheetRadius: CGFloat = 46
-
-    // MARK: Motion
-
-    /// The prototype's `cubic-bezier(.32,.72,0,1)`, used for sheets and the island.
-    static let sheetCurve = Animation.timingCurve(0.32, 0.72, 0, 1, duration: 0.45)
 }

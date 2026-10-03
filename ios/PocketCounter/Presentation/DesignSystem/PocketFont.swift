@@ -1,70 +1,85 @@
 import SwiftUI
 
-/// Typography tokens, mapped from the prototype's hard-coded sizes.
+/// A font and the tracking that belongs to it. Pairing them structurally is the point: the
+/// spec's `letter-spacing` is part of the token, not an optional extra at the call site.
 ///
-/// The prototype sprinkles `font-size` per class because CSS gave it nothing better. Here
-/// each one maps to a system text style so Dynamic Type works. A fixed size is used only
-/// where the design depends on it — the hero balance — and even then it scales relative to
-/// a text style rather than being frozen.
+/// `letter-spacing` is in em and `.tracking` is in points, so `tracking = size × em`.
+struct PocketTextStyle {
+    let font: Font
+    let tracking: CGFloat
+
+    init(_ font: Font, tracking: CGFloat = 0) {
+        self.font = font
+        self.tracking = tracking
+    }
+}
+
+/// Typography tokens, mapped from the prototype's hard-coded sizes to system text styles so
+/// Dynamic Type works.
 ///
-/// `letter-spacing` in the spec is in em; SwiftUI's `.tracking` is in points, so the
-/// conversion is `tracking = size × em`.
-///
-/// The font family is the system one. `-apple-system` / `SF Pro` in the CSS *is*
-/// `.system(...)` — never load a font file for it.
+/// The family is the system one: `-apple-system` / `SF Pro` in the CSS *is* `.system(...)` —
+/// never load a font file for it.
 enum PocketFont {
 
     /// `.lt` — 34/700, -0.025em
-    static let largeTitle = Font.system(.largeTitle, weight: .bold)
-    static let largeTitleTracking: CGFloat = -0.85
+    static let largeTitle = PocketTextStyle(.system(.largeTitle, weight: .bold), tracking: -0.85)
 
-    /// `.lt-sub` — 15/400
-    static let largeTitleSubtitle = Font.system(.subheadline)
-
-    /// `.hero-v` — 40/700, -0.03em. Fixed size, but relative to `.largeTitle` so it still
-    /// responds to Dynamic Type.
-    static let heroValue = Font.system(size: 40, weight: .bold)
-    static let heroValueTracking: CGFloat = -1.2
+    /// `.lt-sub`, `.sec-h small` — 15/400
+    static let subtitle = PocketTextStyle(.system(.subheadline))
 
     /// `.hero-k` — 14/500
-    static let heroLabel = Font.system(.subheadline, weight: .medium)
+    static let heroLabel = PocketTextStyle(.system(.subheadline, weight: .medium))
+
+    /// `.hero-kpis>div` — 15/400
+    static let heroKpi = PocketTextStyle(.system(.subheadline))
+
+    /// `.hero-kpis b` — 16/600
+    static let heroKpiValue = PocketTextStyle(.system(.callout, weight: .semibold))
 
     /// `.sec-h` — 20/700, -0.02em
-    static let sectionTitle = Font.system(.title3, weight: .bold)
-    static let sectionTitleTracking: CGFloat = -0.4
-
-    /// `.sec-h small` — 15/400
-    static let sectionSubtitle = Font.system(.subheadline)
+    static let sectionTitle = PocketTextStyle(.system(.title3, weight: .bold), tracking: -0.4)
 
     /// `.sec-h .lnk` — 15/500
-    static let link = Font.system(.subheadline, weight: .medium)
+    static let link = PocketTextStyle(.system(.subheadline, weight: .medium))
 
     /// `.screen` base — 17, -0.01em. Also `.row .rk`.
-    static let body = Font.system(.body)
-    static let bodyTracking: CGFloat = -0.17
+    static let body = PocketTextStyle(.system(.body), tracking: -0.17)
 
-    /// `.row .rs` — 13
-    static let rowSubtitle = Font.system(.footnote)
+    /// `.row .rs`, `.tl-k` — 13. Small secondary text under a title or inside a tile.
+    static let caption = PocketTextStyle(.system(.footnote))
 
-    /// `.mp-l` — 16
-    static let monthPill = Font.system(.callout)
+    /// `.mp-l` — 16. The label inside a control, such as the month pill.
+    static let controlLabel = PocketTextStyle(.system(.callout))
 
-    /// `.tab` — 10.5/600, no tracking
-    static let tabLabel = Font.system(.caption2, weight: .semibold)
+    /// `.tab` — 10.5/600
+    static let tabLabel = PocketTextStyle(.system(.caption2, weight: .semibold))
 
-    /// `.tl-k` — 13
-    static let tileKey = Font.system(.footnote)
-    /// `.tl-v` — 17/600
-    static let tileValue = Font.system(.body, weight: .semibold)
+    /// `.tl-v` — 17/600. An emphasised value: a tile figure, a total.
+    static let valueEmphasis = PocketTextStyle(.system(.body, weight: .semibold))
 }
 
 extension View {
-    /// Applies a token and its tracking together, so a caller cannot take one without the
-    /// other. `.tnum` in the spec is `monospacedDigit`, for figures that must not jitter as
-    /// they change.
-    func pocketFont(_ font: Font, tracking: CGFloat = 0, tabularFigures: Bool = false) -> some View {
+    /// `.tnum` in the spec is `monospacedDigit`, for figures that must not jitter as they
+    /// change.
+    func pocketFont(_ style: PocketTextStyle, tabularFigures: Bool = false) -> some View {
         self
-            .font(tabularFigures ? font.monospacedDigit() : font)
-            .tracking(tracking)
+            .font(tabularFigures ? style.font.monospacedDigit() : style.font)
+            .tracking(style.tracking)
+    }
+
+    /// `.hero-v` — 40/700, -0.03em. The only fixed size in the design, so it is the only
+    /// token that needs `@ScaledMetric` to follow Dynamic Type.
+    func heroValueFont() -> some View {
+        modifier(HeroValueFont())
+    }
+}
+
+private struct HeroValueFont: ViewModifier {
+    @ScaledMetric(relativeTo: .largeTitle) private var size: CGFloat = 40
+
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: size, weight: .bold).monospacedDigit())
+            .tracking(size * -0.03)
     }
 }

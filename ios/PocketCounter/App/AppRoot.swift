@@ -5,33 +5,41 @@ import SwiftUI
 /// Scaffolding: it shows the design system against the real environment configuration. It
 /// becomes the session gate — splash / login / tab shell — once `SessionStore` exists.
 struct AppRoot: View {
+    private struct Entry: Identifiable {
+        let id: String
+        let title: String
+        let subtitle: String
+        let value: Decimal
+        let kind: PocketAmount.Kind
+    }
+
+    private let entries = [
+        Entry(id: "groceries", title: "Mercado", subtitle: "Cartão · crédito",
+              value: PreviewMoney.groceries, kind: .expense),
+        Entry(id: "salary", title: "Salário", subtitle: "Pix",
+              value: PreviewMoney.salary, kind: .income),
+        Entry(id: "card", title: "Fatura Nubank", subtitle: "vence em 3 dias",
+              value: PreviewMoney.cardBill, kind: .pending),
+    ]
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 hero
 
-                PocketListSection(header: "Transações", accessory: ("Ver tudo", {})) {
-                    PocketRow(title: "Mercado", subtitle: "Cartão · crédito") {
-                        amount(Decimal(string: "-184.90")!, color: PocketColor.expense)
-                    }
-                    PocketRowSeparator()
-                    PocketRow(title: "Salário", subtitle: "Pix") {
-                        amount(Decimal(string: "7200")!, color: PocketColor.income)
-                    }
-                    PocketRowSeparator()
-                    PocketRow(title: "Fatura Nubank", subtitle: "vence em 3 dias") {
-                        amount(Decimal(string: "-1240.55")!, color: PocketColor.warning)
+                PocketList(header: "Transações", linkTitle: "Ver tudo", linkAction: {}, items: entries) { entry in
+                    PocketRow(title: entry.title, subtitle: entry.subtitle) {
+                        PocketAmount(value: entry.value, kind: entry.kind)
                     }
                 }
 
                 PocketListSection(header: "Ambiente") {
                     PocketRow(title: "Configuração", subtitle: AppEnvironment.baseURL.absoluteString) {
                         Text(AppEnvironment.name.rawValue)
-                            .font(PocketFont.rowSubtitle)
+                            .pocketFont(PocketFont.caption)
                             .foregroundStyle(PocketColor.tintInk)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(PocketColor.tintSoft, in: .rect(cornerRadius: 8))
+                            .padding(PocketMetrics.badgePadding)
+                            .background(PocketColor.tintSoft, in: .rect(cornerRadius: PocketMetrics.badgeRadius))
                     }
                 }
             }
@@ -43,33 +51,34 @@ struct AppRoot: View {
     private var hero: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Saldo de \(PocketFormat.monthLabel(year: 2026, month: 10))")
-                .font(PocketFont.heroLabel)
+                .pocketFont(PocketFont.heroLabel)
                 .opacity(0.75)
 
-            Text(PocketFormat.currency(Decimal(string: "5774.55")!))
-                .pocketFont(PocketFont.heroValue, tracking: PocketFont.heroValueTracking, tabularFigures: true)
+            Text(PocketFormat.currency(PreviewMoney.balance))
+                .heroValueFont()
                 .padding(.top, 2)
                 .padding(.bottom, 12)
 
-            ForEach(kpis, id: \.label) { kpi in
+            ForEach(kpis) { kpi in
                 HStack(spacing: 8) {
                     Circle()
                         .fill(kpi.color)
-                        .frame(width: 8, height: 8)
+                        .frame(width: PocketMetrics.heroKpiDot, height: PocketMetrics.heroKpiDot)
 
                     Text(kpi.label)
+                        .pocketFont(PocketFont.heroKpi)
 
                     Spacer(minLength: 8)
 
                     Text(PocketFormat.currency(kpi.value, signed: false))
-                        .pocketFont(.system(.callout, weight: .semibold), tabularFigures: true)
+                        .pocketFont(PocketFont.heroKpiValue, tabularFigures: true)
                 }
-                .font(PocketFont.largeTitleSubtitle)
-                .padding(.vertical, 10)
+                .padding(.vertical, PocketMetrics.heroKpiPaddingV)
+                .accessibilityElement(children: .combine)
                 .overlay(alignment: .top) {
                     Rectangle()
                         .fill(PocketColor.onHero.opacity(0.16))
-                        .frame(height: 0.5)
+                        .frame(height: PocketMetrics.hairline)
                 }
             }
         }
@@ -79,23 +88,24 @@ struct AppRoot: View {
         .background {
             PocketColor.heroSurface
                 .clipShape(.rect(cornerRadius: PocketMetrics.heroRadius))
+                .shadow(color: PocketColor.heroShadow, radius: 20, x: 0, y: 18)
         }
-        .shadow(color: PocketColor.heroShadow, radius: 20, x: 0, y: 18)
         .padding(.horizontal, PocketMetrics.screenMargin)
     }
 
-    private var kpis: [(label: String, value: Decimal, color: Color)] {
-        [
-            ("Despesas", Decimal(string: "3425.45")!, PocketColor.HeroKPI.expense),
-            ("Receitas", Decimal(string: "9200.00")!, PocketColor.HeroKPI.income),
-            ("Pendente", Decimal(string: "1240.55")!, PocketColor.HeroKPI.warning),
-        ]
+    private struct Kpi: Identifiable {
+        let id: String
+        let label: String
+        let value: Decimal
+        let color: Color
     }
 
-    private func amount(_ value: Decimal, color: Color) -> some View {
-        Text(PocketFormat.currency(value))
-            .pocketFont(PocketFont.body, tabularFigures: true)
-            .foregroundStyle(color)
+    private var kpis: [Kpi] {
+        [
+            Kpi(id: "expenses", label: "Despesas", value: PreviewMoney.expenses, color: PocketColor.onHeroExpense),
+            Kpi(id: "incomes", label: "Receitas", value: PreviewMoney.incomes, color: PocketColor.onHeroIncome),
+            Kpi(id: "pending", label: "Pendente", value: PreviewMoney.pending, color: PocketColor.onHeroWarning),
+        ]
     }
 }
 

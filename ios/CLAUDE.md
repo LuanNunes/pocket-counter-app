@@ -55,6 +55,18 @@ right scheme selected; the commands above are for scripting and reproducible ver
   `xcuserdata/`, which is gitignored, and vanishes for everyone else.
 * A scheme with an empty `<TestPlans></TestPlans>` element makes `xcodebuild test` fail with
   "not currently configured for the test action" — the element must be absent, not empty.
+* The synchronized group copies **every** file it finds as a bundle resource, dotfiles
+  included. The `.gitkeep` files that keep the empty layer folders visible in a clone all
+  collide on one output path, so `Shared.xcconfig` carries
+  `EXCLUDED_SOURCE_FILE_NAMES = .gitkeep`.
+* Unit tests always build under a **debug** configuration: `@testable` needs
+  `ENABLE_TESTABILITY`, which must not ship. That is why the Prod scheme runs its tests on
+  `Debug-Dev` while running and archiving on `Release-Prod`.
+* Settings live in exactly one place. `Config/Shared.xcconfig` holds what both targets need
+  and is included by `Base.xcconfig` (app) and `Tests.xcconfig` (test bundle); the project
+  file carries only the debug/release differences. Do not re-declare a setting in
+  `project.pbxproj` that an xcconfig already sets — the two resolve differently per target
+  and will drift.
 * `simctl boot` failing with "The iOS 27.0 simulator runtime is not available" while
   `xcodebuild test` works is stale CoreSimulator state, not a missing runtime. Fix:
   `killall -9 com.apple.CoreSimulator.CoreSimulatorService`, then boot again.
@@ -123,10 +135,19 @@ details.
 `../docs/ios26/` is the source of truth: the `.jsx` files are the per-screen spec,
 `glass.css` (lines 11-15) the tokens, `screens.css` the metrics. Start at its `README.md`,
 which records that the prototype **does not run** and which of its own claims do not hold.
-Colors there are OKLCH — converted to sRGB once and stored as asset-catalog Color Sets, not
-hand-tweaked in Swift. Most tokens map to Apple's semantic colors; only the purple tint is
-custom. Where implementation and specification differ, follow the specification unless
-there is a documented reason not to.
+Colors there are OKLCH — converted once and stored as asset-catalog Color Sets in Display P3
+(`tint` in dark mode falls outside sRGB), **not hand-tweaked in Swift**. Most tokens map to
+Apple's semantic colors; only the purple tints and the hero are custom.
+
+Mind the `-ink` pairs. `glass.css` ends with
+`.inc{color:var(--green-ink)}.exp{color:var(--label)}.wrn{color:var(--orange-ink)}`: the
+plain `--green`/`--orange` fill dots and badges, while their darker `-ink` twins are for
+**text**, because the system color is unreadable on `--cell` in light mode (`systemGreen` is
+2.2:1 there). And an expense amount is **not red** — `--red` is reserved for destructive
+actions. Use `PocketAmount`, which encodes all three.
+
+Where implementation and specification differ, follow the specification unless there is a
+documented reason not to.
 
 ## Divergences from Android, on purpose
 
