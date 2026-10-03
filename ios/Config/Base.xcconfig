@@ -1,28 +1,18 @@
-// Settings shared by every configuration.
-//
-// `//` starts a comment in xcconfig, so a literal "https://" would be truncated to
-// "https:". SLASH is the standard workaround — see Dev.xcconfig.
-SLASH = /
-
-IPHONEOS_DEPLOYMENT_TARGET = 26.0
-SWIFT_VERSION = 6.0
-SWIFT_STRICT_CONCURRENCY = complete
-SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES
+// App target settings. The environment-specific files include this one.
+#include "Shared.xcconfig"
 
 PRODUCT_NAME = PocketCounter
 CURRENT_PROJECT_VERSION = 1
 MARKETING_VERSION = 0.1.0
 
-TARGETED_DEVICE_FAMILY = 1
-SUPPORTED_PLATFORMS = iphoneos iphonesimulator
-SUPPORTS_MACCATALYST = NO
 // Deliberately OUTSIDE PocketCounter/: that folder is a file-system-synchronized
 // group, and a plist inside it would also be copied as a bundle resource.
 INFOPLIST_FILE = Info.plist
+
+// Without this the AppIcon set compiles into Assets.car but is never designated as the
+// app icon, and the app ships blank.
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+
+SUPPORTS_MACCATALYST = NO
 ENABLE_USER_SCRIPT_SANDBOXING = YES
-
 CODE_SIGN_STYLE = Automatic
-
-// Per-machine DEVELOPMENT_TEAM, gitignored. `#include?` does not fail when absent —
-// copy Local.private.xcconfig.example to Local.private.xcconfig to set yours.
-#include? "Local.private.xcconfig"

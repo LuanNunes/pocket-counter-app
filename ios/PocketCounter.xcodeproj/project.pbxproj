@@ -13,6 +13,8 @@
 		1A2000000000000000000000 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		1A3000000000000000000000 /* Dev.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Dev.xcconfig; sourceTree = "<group>"; };
 		1A4000000000000000000000 /* Prod.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prod.xcconfig; sourceTree = "<group>"; };
+		1A6000000000000000000000 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+		1A7000000000000000000000 /* Tests.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tests.xcconfig; sourceTree = "<group>"; };
 		1A5000000000000000000000 /* Local.private.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.private.xcconfig.example; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -52,7 +54,9 @@
 		AA3000000000000000000000 /* Config */ = {
 			isa = PBXGroup;
 			children = (
+				1A6000000000000000000000 /* Shared.xcconfig */,
 				1A1000000000000000000000 /* Base.xcconfig */,
+				1A7000000000000000000000 /* Tests.xcconfig */,
 				1A2000000000000000000000 /* Local.xcconfig */,
 				1A3000000000000000000000 /* Dev.xcconfig */,
 				1A4000000000000000000000 /* Prod.xcconfig */,
@@ -194,7 +198,7 @@
 				};
 			};
 			buildConfigurationList = FF1000000000000000000000 /* Build configuration list for PBXProject "PocketCounter" */;
-			developmentRegion = en;
+			developmentRegion = "pt-BR";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
@@ -223,10 +227,8 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				// .gitkeep mantem as pastas de camada visiveis num clone novo; sem isto o
 				SDKROOT = iphoneos;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_TESTABILITY = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -244,10 +246,8 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				// .gitkeep mantem as pastas de camada visiveis num clone novo; sem isto o
 				SDKROOT = iphoneos;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_TESTABILITY = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
@@ -265,10 +265,8 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				// .gitkeep mantem as pastas de camada visiveis num clone novo; sem isto o
 				SDKROOT = iphoneos;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -285,10 +283,8 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				// .gitkeep mantem as pastas de camada visiveis num clone novo; sem isto o
 				SDKROOT = iphoneos;
-				SWIFT_STRICT_CONCURRENCY = complete;
-				SWIFT_VERSION = 6.0;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -302,7 +298,6 @@
 			baseConfigurationReference = 1A2000000000000000000000 /* filLocal */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
 				ENABLE_PREVIEWS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -313,7 +308,6 @@
 			baseConfigurationReference = 1A3000000000000000000000 /* filDev */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
 				ENABLE_PREVIEWS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -324,7 +318,6 @@
 			baseConfigurationReference = 1A3000000000000000000000 /* filDev */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
 				ENABLE_PREVIEWS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -335,7 +328,6 @@
 			baseConfigurationReference = 1A4000000000000000000000 /* filProd */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_IDENTITY = "Apple Development";
 				ENABLE_PREVIEWS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -343,57 +335,33 @@
 		};
 		3C1000000000000000000000 /* Debug-Local */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A7000000000000000000000 /* Tests.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
 			};
 			name = "Debug-Local";
 		};
 		3C2000000000000000000000 /* Debug-Dev */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A7000000000000000000000 /* Tests.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
 			};
 			name = "Debug-Dev";
 		};
 		3C3000000000000000000000 /* Release-Dev */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A7000000000000000000000 /* Tests.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
 			};
 			name = "Release-Dev";
 		};
 		3C4000000000000000000000 /* Release-Prod */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1A7000000000000000000000 /* Tests.xcconfig */;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = 1;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter";
 			};
 			name = "Release-Prod";
 		};

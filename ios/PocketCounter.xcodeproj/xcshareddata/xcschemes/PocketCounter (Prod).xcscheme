@@ -22,8 +22,10 @@
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
+   <!-- Unit tests always build under a debug configuration: @testable needs
+        ENABLE_TESTABILITY, which must not ship in a release build. -->
    <TestAction
-      buildConfiguration = "Release-Prod"
+      buildConfiguration = "Debug-Dev"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
