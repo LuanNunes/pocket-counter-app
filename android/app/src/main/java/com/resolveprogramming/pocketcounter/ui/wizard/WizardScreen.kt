@@ -252,6 +252,7 @@ fun WizardScreen(
                                 selectedMethod = state.draft.paymentMethod,
                                 selectedCardId = state.draft.cardId,
                                 enabledMethods = state.enabledMethods,
+                                paymentPrefilled = state.paymentPrefilled,
                                 onSelectMethod = viewModel::selectPaymentMethod,
                                 onSelectCard = viewModel::selectCard,
                                 unknownCardLast4 = state.unknownCardLast4,
@@ -281,9 +282,10 @@ fun WizardScreen(
         // of how long the tag list grows (it scrolls off-screen if placed inside StepTags).
         if (state.step == WizardStep.TAGS) {
             LearnPatternToggle(
-                checked = state.draft.learnRule,
+                checked = state.draft.learnRule && state.canTeachRule,
+                enabled = state.canTeachRule,
                 // Merchant-first so the promised match key is what the rule actually keys on.
-                hint = state.draft.merchant ?: notification.parsed.paymentHint ?: "...",
+                hint = learnPatternHint(state, state.draft.merchant ?: notification.parsed.paymentHint ?: "..."),
                 onCheckedChange = viewModel::toggleLearnRule,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )

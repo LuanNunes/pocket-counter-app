@@ -452,7 +452,7 @@ class HomeViewModelTest {
         channel = NotificationChannel.PUSH,
         time = "agora",
         received = "2026-06-30T13:25:00Z",
-        text = "Compra aprovada DL*UberRides",
+        text = "Compra aprovada DL*UberRides via pix",
         status = NotificationStatus.AUTO,
         parsed = ParsedNotification(
             type = TransactionType.EXPENSE,
@@ -461,11 +461,7 @@ class HomeViewModelTest {
             merchantRaw = "DL*UberRides",
             paymentHint = null,
         ),
-        suggestions = ClassificationSuggestion(
-            tagIds = listOf("t1"),
-            paymentMethod = PaymentMethod.PIX,
-            cardId = null,
-        ),
+        suggestions = ClassificationSuggestion(idTag = "t1"),
         tokens = emptyList(),
     )
 
@@ -485,17 +481,17 @@ class HomeViewModelTest {
         assertEquals(0, vm.state.value.pendingReviewCount)
     }
 
-    private fun creditRuleNotification(id: String, hint: String): NotificationItem {
+    private fun creditNotification(id: String, hint: String): NotificationItem {
         val base = recognizedNotification(id)
         return base.copy(
+            text = "Compra aprovada DL*UberRides no crédito",
             parsed = base.parsed.copy(paymentHint = hint),
-            suggestions = base.suggestions.copy(paymentMethod = PaymentMethod.CREDIT, cardId = "card-B"),
         )
     }
 
     @Test
-    fun `an AUTO push whose last4 names card A beats the card its rule pinned`() = runTest {
-        val notification = creditRuleNotification("pend-1", "final 3685")
+    fun `an AUTO push whose last4 names card A is filed on card A`() = runTest {
+        val notification = creditNotification("pend-1", "final 3685")
         coEvery { cardLast4Repository.getMap() } returns mapOf("card-A" to "3685", "card-B" to "1111")
         coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
@@ -507,8 +503,8 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `an AUTO push with no hint takes the card its issuer names over the card its rule pinned`() = runTest {
-        val notification = creditRuleNotification("pend-1", "final 0000").let {
+    fun `an AUTO push with no hint takes the card its issuer names`() = runTest {
+        val notification = creditNotification("pend-1", "final 0000").let {
             it.copy(app = "Nubank", parsed = it.parsed.copy(paymentHint = null))
         }
         coEvery { cardRepository.getCards() } returns Result.success(
@@ -524,8 +520,8 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `an AUTO push with an unmapped last4 is not confirm-ready despite its rule card`() = runTest {
-        val notification = creditRuleNotification("pend-1", "final 9999")
+    fun `an AUTO push with an unmapped last4 is not confirm-ready`() = runTest {
+        val notification = creditNotification("pend-1", "final 9999")
         coEvery { cardLast4Repository.getMap() } returns mapOf("card-A" to "3685")
         coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
@@ -543,7 +539,6 @@ class HomeViewModelTest {
         val base = recognizedNotification("pend-1")
         val notification = base.copy(
             text = "Compra aprovada MERCADO",
-            suggestions = base.suggestions.copy(paymentMethod = null),
         )
         coEvery { notificationRepository.getPendingReview() } returns Result.success(listOf(notification))
         coEvery { notificationRepository.classify("pend-1", any()) } returns
@@ -763,7 +758,7 @@ class HomeViewModelTest {
             merchantRaw = null,
             paymentHint = null,
         ),
-        suggestions = ClassificationSuggestion(tagIds = emptyList()),
+        suggestions = ClassificationSuggestion(),
         tokens = emptyList(),
     )
 

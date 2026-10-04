@@ -1,13 +1,10 @@
 package com.resolveprogramming.pocketcounter.ui.regras
 
-import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
-import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
+import com.resolveprogramming.pocketcounter.data.repository.RuleWriteOutcome
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
-import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -30,19 +27,14 @@ class RegrasViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val ruleRepository: ClassificationRuleRepository = mockk(relaxed = true)
-    private val cardRepository: CardRepository = mockk(relaxed = true)
     private val tagRepository: TagRepository = mockk(relaxed = true)
 
     private val ifoodRule = ClassificationRule(
         id = "rule-1",
-        patterns = listOf("Ifood"),
-        matchType = "CONTAINS",
+        pattern = "Ifood",
+        idTag = "tag-1",
         active = true,
         appliedCount = 3,
-        transactionType = TransactionType.EXPENSE,
-        paymentMethod = null,
-        cardId = null,
-        tags = emptyList(),
         action = RuleAction.SUGGEST,
     )
 
@@ -50,7 +42,6 @@ class RegrasViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         coEvery { ruleRepository.getAll() } returns Result.success(listOf(ifoodRule))
-        coEvery { cardRepository.getCards() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
         coEvery { tagRepository.getAllContexts() } returns Result.success(emptyList())
     }
@@ -58,93 +49,176 @@ class RegrasViewModelTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun makeViewModel(
-        paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
-    ) = RegrasViewModel(
-        ruleRepository,
-        cardRepository,
-        tagRepository,
-        paymentMethodPrefsRepository,
-    )
+    private fun makeViewModel() = RegrasViewModel(ruleRepository, tagRepository)
 
     @Test
-    fun `saveEdit persists the chosen method and card onto the edited rule`() = runTest {
-        coEvery { ruleRepository.update(any()) } returns Result.success(Unit)
+    fun `saveEdit persists the edited pattern, tag and active flag onto the edited rule`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Saved)
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         vm.openEdit("rule-1")
-        vm.saveEdit(PaymentMethod.CREDIT, cardId = "card-9")
+        vm.saveEdit(pattern = "Ifood Delivery", idTag = "tag-2", active = false)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val slot = slot<ClassificationRule>()
         coVerify { ruleRepository.update(capture(slot)) }
         assertEquals("rule-1", slot.captured.id)
-        assertEquals(PaymentMethod.CREDIT, slot.captured.paymentMethod)
-        assertEquals("card-9", slot.captured.cardId)
-        // Patterns/type/tags must survive the edit so the update doesn't wipe them.
-        assertEquals(listOf("Ifood"), slot.captured.patterns)
-        assertEquals(TransactionType.EXPENSE, slot.captured.transactionType)
+        assertEquals("Ifood Delivery", slot.captured.pattern)
+        assertEquals("tag-2", slot.captured.idTag)
+        assertEquals(false, slot.captured.active)
+        assertEquals(RuleAction.SUGGEST, slot.captured.action)
     }
 
     @Test
-    fun `saveEdit drops the card when the method is not CREDIT`() = runTest {
-        coEvery { ruleRepository.update(any()) } returns Result.success(Unit)
+    fun `requestDelete labels the confirmation with the rule's pattern`() = runTest {
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        vm.openEdit("rule-1")
-        vm.saveEdit(PaymentMethod.PIX, cardId = "card-9")
-        testDispatcher.scheduler.advanceUntilIdle()
+        vm.requestDelete("rule-1")
 
-        val slot = slot<ClassificationRule>()
-        coVerify { ruleRepository.update(capture(slot)) }
-        assertEquals(PaymentMethod.PIX, slot.captured.paymentMethod)
-        assertNull(slot.captured.cardId)
+        assertEquals("Ifood", vm.state.value.confirmDelete?.patternLabel)
     }
 
     @Test
     fun `saveEdit success closes the sheet and reloads`() = runTest {
-        coEvery { ruleRepository.update(any()) } returns Result.success(Unit)
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Saved)
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         vm.openEdit("rule-1")
-        vm.saveEdit(PaymentMethod.CREDIT, cardId = "card-9")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertNull(vm.state.value.editTarget)
         assertFalse(vm.state.value.savingEdit)
+        assertNull(vm.state.value.editError)
         assertEquals("Regra atualizada", vm.state.value.toastMessage)
         // getAll runs once on init + once after a successful update.
         coVerify(exactly = 2) { ruleRepository.getAll() }
     }
 
+    // -------------------------------------------------------------------------
+    // editError — the 409 belongs under the pattern field, not behind the scrim
+    // -------------------------------------------------------------------------
+
     @Test
-    fun `saveEdit failure keeps the sheet open and toasts`() = runTest {
+    fun `saveEdit on a duplicate keeps the sheet open with an inline error and does not reload`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Duplicate)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("rule-1", vm.state.value.editTarget?.id)
+        assertFalse(vm.state.value.savingEdit)
+        assertEquals(DUPLICATE_PATTERN_ERROR, vm.state.value.editError)
+        assertNull(vm.state.value.toastMessage)
+        coVerify(exactly = 1) { ruleRepository.getAll() }
+    }
+
+    @Test
+    fun `a duplicate reported after the sheet was dismissed falls back to the toast`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Duplicate)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        vm.cancelEdit()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.editError)
+        assertEquals(DUPLICATE_PATTERN_ERROR, vm.state.value.toastMessage)
+    }
+
+    @Test
+    fun `clearEditError clears the inline error`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Duplicate)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.clearEditError()
+
+        assertNull(vm.state.value.editError)
+    }
+
+    @Test
+    fun `openEdit clears an error left by a previous attempt`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Duplicate)
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        vm.openEdit("rule-1")
+
+        assertNull(vm.state.value.editError)
+    }
+
+    @Test
+    fun `a rejection shows the server's own reason, not a guess`() = runTest {
+        val serverReason = "A tag precisa ser de despesa."
+        coEvery { ruleRepository.update(any()) } returns
+            Result.success(RuleWriteOutcome.Rejected(serverReason))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(serverReason, vm.state.value.editError)
+        assertEquals("rule-1", vm.state.value.editTarget?.id)
+    }
+
+    @Test
+    fun `a rejection with no reason falls back to the generic sentence`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.success(RuleWriteOutcome.Rejected(null))
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(UPDATE_FAILED, vm.state.value.editError)
+    }
+
+    @Test
+    fun `saveEdit failure keeps the sheet open and reports inline, where the scrim cannot hide it`() = runTest {
         coEvery { ruleRepository.update(any()) } returns Result.failure(RuntimeException("boom"))
         val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         vm.openEdit("rule-1")
-        vm.saveEdit(PaymentMethod.CREDIT, cardId = "card-9")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals("rule-1", vm.state.value.editTarget?.id)
         assertFalse(vm.state.value.savingEdit)
-        assertEquals("Não foi possível atualizar", vm.state.value.toastMessage)
+        assertEquals(UPDATE_FAILED, vm.state.value.editError)
+        assertNull(vm.state.value.toastMessage)
     }
 
-    // -------------------------------------------------------------------------
-    // enabledMethods — payment-method availability config
-    // -------------------------------------------------------------------------
-
     @Test
-    fun `enabledMethods in state reflects the repo emission`() = runTest {
-        val fakeRepo = FakePaymentMethodPrefsRepository(initial = setOf(PaymentMethod.PIX))
-        val vm = makeViewModel(paymentMethodPrefsRepository = fakeRepo)
+    fun `a failure reported after the sheet was dismissed falls back to the toast`() = runTest {
+        coEvery { ruleRepository.update(any()) } returns Result.failure(RuntimeException("boom"))
+        val vm = makeViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(setOf(PaymentMethod.PIX), vm.state.value.enabledMethods)
+        vm.openEdit("rule-1")
+        vm.saveEdit(pattern = "Ifood", idTag = "tag-1", active = true)
+        vm.cancelEdit()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.editError)
+        assertEquals(UPDATE_FAILED, vm.state.value.toastMessage)
     }
 }

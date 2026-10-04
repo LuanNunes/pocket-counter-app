@@ -1,7 +1,6 @@
 package com.resolveprogramming.pocketcounter.data.remote
 
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleTagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.ClassifyResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.NotificationDto
@@ -130,37 +129,21 @@ internal object RemoteMappers {
         skippedCount = skippedCount,
     )
 
-    /** Serializes a learned rule for create. Only expense tags carry a context (idCategory). */
+    /** Serializes a rule for create/update. `idCategory` is a read-only projection and is never sent. */
     fun ClassificationRule.toDto(): ClassificationRuleDto = ClassificationRuleDto(
-        patterns = patterns,
-        matchType = matchType,
+        pattern = pattern,
         active = active,
-        // An IGNORE rule carries only a pattern — no type/payment/tags to serialize.
-        transactionType = transactionType
-            ?.takeIf { action == RuleAction.SUGGEST }
-            ?.let { "INCOME".takeIf { _ -> it == TransactionType.INCOME } ?: "EXPENSE" },
-        paymentMethod = paymentMethod?.name?.takeIf { action == RuleAction.SUGGEST },
-        cardId = cardId?.takeIf { action == RuleAction.SUGGEST },
-        tagIds = tags.takeIf { action == RuleAction.SUGGEST }.orEmpty().mapNotNull { tag ->
-            val context = tag.idContext ?: return@mapNotNull null
-            ClassificationRuleTagDto(idTag = tag.id, idCategory = context)
-        },
+        idTag = idTag.takeIf { action == RuleAction.SUGGEST },
         // Omitted (null) on write for SUGGEST so existing rules stay wire-compatible.
         action = "IGNORE".takeIf { action == RuleAction.IGNORE },
     )
 
     fun ClassificationRuleDto.toDomain(): ClassificationRule = ClassificationRule(
         id = id,
-        patterns = patterns,
-        matchType = matchType,
+        pattern = pattern,
+        idTag = idTag,
         active = active,
         appliedCount = appliedCount,
-        transactionType = parseType(transactionType),
-        paymentMethod = parsePaymentMethod(paymentMethod),
-        cardId = cardId,
-        // Names are resolved against the loaded tag list in the UI layer.
-        // Rule tags are always expense (the rule DTO keeps its own idCategory field).
-        tags = tagIds.map { Tag(id = it.idTag, name = "", kind = TransactionType.EXPENSE, idContext = it.idCategory) },
         action = RuleAction.IGNORE.takeIf { action.equals("IGNORE", ignoreCase = true) } ?: RuleAction.SUGGEST,
     )
 
@@ -252,11 +235,7 @@ internal object RemoteMappers {
             status = NotificationStatus.AUTO.takeIf { status.uppercase() == "CLASSIFIED" }
                 ?: NotificationStatus.NEEDS_REVIEW,
             parsed = BrNotificationParser.healMerchant(toParsed(), text),
-            suggestions = ClassificationSuggestion(
-                tagIds = emptyList(),
-                paymentMethod = null,
-                cardId = null,
-            ),
+            suggestions = ClassificationSuggestion(),
             tokens = emptyList(),
         )
     }
@@ -298,12 +277,7 @@ internal object RemoteMappers {
         val enriched = base.copy(
             status = parseStatus(status),
             parsed = parsedDomain,
-            suggestions = ClassificationSuggestion(
-                tagIds = suggestions.tagIds,
-                paymentMethod = parsePaymentMethod(suggestions.paymentMethod),
-                cardId = suggestions.cardId,
-                transactionType = parseType(suggestions.transactionType),
-            ),
+            suggestions = ClassificationSuggestion(idTag = suggestions.idTag),
             tokens = NotificationTokenizer.tokenize(base.text, parsedDomain),
         )
         return ClassifiedNotification(

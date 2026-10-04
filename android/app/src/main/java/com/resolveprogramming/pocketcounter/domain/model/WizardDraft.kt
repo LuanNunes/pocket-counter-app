@@ -76,6 +76,17 @@ data class WizardDraft(
         return copy(tagIds = tagIds + tagId)
     }
 
+    /**
+     * The tag a taught rule would carry: the first one the user picked ([tagIds] is append-ordered)
+     * that is an expense tag, since rules cannot reference income tags. Resolved through [tags] by id,
+     * never by filtering the catalog, which would re-sort the pick into catalog order.
+     */
+    fun teachableTag(tags: List<Tag>): Tag? {
+        if (type == TransactionType.INCOME) return null
+        val byId = tags.associateBy { it.id }
+        return tagIds.firstNotNullOfOrNull { id -> byId[id]?.takeIf { it.kind == TransactionType.EXPENSE } }
+    }
+
     /** Sets the type, dropping a credit payment that an income can't hold (mirrors [withPaymentMethod]). */
     fun withType(type: TransactionType): WizardDraft {
         if (type == TransactionType.INCOME && paymentMethod == PaymentMethod.CREDIT) {
@@ -88,16 +99,15 @@ data class WizardDraft(
         fun fromNotification(
             notification: NotificationItem,
         ): WizardDraft {
-            val base = WizardDraft(
-                // Prefer the per-notification parse; fall back to the matched rule's suggested type
-                // so a confidently-classified notification whose text didn't reveal income/expense
-                // still opens with a valid type.
-                type = notification.parsed.type ?: notification.suggestions.transactionType,
+            // The type comes from the text alone: the classifier no longer suggests one, so a
+            // notification that does not reveal income/expense opens without a type.
+            return WizardDraft(
+                type = notification.parsed.type,
                 amount = notification.parsed.amount,
                 date = notification.parsed.date ?: LocalDate.now(),
                 // isFixo is a user toggle ("Repete todo mês"); the classify suggestion
                 // doesn't carry it, so a fresh draft always starts non-fixo.
-                tagIds = notification.suggestions.tagIds,
+                tagIds = listOfNotNull(notification.suggestions.idTag),
                 // Seed the persisted title (name) and the series/hint fallback (merchant) from the
                 // parsed merchant so the wizard's "Descrição" field opens pre-filled and editable.
                 name = notification.parsed.merchantRaw,
@@ -105,13 +115,6 @@ data class WizardDraft(
                 installments = notification.parsed.installments,
                 installmentValue = notification.parsed.installmentValue,
             )
-            // Route the suggested method through the credit guard so an income+CREDIT
-            // suggestion can't yield a credit draft; keep cardId only when it survives.
-            val withMethod = base.withPaymentMethod(notification.suggestions.paymentMethod)
-            if (withMethod.paymentMethod == PaymentMethod.CREDIT) {
-                return withMethod.copy(cardId = notification.suggestions.cardId)
-            }
-            return withMethod
         }
     }
 }

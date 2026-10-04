@@ -2,7 +2,6 @@ package com.resolveprogramming.pocketcounter.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -165,7 +163,6 @@ fun HomeContent(
                         state.userName,
                         isRefreshing = state.isRefreshing,
                         onRefresh = viewModel::onManualRefresh,
-                        onAssistant = { onNavigate("assistente") },
                     )
                 }
 
@@ -285,7 +282,6 @@ internal fun HeaderSection(
     userName: String,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    onAssistant: () -> Unit = {},
 ) {
     val greeting = homeGreeting(userName)
     Row(
@@ -333,29 +329,6 @@ internal fun HeaderSection(
                         tint = PocketTheme.colors.accent.copy(alpha = 0.4f.takeIf { isRefreshing } ?: 1f),
                     )
                 }
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        Box(
-            modifier = Modifier
-                .minimumInteractiveComponentSize()
-                .clickable(onClick = onAssistant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(PocketTheme.shapes.labelPicker)
-                    .background(PocketTheme.colors.surface)
-                    .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.labelPicker),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = "Assistente",
-                    modifier = Modifier.size(20.dp),
-                    tint = PocketTheme.colors.accent,
-                )
             }
         }
         Spacer(Modifier.width(10.dp))

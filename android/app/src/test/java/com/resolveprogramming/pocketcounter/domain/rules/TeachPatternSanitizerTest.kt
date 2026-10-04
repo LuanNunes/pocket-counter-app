@@ -73,7 +73,7 @@ class TeachPatternSanitizerTest {
 
     @Test
     fun `clean_stripsTheSpaceLeftBehindByTrailingPunctuation`() {
-        // RulePatterns.covers is whitespace-strict: "Padaria " and "Padaria" never compact together.
+        // Identity server-side is lower(pattern): "Padaria " and "Padaria" would be two rules.
         assertEquals("Padaria", TeachPatternSanitizer.clean("Padaria -"))
     }
 
@@ -85,6 +85,37 @@ class TeachPatternSanitizerTest {
     fun `clean_allowGatewayMarker_keepsTheBarePrefix`() {
         assertEquals("Ifd*", TeachPatternSanitizer.clean("Ifd*", allowGatewayMarker = true))
         assertEquals("Mp *", TeachPatternSanitizer.clean("Mp *", allowGatewayMarker = true))
+    }
+
+    @Test
+    fun `clean_allowGatewayMarker_keepsRp3bankStar`() {
+        assertEquals("Rp3bank*", TeachPatternSanitizer.clean("Rp3bank*", allowGatewayMarker = true))
+    }
+
+    @Test
+    fun `clean_rejectsALookalikeWithOnlyDigitsAfterTheStar`() {
+        assertNull(TeachPatternSanitizer.clean("PAG*123456"))
+    }
+
+    @Test
+    fun `clean_allowGatewayMarker_keepsTheDigitOnlyLookalike`() {
+        assertEquals("PAG*123456", TeachPatternSanitizer.clean("PAG*123456", allowGatewayMarker = true))
+    }
+
+    @Test
+    fun `clean_keepsDL_space_star_UberRides_whenLettersFollowTheStar`() {
+        assertEquals("DL *UberRides", TeachPatternSanitizer.clean("DL *UberRides"))
+    }
+
+    @Test
+    fun `clean_rejectsBlank`() {
+        assertNull(TeachPatternSanitizer.clean("   ", allowGatewayMarker = true))
+    }
+
+    @Test
+    fun `clean_judgesOnlyTheLastStar`() {
+        assertEquals("A*B*C", TeachPatternSanitizer.clean("A*B*C"))
+        assertNull(TeachPatternSanitizer.clean("A*B*1"))
     }
 
     // -------------------------------------------------------------------------

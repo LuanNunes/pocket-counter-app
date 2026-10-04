@@ -64,7 +64,7 @@ class ConfirmReadyPresentationTest {
             merchantRaw = merchantRaw,
             paymentHint = null,
         ),
-        suggestions = ClassificationSuggestion(tagIds = listOf(tagMercado.id)),
+        suggestions = ClassificationSuggestion(idTag = tagMercado.id),
         tokens = emptyList(),
     )
 

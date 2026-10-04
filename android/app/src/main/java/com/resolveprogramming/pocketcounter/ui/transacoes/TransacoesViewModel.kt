@@ -410,6 +410,9 @@ class TransacoesViewModel @Inject constructor(
     fun generateBalance() {
         val viewed = YearMonth.parse(_state.value.monthKey)
         val target = RemoteMappers.monthKeyToRef(viewed.toString())
+        // source is structurally the month before target and there is no source picker, so the
+        // backend's target_before_source 400 is unreachable here; adding a picker means adding
+        // that guard.
         val source = RemoteMappers.monthKeyToRef(viewed.minusMonths(1).toString())
         viewModelScope.launch {
             seriesRepository.carryForward(target, source, onlyRecurring = true)

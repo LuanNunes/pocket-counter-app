@@ -84,7 +84,7 @@ class WizardIgnoreDialogFlowTest {
             merchantRaw = null,
             paymentHint = null,
         ),
-        suggestions = ClassificationSuggestion(tagIds = emptyList()),
+        suggestions = ClassificationSuggestion(),
         tokens = emptyList(),
     )
 

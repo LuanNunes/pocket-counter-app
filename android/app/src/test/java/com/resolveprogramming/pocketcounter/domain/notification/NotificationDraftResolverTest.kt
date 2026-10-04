@@ -19,10 +19,8 @@ class NotificationDraftResolverTest {
     private fun notification(
         paymentHint: String? = null,
         app: String = "Banco Itaú",
-        method: PaymentMethod? = PaymentMethod.CREDIT,
-        cardId: String? = null,
         type: TransactionType = TransactionType.EXPENSE,
-        text: String = "Compra aprovada R$ 49,90",
+        text: String = "Compra no crédito R$ 49,90",
     ) = NotificationItem(
         id = "n1",
         app = app,
@@ -38,11 +36,7 @@ class NotificationDraftResolverTest {
             merchantRaw = "IFOOD",
             paymentHint = paymentHint,
         ),
-        suggestions = ClassificationSuggestion(
-            tagIds = emptyList(),
-            paymentMethod = method,
-            cardId = cardId,
-        ),
+        suggestions = ClassificationSuggestion(),
         tokens = emptyList(),
     )
 
@@ -61,9 +55,9 @@ class NotificationDraftResolverTest {
     private val nubank = card("card-nubank", "Nubank")
 
     @Test
-    fun `a last4 hit beats the card a rule provided`() {
+    fun `a last4 hit names the card`() {
         val result = resolveDraftFromNotification(
-            notification(paymentHint = "final 3685", cardId = "card-nubank"),
+            notification(paymentHint = "final 3685"),
             NotificationEvidence(last4Map = mapOf("card-itau" to "3685", "card-nubank" to "1111")),
         )
 
@@ -83,30 +77,30 @@ class NotificationDraftResolverTest {
     }
 
     @Test
-    fun `the rule's card is kept when neither last4 nor issuer resolves`() {
+    fun `no card is set when neither last4 nor issuer resolves`() {
         val result = resolveDraftFromNotification(
-            notification(app = "Banco Desconhecido", cardId = "card-nubank"),
+            notification(app = "Banco Desconhecido"),
             NotificationEvidence(cards = listOf(itau)),
         )
 
-        assertEquals("card-nubank", result.draft.cardId)
+        assertNull(result.draft.cardId)
         assertNull(result.unknownLast4)
     }
 
     @Test
-    fun `an ambiguous issuer falls through to the rule's card`() {
+    fun `an ambiguous issuer leaves the card unset`() {
         val result = resolveDraftFromNotification(
-            notification(cardId = "card-nubank"),
+            notification(),
             NotificationEvidence(cards = listOf(itau, card("card-itau-2", "Itaú"))),
         )
 
-        assertEquals("card-nubank", result.draft.cardId)
+        assertNull(result.draft.cardId)
     }
 
     @Test
-    fun `an unmapped last4 reports it and drops the rule's card`() {
+    fun `an unmapped last4 reports it and sets no card`() {
         val result = resolveDraftFromNotification(
-            notification(paymentHint = "final 9999", cardId = "card-nubank"),
+            notification(paymentHint = "final 9999"),
             NotificationEvidence(last4Map = mapOf("card-itau" to "3685")),
         )
 
@@ -128,7 +122,7 @@ class NotificationDraftResolverTest {
     @Test
     fun `a last4 mapped to two cards is treated as unmapped`() {
         val result = resolveDraftFromNotification(
-            notification(paymentHint = "final 3685", cardId = "card-nubank"),
+            notification(paymentHint = "final 3685"),
             NotificationEvidence(last4Map = mapOf("card-a" to "3685", "card-b" to "3685")),
         )
 
@@ -139,7 +133,7 @@ class NotificationDraftResolverTest {
     @Test
     fun `an income draft gets no card even with a matching last4`() {
         val result = resolveDraftFromNotification(
-            notification(paymentHint = "final 3685", method = null, type = TransactionType.INCOME),
+            notification(paymentHint = "final 3685", type = TransactionType.INCOME, text = "Salário R$ 49,90"),
             NotificationEvidence(last4Map = mapOf("card-itau" to "3685")),
         )
 
@@ -150,7 +144,7 @@ class NotificationDraftResolverTest {
     @Test
     fun `an issuer name match never promotes a debit draft to credit`() {
         val result = resolveDraftFromNotification(
-            notification(method = PaymentMethod.DEBIT),
+            notification(text = "Compra no débito R$ 49,90"),
             NotificationEvidence(cards = listOf(itau)),
         )
 
@@ -161,7 +155,7 @@ class NotificationDraftResolverTest {
     @Test
     fun `an issuer name match never promotes a pix draft to credit`() {
         val result = resolveDraftFromNotification(
-            notification(method = PaymentMethod.PIX),
+            notification(text = "Compra via pix R$ 49,90"),
             NotificationEvidence(cards = listOf(itau)),
         )
 
@@ -170,10 +164,10 @@ class NotificationDraftResolverTest {
     }
 
     @Test
-    fun `the method comes from the built-in word list when the rule supplied none`() {
+    fun `the method comes from the built-in word list from the text`() {
         val methods = listOf("crédito", "débito", "pix").map { word ->
             resolveDraftFromNotification(
-                notification(method = null, text = "Compra no $word R$ 49,90"),
+                notification(text = "Compra no $word R$ 49,90"),
                 NotificationEvidence(),
             ).draft.paymentMethod
         }
@@ -184,7 +178,7 @@ class NotificationDraftResolverTest {
     @Test
     fun `the method comes from the learned dictionary`() {
         val result = resolveDraftFromNotification(
-            notification(method = null, text = "Compra aprovada MERCADO R$ 49,90"),
+            notification(text = "Compra aprovada MERCADO R$ 49,90"),
             NotificationEvidence(paymentMethodDictionary = mapOf("mercado" to PaymentMethod.CASH)),
         )
 
@@ -194,7 +188,7 @@ class NotificationDraftResolverTest {
     @Test
     fun `the learned dictionary beats the built-in word list`() {
         val result = resolveDraftFromNotification(
-            notification(method = null, text = "Compra no débito R$ 49,90"),
+            notification(text = "Compra no débito R$ 49,90"),
             NotificationEvidence(paymentMethodDictionary = mapOf("débito" to PaymentMethod.PIX)),
         )
 
@@ -202,19 +196,9 @@ class NotificationDraftResolverTest {
     }
 
     @Test
-    fun `a rule-supplied method beats the dictionary and the word list`() {
-        val result = resolveDraftFromNotification(
-            notification(method = PaymentMethod.DEBIT, text = "Compra no crédito R$ 49,90"),
-            NotificationEvidence(paymentMethodDictionary = mapOf("crédito" to PaymentMethod.PIX)),
-        )
-
-        assertEquals(PaymentMethod.DEBIT, result.draft.paymentMethod)
-    }
-
-    @Test
     fun `an income push mentioning crédito keeps no payment method`() {
         val result = resolveDraftFromNotification(
-            notification(method = null, type = TransactionType.INCOME, text = "Crédito em conta R$ 49,90"),
+            notification(type = TransactionType.INCOME, text = "Crédito em conta R$ 49,90"),
             NotificationEvidence(cards = listOf(itau)),
         )
 
@@ -225,11 +209,76 @@ class NotificationDraftResolverTest {
     @Test
     fun `a text-derived credit picks up the issuer card`() {
         val result = resolveDraftFromNotification(
-            notification(method = null, text = "Compra no crédito R$ 49,90"),
+            notification(),
             NotificationEvidence(cards = listOf(itau, nubank)),
         )
 
         assertEquals(PaymentMethod.CREDIT, result.draft.paymentMethod)
         assertEquals("card-itau", result.draft.cardId)
+    }
+
+    // -------------------------------------------------------------------------
+    // The prefill chain's lower tiers: the server's hint, then a sole enabled method
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `the server's payment hint names the method when the text does not`() {
+        val result = resolveDraftFromNotification(
+            notification(paymentHint = "no crédito", text = "Compra aprovada MERCADO R$ 49,90"),
+            NotificationEvidence(),
+        )
+
+        assertEquals(PaymentMethod.CREDIT, result.draft.paymentMethod)
+    }
+
+    @Test
+    fun `the text wins over the server's payment hint`() {
+        val result = resolveDraftFromNotification(
+            notification(paymentHint = "no crédito", text = "Compra no débito R$ 49,90"),
+            NotificationEvidence(),
+        )
+
+        assertEquals(PaymentMethod.DEBIT, result.draft.paymentMethod)
+    }
+
+    @Test
+    fun `the only enabled method is prefilled when nothing else resolves`() {
+        val result = resolveDraftFromNotification(
+            notification(text = "Compra aprovada MERCADO R$ 49,90"),
+            NotificationEvidence(enabledMethods = setOf(PaymentMethod.PIX)),
+        )
+
+        assertEquals(PaymentMethod.PIX, result.draft.paymentMethod)
+    }
+
+    @Test
+    fun `more than one enabled method prefills nothing`() {
+        val result = resolveDraftFromNotification(
+            notification(text = "Compra aprovada MERCADO R$ 49,90"),
+            NotificationEvidence(enabledMethods = setOf(PaymentMethod.PIX, PaymentMethod.CASH)),
+        )
+
+        assertNull(result.draft.paymentMethod)
+    }
+
+    @Test
+    fun `a sole enabled method never beats evidence from the text`() {
+        val result = resolveDraftFromNotification(
+            notification(text = "Compra no débito R$ 49,90"),
+            NotificationEvidence(enabledMethods = setOf(PaymentMethod.PIX)),
+        )
+
+        assertEquals(PaymentMethod.DEBIT, result.draft.paymentMethod)
+    }
+
+    @Test
+    fun `an income draft is not prefilled with credit even when it is the only method enabled`() {
+        val result = resolveDraftFromNotification(
+            notification(type = TransactionType.INCOME, text = "Recebido MERCADO R$ 49,90"),
+            NotificationEvidence(enabledMethods = setOf(PaymentMethod.CREDIT)),
+        )
+
+        assertNull(result.draft.paymentMethod)
+        assertNull(result.draft.cardId)
     }
 }

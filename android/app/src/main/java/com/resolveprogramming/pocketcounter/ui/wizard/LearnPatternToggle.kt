@@ -30,6 +30,7 @@ import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 fun LearnPatternToggle(
     checked: Boolean,
     hint: String,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -37,7 +38,7 @@ fun LearnPatternToggle(
         modifier = modifier
             .fillMaxWidth()
             .background(PocketTheme.colors.accentBg, PocketTheme.shapes.card)
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .padding(16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -50,7 +51,7 @@ fun LearnPatternToggle(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Próximas notificações com \"$hint\" vão pré-preencher as tags automaticamente.",
+                text = hint,
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text2,
             )
@@ -58,6 +59,7 @@ fun LearnPatternToggle(
         Spacer(Modifier.width(12.dp))
         Switch(
             checked = checked,
+            enabled = enabled,
             onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedTrackColor = PocketTheme.colors.accent,

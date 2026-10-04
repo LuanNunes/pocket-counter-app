@@ -31,13 +31,28 @@ object TeachPatternSanitizer {
      *
      * Only TRAILING characters are removed — no interior edits, no case folding, no whitespace
      * collapsing — so the result stays a literal substring of the notification text, which is what the
-     * backend's CONTAINS needs. The closing trim keeps "Padaria " from piling up beside "Padaria",
-     * since [RulePatterns.covers] is whitespace-strict and would never compact the two.
+     * backend's CONTAINS needs. The closing trim matters because the server's identity is
+     * `lower(pattern)`: "Padaria " and "Padaria" would be two distinct rules the user cannot tell apart
+     * in Regras.
      */
     internal fun clean(raw: String, allowGatewayMarker: Boolean = false): String? {
         val trimmed = raw.trim().trimEnd(*TRAILING_PUNCTUATION).trim()
         if (trimmed.isBlank()) return null
-        if (!allowGatewayMarker && RulePatterns.isGatewayMarker(trimmed)) return null
+        if (!allowGatewayMarker && isGatewayMarker(trimmed)) return null
         return trimmed
+    }
+
+    /**
+     * True when [raw] holds a '*' with no letter after its LAST occurrence — bare payment-gateway
+     * markers ("Ifd*", "Dl *", "Rp3bank*"), which name the acquirer that routed the charge rather
+     * than the merchant that took the money.
+     *
+     * Position-independent on purpose, not anchored to a prefix: anchoring would miss "Rp3bank*"
+     * the way `BrNotificationParser.ACQUIRER_PREFIX_REGEX` does. Over-rejecting a lookalike
+     * ("PAG*123456") only costs a learned rule; under-rejecting re-tags every merchant behind the gateway.
+     */
+    private fun isGatewayMarker(raw: String): Boolean {
+        val lastStar = raw.lastIndexOf('*')
+        return lastStar >= 0 && raw.drop(lastStar + 1).none { it.isLetter() }
     }
 }

@@ -13,16 +13,20 @@ interface CardRepository {
 
     /**
      * Persists [tags] onto the invoice line item (PUT items/{itemId}) and, when [learnRule]
-     * is set, creates a ClassificationRule for future auto-classification. The item PUT is the
-     * success criterion: a failed PUT fails the call; a succeeding PUT with a failed rule
-     * POST still succeeds, with [ClassifyOutcome.ruleCreated] flagging the partial failure.
+     * is set, teaches a rule for the merchant. The item PUT is the success criterion: a failed PUT
+     * fails the call; a succeeding PUT with a failed rule write still succeeds, reported as
+     * [PurchaseClassifyOutcome.RuleFailed].
+     *
+     * A rule carries one tag, so [tags] must arrive in selection order: the first EXPENSE tag is the
+     * one taught, and the others apply to this purchase only. The rule matches that merchant on every
+     * card and on captured notifications too — it has no scope.
      */
     suspend fun classifyPurchase(
         invoiceId: String,
         itemId: String,
         tags: List<Tag>,
         learnRule: Boolean,
-    ): Result<ClassifyOutcome>
+    ): Result<PurchaseClassifyOutcome>
 
     /** Creates a credit card and returns the mapped domain model. */
     suspend fun addCard(
@@ -33,11 +37,14 @@ interface CardRepository {
     ): Result<CreditCard>
 }
 
-/**
- * Result of [CardRepository.classifyPurchase] when the tag PUT succeeded.
- * [ruleCreated] is false when a rule was requested but its POST failed (partial success).
- */
-data class ClassifyOutcome(
-    val ruleRequested: Boolean,
-    val ruleCreated: Boolean,
-)
+/** Result of [CardRepository.classifyPurchase] when the tag PUT succeeded. */
+sealed interface PurchaseClassifyOutcome {
+    data object TagsOnly : PurchaseClassifyOutcome
+    data object RuleCreated : PurchaseClassifyOutcome
+
+    /** The server already had a rule for that merchant, which is what the user wanted. */
+    data object RuleAlreadyExisted : PurchaseClassifyOutcome
+
+    /** A rule was requested but could not be written (no teachable tag, unusable pattern, or a real error). */
+    data object RuleFailed : PurchaseClassifyOutcome
+}

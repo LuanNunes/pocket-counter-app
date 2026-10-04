@@ -1,8 +1,11 @@
 package com.resolveprogramming.pocketcounter.ui.contextos
 
+import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.ContextInput
 import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -28,6 +31,7 @@ class ContextosTagsViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private val tagRepository: TagRepository = mockk(relaxed = true)
+    private val ruleRepository: ClassificationRuleRepository = mockk(relaxed = true)
 
     private val ctxFood = TagContext("ctx-food", "Alimentação", 0xFF_AA_00_00L)
 
@@ -36,13 +40,14 @@ class ContextosTagsViewModelTest {
         Dispatchers.setMain(testDispatcher)
         coEvery { tagRepository.getAllContexts() } returns Result.success(listOf(ctxFood))
         coEvery { tagRepository.getAllTags() } returns Result.success(emptyList())
+        coEvery { ruleRepository.getAll() } returns Result.success(emptyList())
     }
 
     @After
     fun tearDown() = Dispatchers.resetMain()
 
     private fun loadedViewModel(): ContextosTagsViewModel {
-        val vm = ContextosTagsViewModel(tagRepository)
+        val vm = ContextosTagsViewModel(tagRepository, ruleRepository)
         testDispatcher.scheduler.advanceUntilIdle()
         return vm
     }
@@ -182,5 +187,88 @@ class ContextosTagsViewModelTest {
         val state = vm.state.value
         assertNull(state.contextFormError)
         assertEquals("Não foi possível salvar (nome já existe?)", state.toastMessage)
+    }
+
+    // -------------------------------------------------------------------------
+    // Cascade-delete counts — read from the list loaded by load(), never re-fetched on tap
+    // -------------------------------------------------------------------------
+
+    private val tagMercado = Tag("tag-mercado", "Mercado", TransactionType.EXPENSE, idContext = "ctx-food")
+    private val tagDelivery = Tag("tag-delivery", "Delivery", TransactionType.EXPENSE, idContext = "ctx-food")
+    private val catSalary = Tag("tag-salario", "Salário", TransactionType.INCOME)
+
+    private fun rule(id: String, idTag: String?, action: RuleAction = RuleAction.SUGGEST) =
+        ClassificationRule(
+            id = id,
+            pattern = id,
+            idTag = idTag,
+            active = true,
+            appliedCount = 0,
+            action = action,
+        )
+
+    private fun withCatalog(tags: List<Tag>, rules: List<ClassificationRule>) {
+        coEvery { tagRepository.getAllTags() } returns Result.success(tags)
+        coEvery { ruleRepository.getAll() } returns Result.success(rules)
+    }
+
+    @Test
+    fun `ruleCountByTagId counts only SUGGEST rules, by tag`() {
+        val counts = ruleCountByTagId(
+            listOf(
+                rule("r1", "tag-mercado"),
+                rule("r2", "tag-mercado"),
+                rule("r3", "tag-delivery"),
+                rule("r4", null, RuleAction.IGNORE),
+            ),
+        )
+
+        assertEquals(mapOf("tag-mercado" to 2, "tag-delivery" to 1), counts)
+    }
+
+    @Test
+    fun `requestDeleteTag carries the tag's rule count`() = runTest {
+        withCatalog(listOf(tagMercado), listOf(rule("r1", "tag-mercado"), rule("r2", "tag-mercado")))
+        val vm = loadedViewModel()
+
+        vm.requestDeleteTag("tag-mercado")
+
+        assertEquals(2, vm.state.value.confirmDeleteTag?.ruleCount)
+    }
+
+    @Test
+    fun `requestDeleteTag reports no rules for an income category even with a stale count`() = runTest {
+        withCatalog(listOf(catSalary), listOf(rule("r1", "tag-salario")))
+        val vm = loadedViewModel()
+
+        vm.requestDeleteTag("tag-salario")
+
+        assertEquals(0, vm.state.value.confirmDeleteTag?.ruleCount)
+    }
+
+    @Test
+    fun `requestDeleteContext sums the rule counts over the context's tags`() = runTest {
+        withCatalog(
+            listOf(tagMercado, tagDelivery),
+            listOf(rule("r1", "tag-mercado"), rule("r2", "tag-delivery"), rule("r3", "tag-delivery")),
+        )
+        val vm = loadedViewModel()
+
+        vm.requestDeleteContext("ctx-food")
+
+        assertEquals(3, vm.state.value.confirmDeleteContext?.ruleCount)
+        assertEquals(2, vm.state.value.confirmDeleteContext?.tagCount)
+    }
+
+    @Test
+    fun `a rule load failure leaves the counts empty rather than failing the screen`() = runTest {
+        coEvery { tagRepository.getAllTags() } returns Result.success(listOf(tagMercado))
+        coEvery { ruleRepository.getAll() } returns Result.failure(IOException("boom"))
+        val vm = loadedViewModel()
+
+        vm.requestDeleteTag("tag-mercado")
+
+        assertEquals(0, vm.state.value.confirmDeleteTag?.ruleCount)
+        assertNotNull(vm.state.value.confirmDeleteTag)
     }
 }

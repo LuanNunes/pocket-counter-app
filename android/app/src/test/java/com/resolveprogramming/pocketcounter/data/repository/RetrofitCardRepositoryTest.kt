@@ -1,149 +1,14 @@
 package com.resolveprogramming.pocketcounter.data.repository
 
-/**
- * RED-phase tests for the faturas (Cartões invoices) phase.
- *
- * =====================================================================
- * ASSUMED PRODUCTION CONTRACT (implementer must provide exactly this):
- * =====================================================================
- *
- * 1. InvoiceItemApi (new Retrofit interface in data/remote/api/PocketApis.kt):
- *
- *    interface InvoiceItemApi {
- *        @GET("api/v1/transactions/{invoiceId}/items")
- *        suspend fun getItems(@Path("invoiceId") invoiceId: String): List<TransactionItemDto>
- *
- *        @PUT("api/v1/transactions/{invoiceId}/items/{itemId}")
- *        suspend fun updateItem(
- *            @Path("invoiceId") invoiceId: String,
- *            @Path("itemId") itemId: String,
- *            @Body dto: TransactionItemDto,
- *        ): String
- *
- *        @POST("api/v1/transactions/{invoiceId}/items")
- *        suspend fun addItem(
- *            @Path("invoiceId") invoiceId: String,
- *            @Body dto: TransactionItemDto,
- *        ): String
- *
- *        @DELETE("api/v1/transactions/{invoiceId}/items/{itemId}")
- *        suspend fun deleteItem(
- *            @Path("invoiceId") invoiceId: String,
- *            @Path("itemId") itemId: String,
- *        )
- *    }
- *
- * 2. TransactionItemDto (new @Serializable data class in data/remote/dto/ApiDtos.kt):
- *
- *    @Serializable
- *    data class TransactionItemDto(
- *        val id: String? = null,
- *        val idUser: String? = null,
- *        val idTransaction: String,
- *        val name: String,
- *        @Serializable(with = RemoteBigDecimalSerializer::class)
- *        val amount: BigDecimal,
- *        val tagIds: List<String>? = null,
- *        val tags: List<TagDto>? = null,
- *    )
- *
- * 3. ClassificationRuleDto NEW shape (replaces existing in data/remote/dto/ApiDtos.kt):
- *
- *    @Serializable
- *    data class ClassificationRuleDto(
- *        val id: String? = null,
- *        val patterns: List<String> = emptyList(),   // replaces `pattern: String`
- *        val matchType: String? = null,              // e.g. "CONTAINS"
- *        val active: Boolean? = null,
- *        val appliedCount: Int = 0,
- *        val transactionType: String? = null,        // "INCOME" | "EXPENSE"
- *        val paymentMethod: String? = null,          // PaymentMethodEnum name e.g. "CREDIT"
- *        val cardId: String? = null,
- *        val tagIds: List<ClassificationRuleTagDto> = emptyList(),
- *        // Legacy fields – kept null on write, ignored on read:
- *        val idPaymentSource: String? = null,
- *        val idSource: String? = null,
- *    )
- *
- * 4. ClassificationRuleTagDto is RENAMED field only – was `idContext`, now `idCategory`
- *    to match the verified backend contract:
- *
- *    @Serializable
- *    data class ClassificationRuleTagDto(
- *        val idTag: String,
- *        val idCategory: String,   // was idContext
- *    )
- *
- * 5. ClassificationRule domain model NEW shape (replaces existing in domain/model/ClassificationRule.kt):
- *
- *    data class ClassificationRule(
- *        val id: String?,
- *        val patterns: List<String>,           // replaces `pattern: String`
- *        val matchType: String?,
- *        val active: Boolean?,
- *        val appliedCount: Int,
- *        val transactionType: TransactionType?,
- *        val paymentMethod: PaymentMethod?,    // new
- *        val cardId: String?,                  // new
- *        val tags: List<Tag>,
- *        // Legacy fields dropped (idPaymentSource, idSource)
- *    )
- *
- * 6. InvoiceItem domain model GAINS two fields (in domain/model/OpenInvoice.kt):
- *
- *    data class InvoiceItem(
- *        val transactionId: String,   // still present; for isInvoice tx this is the invoice id
- *        val invoiceId: String,       // new: id of the parent invoice TransactionDto
- *        val itemId: String?,         // new: id of the TransactionItemDto (null on fallback path)
- *        val name: String,
- *        val date: LocalDate,
- *        val amount: BigDecimal,
- *        val tags: List<Tag>,
- *        val installmentLabel: String?,
- *    )
- *
- * 7. CardRepository.classifyPurchase NEW signature (in data/repository/CardRepository.kt):
- *
- *    suspend fun classifyPurchase(
- *        invoiceId: String,
- *        itemId: String,
- *        tags: List<Tag>,
- *        learnRule: Boolean,
- *    ): Result<ClassifyOutcome>
- *
- *    (The old `transactionId` param is replaced by two params: invoiceId + itemId.)
- *
- * 8. CardRepository.addCard NEW method (in data/repository/CardRepository.kt):
- *
- *    suspend fun addCard(
- *        name: String,
- *        brand: String?,
- *        closingDay: Int?,
- *        color: String?,
- *    ): Result<CreditCard>
- *
- * =====================================================================
- * FALLBACK RULE CHOSEN:
- *   When the isInvoice tx has zero items from the items sub-resource (getItems returns
- *   empty list), the invoice items are derived from the card's non-isInvoice credit
- *   expenses for that month (current behavior). itemId is null on these fallback items.
- *   If getItems returns a non-empty list, ONLY those items are used (no mixing).
- * =====================================================================
- */
-
-import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
 import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
-import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleWriteResultDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleTagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
 import com.resolveprogramming.pocketcounter.domain.billing.BillingCycle
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import io.mockk.coEvery
@@ -151,7 +16,6 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -165,13 +29,13 @@ class RetrofitCardRepositoryTest {
 
     private val creditCardApi = mockk<CreditCardApi>()
     private val transactionApi = mockk<TransactionApi>()
-    private val classificationRuleApi = mockk<ClassificationRuleApi>()
+    private val ruleRepository = mockk<ClassificationRuleRepository>()
     private val invoiceItemApi = mockk<InvoiceItemApi>()
 
     private val repo = RetrofitCardRepository(
         creditCardApi = creditCardApi,
         transactionApi = transactionApi,
-        classificationRuleApi = classificationRuleApi,
+        classificationRuleRepository = ruleRepository,
         invoiceItemApi = invoiceItemApi,
     )
 
@@ -516,162 +380,102 @@ class RetrofitCardRepositoryTest {
     }
 
     // -------------------------------------------------------------------------
-    // classifyPurchase — new signature (invoiceId + itemId)
+    // classifyPurchase — tags PUT first, then the optional rule
     // -------------------------------------------------------------------------
 
-    @Test
-    fun `classifyPurchase updates invoice item tags and creates rule in new shape`() = runTest {
-        val expenseTag = Tag(
-            id = "t1",
-            name = "supermercado",
-            kind = TransactionType.EXPENSE,
-            idContext = "cat1",
-        )
+    private val expenseTag = Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "cat1")
 
+    private fun stubItemPut() {
         coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
-        coEvery { classificationRuleApi.create(any()) } returns ClassificationRuleWriteResultDto(id = "rule-id-new")
+    }
 
-        val result = repo.classifyPurchase(
-            invoiceId = "inv1",
-            itemId = "it1",
-            tags = listOf(expenseTag),
-            learnRule = true,
-        )
+    private suspend fun classify(tags: List<Tag>, learnRule: Boolean = true) =
+        repo.classifyPurchase(invoiceId = "inv1", itemId = "it1", tags = tags, learnRule = learnRule)
 
-        assertTrue(result.isSuccess)
-        val outcome = result.getOrThrow()
-        assertTrue(outcome.ruleRequested)
-        assertTrue(outcome.ruleCreated)
+    @Test
+    fun `classifyPurchase PUTs the tags and creates a suggest rule keyed on the merchant`() = runTest {
+        stubItemPut()
+        coEvery { ruleRepository.create(any()) } returns Result.success(RuleWriteOutcome.Saved)
 
-        // The item PUT must carry tagIds derived from the selected tags
+        val outcome = classify(listOf(expenseTag)).getOrThrow()
+
+        assertEquals(PurchaseClassifyOutcome.RuleCreated, outcome)
         coVerify(exactly = 1) {
-            invoiceItemApi.updateItem(
-                "inv1",
-                "it1",
-                match { it.tagIds == listOf("t1") && it.idTransaction == "inv1" },
-            )
+            invoiceItemApi.updateItem("inv1", "it1", match { it.tagIds == listOf("t1") && it.idTransaction == "inv1" })
         }
-
-        // The rule POST must use the new ClassificationRuleDto shape
-        coVerify(exactly = 1) {
-            classificationRuleApi.create(
-                match { dto ->
-                    dto.patterns.isNotEmpty() &&
-                        dto.matchType == "CONTAINS" &&
-                        dto.transactionType == "EXPENSE" &&
-                        dto.paymentMethod == "CREDIT" &&
-                        dto.cardId == null &&
-                        dto.tagIds == listOf(ClassificationRuleTagDto(idTag = "t1", idCategory = "cat1"))
-                },
-            )
-        }
+        coVerify(exactly = 1) { ruleRepository.create(ClassificationRule.suggest("iFood", "t1")) }
     }
 
     @Test
-    fun `classifyPurchase without learnRule updates item tags but does not create a rule`() = runTest {
-        val tag = Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "cat1")
+    fun `classifyPurchase reports RuleAlreadyExisted when the rule is a duplicate`() = runTest {
+        stubItemPut()
+        coEvery { ruleRepository.create(any()) } returns Result.success(RuleWriteOutcome.Duplicate)
 
-        coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
+        assertEquals(PurchaseClassifyOutcome.RuleAlreadyExisted, classify(listOf(expenseTag)).getOrThrow())
+    }
 
-        val result = repo.classifyPurchase(
-            invoiceId = "inv1",
-            itemId = "it1",
-            tags = listOf(tag),
-            learnRule = false,
-        )
+    @Test
+    fun `classifyPurchase reports RuleFailed, still succeeding, when the rule write fails`() = runTest {
+        stubItemPut()
+        coEvery { ruleRepository.create(any()) } returns Result.failure(RuntimeException("500"))
+
+        val result = classify(listOf(expenseTag))
 
         assertTrue(result.isSuccess)
-        val outcome = result.getOrThrow()
-        assertFalse(outcome.ruleRequested)
-        assertFalse(outcome.ruleCreated)
+        assertEquals(PurchaseClassifyOutcome.RuleFailed, result.getOrThrow())
+    }
 
+    @Test
+    fun `classifyPurchase without learnRule updates item tags and touches no rule`() = runTest {
+        stubItemPut()
+
+        val outcome = classify(listOf(expenseTag), learnRule = false).getOrThrow()
+
+        assertEquals(PurchaseClassifyOutcome.TagsOnly, outcome)
         coVerify(exactly = 1) { invoiceItemApi.updateItem("inv1", "it1", any()) }
-        coVerify(exactly = 0) { classificationRuleApi.create(any()) }
+        coVerify(exactly = 0) { ruleRepository.create(any()) }
     }
 
     @Test
-    fun `classifyPurchase skips rule tags lacking a category and sets ruleCreated false`() = runTest {
-        // tag with null idContext must be filtered out; with none remaining, no rule is posted
-        val tagWithoutContext = Tag(
-            id = "t2",
-            name = "geral",
-            kind = TransactionType.EXPENSE,
-            idContext = null,
-        )
+    fun `classifyPurchase teaches the first selected expense tag, keeping selection order`() = runTest {
+        stubItemPut()
+        coEvery { ruleRepository.create(any()) } returns Result.success(RuleWriteOutcome.Saved)
+        val income = Tag(id = "inc", name = "salário", kind = TransactionType.INCOME)
+        val second = Tag(id = "t9", name = "lazer", kind = TransactionType.EXPENSE)
 
-        coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
+        classify(listOf(income, second, expenseTag))
 
-        val result = repo.classifyPurchase(
-            invoiceId = "inv1",
-            itemId = "it1",
-            tags = listOf(tagWithoutContext),
-            learnRule = true,
-        )
-
-        assertTrue(result.isSuccess)
-        val outcome = result.getOrThrow()
-        assertTrue(outcome.ruleRequested)
-        assertFalse(outcome.ruleCreated)
-
-        // Item tags were still persisted
-        coVerify(exactly = 1) { invoiceItemApi.updateItem("inv1", "it1", any()) }
-        // No rule created because all tags were filtered
-        coVerify(exactly = 0) { classificationRuleApi.create(any()) }
+        coVerify(exactly = 1) { ruleRepository.create(match { it.idTag == "t9" }) }
+        coVerify(exactly = 1) { invoiceItemApi.updateItem(any(), any(), match { it.tagIds == listOf("inc", "t9", "t1") }) }
     }
 
     @Test
-    fun `classifyPurchase includes only categorized tags in rule tagIds`() = runTest {
-        val categorized = Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "cat1")
-        val uncategorized = Tag(id = "t2", name = "geral", kind = TransactionType.EXPENSE, idContext = null)
+    fun `classifyPurchase teaches an expense tag that has no context`() = runTest {
+        stubItemPut()
+        coEvery { ruleRepository.create(any()) } returns Result.success(RuleWriteOutcome.Saved)
+        val noContext = Tag(id = "t2", name = "geral", kind = TransactionType.EXPENSE, idContext = null)
 
-        coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
-        coEvery { classificationRuleApi.create(any()) } returns ClassificationRuleWriteResultDto(id = "rule-new")
-
-        val result = repo.classifyPurchase(
-            invoiceId = "inv1",
-            itemId = "it1",
-            tags = listOf(categorized, uncategorized),
-            learnRule = true,
-        )
-
-        assertTrue(result.isSuccess)
-        assertTrue(result.getOrThrow().ruleCreated)
-
-        // Rule tagIds must exclude the uncategorized tag
-        coVerify(exactly = 1) {
-            classificationRuleApi.create(
-                match { dto ->
-                    dto.tagIds == listOf(ClassificationRuleTagDto(idTag = "t1", idCategory = "cat1"))
-                },
-            )
-        }
-        // But item PUT carries both tags
-        coVerify(exactly = 1) {
-            invoiceItemApi.updateItem(
-                any(),
-                any(),
-                match { it.tagIds == listOf("t1", "t2") },
-            )
-        }
+        assertEquals(PurchaseClassifyOutcome.RuleCreated, classify(listOf(noContext)).getOrThrow())
     }
 
     @Test
-    fun `classifyPurchase requests but does not create a rule when the item name sanitizes to a bare gateway marker`() = runTest {
-        val categorized = Tag(id = "t1", name = "supermercado", kind = TransactionType.EXPENSE, idContext = "cat1")
+    fun `classifyPurchase reports RuleFailed without a rule call when only income tags are selected`() = runTest {
+        stubItemPut()
+        val income = Tag(id = "inc", name = "salário", kind = TransactionType.INCOME)
+
+        assertEquals(PurchaseClassifyOutcome.RuleFailed, classify(listOf(income)).getOrThrow())
+        coVerify(exactly = 0) { ruleRepository.create(any()) }
+    }
+
+    @Test
+    fun `classifyPurchase reports RuleFailed without a rule call when the item name sanitizes to a gateway marker`() = runTest {
         coEvery { invoiceItemApi.getItems("inv1") } returns listOf(
             TransactionItemDto(id = "it1", idTransaction = "inv1", name = "Ifd*", amount = BigDecimal("50.00")),
         )
-        coEvery { invoiceItemApi.updateItem(any(), any(), any()) } returns "ok"
+        stubItemPut()
 
-        val result = repo.classifyPurchase(
-            invoiceId = "inv1",
-            itemId = "it1",
-            tags = listOf(categorized),
-            learnRule = true,
-        )
-
-        assertEquals(Result.success(ClassifyOutcome(ruleRequested = true, ruleCreated = false)), result)
-        coVerify(exactly = 0) { classificationRuleApi.create(any()) }
+        assertEquals(PurchaseClassifyOutcome.RuleFailed, classify(listOf(expenseTag)).getOrThrow())
+        coVerify(exactly = 0) { ruleRepository.create(any()) }
     }
 
     // -------------------------------------------------------------------------
@@ -761,72 +565,5 @@ class RetrofitCardRepositoryTest {
         assertTrue(first.isFailure)
         assertTrue(second.isSuccess)
         coVerify(exactly = 2) { creditCardApi.getCards() }
-    }
-
-    // -------------------------------------------------------------------------
-    // ClassificationRule mapping — new DTO shape → domain
-    // -------------------------------------------------------------------------
-
-    @Test
-    fun `ClassificationRuleDto new shape maps to domain with patterns matchType paymentMethod cardId`() = runTest {
-        coEvery { classificationRuleApi.getAll() } returns listOf(
-            ClassificationRuleDto(
-                id = "r1",
-                patterns = listOf("Supermercado", "Extra"),
-                matchType = "CONTAINS",
-                active = true,
-                appliedCount = 5,
-                transactionType = "EXPENSE",
-                paymentMethod = "CREDIT",
-                cardId = "card-1",
-                tagIds = listOf(ClassificationRuleTagDto(idTag = "t1", idCategory = "cat1")),
-            ),
-        )
-
-        // Indirect test via RetrofitClassificationRuleRepository which uses the same mapper
-        val ruleRepo = RetrofitClassificationRuleRepository(classificationRuleApi)
-        val rules = ruleRepo.getAll().getOrThrow()
-
-        val rule = rules.single()
-        assertEquals("r1", rule.id)
-        assertEquals(listOf("Supermercado", "Extra"), rule.patterns)
-        assertEquals("CONTAINS", rule.matchType)
-        assertEquals(true, rule.active)
-        assertEquals(5, rule.appliedCount)
-        assertEquals(TransactionType.EXPENSE, rule.transactionType)
-        assertEquals(PaymentMethod.CREDIT, rule.paymentMethod)
-        assertEquals("card-1", rule.cardId)
-
-        val ruleTag = rule.tags.single()
-        assertEquals("t1", ruleTag.id)
-        assertEquals("cat1", ruleTag.idContext)
-    }
-
-    @Test
-    fun `ClassificationRuleDto with null paymentMethod and unknown matchType maps gracefully`() = runTest {
-        coEvery { classificationRuleApi.getAll() } returns listOf(
-            ClassificationRuleDto(
-                id = "r2",
-                patterns = listOf("Netflix"),
-                matchType = null,
-                active = null,
-                appliedCount = 0,
-                transactionType = "EXPENSE",
-                paymentMethod = null,
-                cardId = null,
-                tagIds = emptyList(),
-            ),
-        )
-
-        val ruleRepo = RetrofitClassificationRuleRepository(classificationRuleApi)
-        val rule = ruleRepo.getAll().getOrThrow().single()
-
-        assertEquals(listOf("Netflix"), rule.patterns)
-        assertNull(rule.matchType)
-        assertNull(rule.active)
-        assertEquals(0, rule.appliedCount)
-        assertNull(rule.paymentMethod)
-        assertNull(rule.cardId)
-        assertTrue(rule.tags.isEmpty())
     }
 }

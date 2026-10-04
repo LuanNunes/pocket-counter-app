@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.domain.notification
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
+import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 
 /** Everything [resolveDraftFromNotification] needs to read a notification's own evidence. */
@@ -11,6 +12,7 @@ data class NotificationEvidence(
     val cards: List<CreditCard> = emptyList(),
     val learnedIssuers: Map<String, String> = emptyMap(),
     val paymentMethodDictionary: Map<String, PaymentMethod> = emptyMap(),
+    val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
 )
 
 data class ResolvedDraft(val draft: WizardDraft, val unknownLast4: String?)
@@ -25,30 +27,40 @@ fun resolveDraftFromNotification(
     evidence: NotificationEvidence,
 ): ResolvedDraft {
     val draft = WizardDraft.fromNotification(notification)
-        .withResolvedPaymentMethod(notification, evidence.paymentMethodDictionary)
+        .withResolvedPaymentMethod(notification, evidence)
     return resolveDraftCard(draft, notification, evidence)
 }
 
 /**
- * Resolves the payment method from the learned dictionary and, as a fallback, the built-in
- * word list ([BrNotificationParser.parsePaymentMethod]). No-op when [paymentMethod] is already
- * set. Routed through [WizardDraft.withPaymentMethod] so the credit guard still holds.
+ * Rebuilds the payment method from device-local evidence, in order: the learned dictionary and the
+ * built-in word list over the whole text, then the server's own `paymentHint`, then the only method
+ * the user left enabled. Routed through [WizardDraft.withPaymentMethod] so the credit guard holds.
+ *
+ * The chain exists because rules no longer carry a method. A merchant's method is a property of the
+ * merchant, not of the message, and messages from Uber, PIX or débito carry no "final NNNN" hint to
+ * derive it from — so without this the user re-fixed the method on every capture.
  */
 private fun WizardDraft.withResolvedPaymentMethod(
     notification: NotificationItem,
-    learnedMap: Map<String, PaymentMethod>,
+    evidence: NotificationEvidence,
 ): WizardDraft {
     if (paymentMethod != null) return this
-    val method = PaymentMethodResolver.resolve(notification.text, learnedMap) ?: return this
+    val method = PaymentMethodResolver.resolve(notification.text, evidence.paymentMethodDictionary)
+        ?: notification.parsed.paymentHint?.let(BrNotificationParser::parsePaymentMethod)
+        ?: soleEnabledMethod(evidence.enabledMethods)
+        ?: return this
     return withPaymentMethod(method)
 }
 
+/** With one method left enabled there is nothing to choose, so prefilling it cannot be wrong. */
+private fun WizardDraft.soleEnabledMethod(enabled: Set<PaymentMethod>): PaymentMethod? =
+    PaymentMethodPreferences.selectable(enabled, selected = null, type = type).singleOrNull()
+
 /**
- * Names the draft's card from the notification itself — the "final NNNN" hint first, then the
- * issuer — overriding any card a matched classification rule pinned. The rule's card survives only
- * as the fallback, when the notification carries no evidence of its own.
+ * Names the draft's card from the notification itself: the "final NNNN" hint first, then the
+ * issuer. Classification rules carry no card, so the notification's own evidence is all there is.
  *
- * An unmatched 4-digit hint drops the rule's card and reports [ResolvedDraft.unknownLast4]:
+ * An unmatched 4-digit hint leaves the draft without a card and reports [ResolvedDraft.unknownLast4]:
  * better to ask which card than to file the charge on a card the push never named.
  */
 private fun resolveDraftCard(

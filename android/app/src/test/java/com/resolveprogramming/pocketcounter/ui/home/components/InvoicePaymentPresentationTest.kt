@@ -42,7 +42,7 @@ class InvoicePaymentPresentationTest {
         text = "Nubank Recebemos seu pagamento no valor de R$ 8.866,19. Obrigado!",
         status = NotificationStatus.NEEDS_REVIEW,
         parsed = ParsedNotification(type = null, amount = amount, date = today, merchantRaw = null, paymentHint = null),
-        suggestions = ClassificationSuggestion(tagIds = emptyList()),
+        suggestions = ClassificationSuggestion(),
         tokens = emptyList(),
     )
 

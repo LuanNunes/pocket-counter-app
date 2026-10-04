@@ -33,7 +33,7 @@ class TeachPatternResolverTest {
             merchantRaw = merchantRaw,
             paymentHint = paymentHint,
         ),
-        suggestions = ClassificationSuggestion(tagIds = emptyList(), paymentMethod = null, cardId = null),
+        suggestions = ClassificationSuggestion(),
         tokens = emptyList(),
     )
 

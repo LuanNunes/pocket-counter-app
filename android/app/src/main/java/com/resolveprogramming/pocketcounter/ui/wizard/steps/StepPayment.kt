@@ -53,6 +53,7 @@ fun StepPayment(
     onSelectMethod: (PaymentMethod) -> Unit,
     onSelectCard: (String) -> Unit,
     modifier: Modifier = Modifier,
+    paymentPrefilled: Boolean = true,
     unknownCardLast4: String? = null,
     onAssignCard: (String) -> Unit = {},
     onDismissUnknown: () -> Unit = {},
@@ -83,6 +84,15 @@ fun StepPayment(
             style = PocketTheme.typography.bodySm,
             color = PocketTheme.colors.text3,
         )
+
+        if (!paymentPrefilled) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Marque a palavra da forma de pagamento no texto acima para o Pocket aprender.",
+                style = PocketTheme.typography.bodyXs,
+                color = PocketTheme.colors.text3,
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
 

@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
 import com.resolveprogramming.pocketcounter.domain.model.ParsedNotification
 import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
+import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import org.junit.Assert.assertEquals
@@ -284,34 +285,40 @@ class WizardDraftTest {
     // fromNotification
     // -------------------------------------------------------------------------
 
-    @Test
-    fun `fromNotification maps parsed fields and new suggestion fields`() {
-        val notification = NotificationItem(
-            id = "n7",
-            app = "Banco Itaú",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "18:41",
-            text = "Compra aprovada",
-            status = NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = TransactionType.EXPENSE,
-                amount = BigDecimal("153.98"),
-                date = LocalDate.of(2026, 5, 16),
-                merchantRaw = "IFD*A M GUILHERME CORR",
-                paymentHint = "PERSON BLACK CASHBAC final 3685",
-                installments = 3,
-                installmentValue = BigDecimal("51.33"),
-            ),
-            suggestions = ClassificationSuggestion(
-                tagIds = listOf("tag-1"),
-                paymentMethod = PaymentMethod.CREDIT,
-                cardId = "card-abc",
-            ),
-            tokens = emptyList(),
-        )
+    private fun notification(
+        parsed: ParsedNotification = ParsedNotification(
+            type = null, amount = null, date = null, merchantRaw = null, paymentHint = null,
+        ),
+        suggestions: ClassificationSuggestion = ClassificationSuggestion(),
+    ) = NotificationItem(
+        id = "n",
+        app = "App",
+        channel = NotificationChannel.SMS,
+        time = "agora",
+        received = "10:00",
+        text = "text",
+        status = NotificationStatus.NEEDS_REVIEW,
+        parsed = parsed,
+        suggestions = suggestions,
+        tokens = emptyList(),
+    )
 
-        val draft = WizardDraft.fromNotification(notification)
+    @Test
+    fun `fromNotification maps parsed fields and the suggested tag`() {
+        val draft = WizardDraft.fromNotification(
+            notification(
+                parsed = ParsedNotification(
+                    type = TransactionType.EXPENSE,
+                    amount = BigDecimal("153.98"),
+                    date = LocalDate.of(2026, 5, 16),
+                    merchantRaw = "IFD*A M GUILHERME CORR",
+                    paymentHint = "PERSON BLACK CASHBAC final 3685",
+                    installments = 3,
+                    installmentValue = BigDecimal("51.33"),
+                ),
+                suggestions = ClassificationSuggestion(idTag = "tag-1"),
+            ),
+        )
 
         assertEquals(TransactionType.EXPENSE, draft.type)
         assertEquals(BigDecimal("153.98"), draft.amount)
@@ -320,88 +327,42 @@ class WizardDraftTest {
         assertEquals("IFD*A M GUILHERME CORR", draft.merchant)
         assertEquals(3, draft.installments)
         assertEquals(BigDecimal("51.33"), draft.installmentValue)
-        assertEquals(PaymentMethod.CREDIT, draft.paymentMethod)
-        assertEquals("card-abc", draft.cardId)
         assertFalse(draft.isFixo)
     }
 
     @Test
-    fun `fromNotification uses today when date is null`() {
-        val notification = NotificationItem(
-            id = "n0",
-            app = "App",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "18:41",
-            text = "text",
-            status = NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = null, amount = null, date = null,
-                merchantRaw = null, paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(emptyList()),
-            tokens = emptyList(),
-        )
-
-        val draft = WizardDraft.fromNotification(notification)
-
-        assertEquals(LocalDate.now(), draft.date)
+    fun `fromNotification without a suggested tag starts with no tags`() {
+        assertEquals(emptyList<String>(), WizardDraft.fromNotification(notification()).tagIds)
     }
 
     @Test
-    fun `fromNotification maps a non-credit suggestion method`() {
-        val notification = NotificationItem(
-            id = "n1",
-            app = "App",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "10:00",
-            text = "Aluguel",
-            status = NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = TransactionType.EXPENSE,
-                amount = BigDecimal("1200.00"),
-                date = LocalDate.of(2026, 6, 1),
-                merchantRaw = "IMOBILIARIA",
-                paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(
-                tagIds = emptyList(),
-                paymentMethod = PaymentMethod.PIX,
-                cardId = null,
-            ),
-            tokens = emptyList(),
+    fun `fromNotification leaves payment method and card to the resolver`() {
+        val draft = WizardDraft.fromNotification(
+            notification(suggestions = ClassificationSuggestion(idTag = "tag-1")),
         )
 
-        val draft = WizardDraft.fromNotification(notification)
-
-        assertFalse(draft.isFixo)
-        assertEquals(PaymentMethod.PIX, draft.paymentMethod)
+        assertNull(draft.paymentMethod)
         assertNull(draft.cardId)
     }
 
     @Test
-    fun `fromNotification seeds name from merchantRaw`() {
-        val notification = NotificationItem(
-            id = "n3",
-            app = "Nubank",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "10:00",
-            text = "Pagamento",
-            status = NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = TransactionType.EXPENSE,
-                amount = BigDecimal("99.00"),
-                date = LocalDate.of(2026, 6, 25),
-                merchantRaw = "PADARIA DO ZE",
-                paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(emptyList()),
-            tokens = emptyList(),
-        )
+    fun `fromNotification uses today when date is null`() {
+        assertEquals(LocalDate.now(), WizardDraft.fromNotification(notification()).date)
+    }
 
-        val draft = WizardDraft.fromNotification(notification)
+    @Test
+    fun `fromNotification seeds name and merchant from merchantRaw`() {
+        val draft = WizardDraft.fromNotification(
+            notification(
+                parsed = ParsedNotification(
+                    type = TransactionType.EXPENSE,
+                    amount = BigDecimal("99.00"),
+                    date = LocalDate.of(2026, 6, 25),
+                    merchantRaw = "PADARIA DO ZE",
+                    paymentHint = null,
+                ),
+            ),
+        )
 
         assertEquals("PADARIA DO ZE", draft.name)
         assertEquals("PADARIA DO ZE", draft.merchant)
@@ -409,125 +370,73 @@ class WizardDraftTest {
 
     @Test
     fun `fromNotification seeds null name when merchantRaw is null`() {
-        val notification = NotificationItem(
-            id = "n4",
-            app = "App",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "10:00",
-            text = "text",
-            status = NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = null,
-                amount = null,
-                date = null,
-                merchantRaw = null,
-                paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(emptyList()),
-            tokens = emptyList(),
-        )
-
-        val draft = WizardDraft.fromNotification(notification)
+        val draft = WizardDraft.fromNotification(notification())
 
         assertNull(draft.name)
         assertNull(draft.merchant)
     }
 
     @Test
-    fun `fromNotification drops CREDIT and cardId when type is INCOME`() {
-        // A misfired classifier suggesting credit on an income must NOT produce a
-        // credit draft — fromNotification routes the suggestion through the guard.
-        val notification = NotificationItem(
-            id = "n2",
-            app = "App",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "10:00",
-            text = "Salário",
-            status = NotificationStatus.NEEDS_REVIEW,
-            parsed = ParsedNotification(
-                type = TransactionType.INCOME,
-                amount = BigDecimal("5000.00"),
-                date = LocalDate.of(2026, 6, 5),
-                merchantRaw = "EMPRESA",
-                paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(
-                tagIds = emptyList(),
-                paymentMethod = PaymentMethod.CREDIT,
-                cardId = "card-abc",
-            ),
-            tokens = emptyList(),
-        )
+    fun `fromNotification leaves type unset when the text does not reveal it`() {
+        assertNull(WizardDraft.fromNotification(notification()).type)
+    }
 
-        val draft = WizardDraft.fromNotification(notification)
+    // -------------------------------------------------------------------------
+    // tag order + teachableTag
+    // -------------------------------------------------------------------------
 
-        assertEquals(TransactionType.INCOME, draft.type)
-        assertNull(draft.paymentMethod)
-        assertNull(draft.cardId)
+    private fun tag(id: String, kind: TransactionType = TransactionType.EXPENSE) =
+        Tag(id = id, name = id, kind = kind)
+
+    @Test
+    fun `tagIds keep the order the user selected them in`() {
+        val draft = WizardDraft()
+            .withTagToggled("c").withTagSelected("a").withTagToggled("b")
+
+        assertEquals(listOf("c", "a", "b"), draft.tagIds)
     }
 
     @Test
-    fun `fromNotification falls back to suggested type when parsed type is null`() {
-        val notification = NotificationItem(
-            id = "n8",
-            app = "App",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "10:00",
-            text = "Compra aprovada",
-            status = NotificationStatus.AUTO,
-            parsed = ParsedNotification(
-                type = null,
-                amount = BigDecimal("42.00"),
-                date = LocalDate.of(2026, 6, 30),
-                merchantRaw = "DL*UberRides",
-                paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(
-                tagIds = listOf("tag-1"),
-                paymentMethod = PaymentMethod.PIX,
-                cardId = null,
-                transactionType = TransactionType.EXPENSE,
-            ),
-            tokens = emptyList(),
-        )
+    fun `teachableTag follows selection order, not catalog order`() {
+        val catalog = listOf(tag("a"), tag("b"), tag("c"))
+        val draft = WizardDraft(type = TransactionType.EXPENSE)
+            .withTagToggled("c").withTagToggled("a")
 
-        val draft = WizardDraft.fromNotification(notification)
-
-        assertEquals(TransactionType.EXPENSE, draft.type)
+        assertEquals("c", draft.teachableTag(catalog)?.id)
     }
 
     @Test
-    fun `fromNotification keeps parsed type over the suggested type`() {
-        val notification = NotificationItem(
-            id = "n9",
-            app = "App",
-            channel = NotificationChannel.SMS,
-            time = "agora",
-            received = "10:00",
-            text = "Pix recebido",
-            status = NotificationStatus.AUTO,
-            parsed = ParsedNotification(
-                type = TransactionType.INCOME,
-                amount = BigDecimal("42.00"),
-                date = LocalDate.of(2026, 6, 30),
-                merchantRaw = null,
-                paymentHint = null,
-            ),
-            suggestions = ClassificationSuggestion(
-                tagIds = emptyList(),
-                paymentMethod = null,
-                cardId = null,
-                transactionType = TransactionType.EXPENSE,
-            ),
-            tokens = emptyList(),
-        )
+    fun `teachableTag skips a selected tag missing from the catalog`() {
+        val draft = WizardDraft(type = TransactionType.EXPENSE, tagIds = listOf("gone", "b"))
 
-        val draft = WizardDraft.fromNotification(notification)
+        assertEquals("b", draft.teachableTag(listOf(tag("b")))?.id)
+    }
 
-        assertEquals(TransactionType.INCOME, draft.type)
+    @Test
+    fun `teachableTag skips income tags and takes the first expense one`() {
+        val catalog = listOf(tag("inc", TransactionType.INCOME), tag("exp"))
+        val draft = WizardDraft(type = TransactionType.EXPENSE, tagIds = listOf("inc", "exp"))
+
+        assertEquals("exp", draft.teachableTag(catalog)?.id)
+    }
+
+    @Test
+    fun `teachableTag is null for an income draft`() {
+        val draft = WizardDraft(type = TransactionType.INCOME, tagIds = listOf("a"))
+
+        assertNull(draft.teachableTag(listOf(tag("a"))))
+    }
+
+    @Test
+    fun `teachableTag is null with no tags selected`() {
+        assertNull(WizardDraft(type = TransactionType.EXPENSE).teachableTag(listOf(tag("a"))))
+    }
+
+    @Test
+    fun `teachableTag works while the type is still unset`() {
+        val draft = WizardDraft(type = null, tagIds = listOf("a"))
+
+        assertEquals("a", draft.teachableTag(listOf(tag("a")))?.id)
     }
 
     @Test

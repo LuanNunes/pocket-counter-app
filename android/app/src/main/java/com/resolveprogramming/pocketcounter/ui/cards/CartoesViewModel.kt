@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.data.local.CardPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.PurchaseClassifyOutcome
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
@@ -14,6 +15,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.buildFaturaBreakdown
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
 import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
@@ -162,12 +164,7 @@ class CartoesViewModel @Inject constructor(
         viewModelScope.launch {
             cardRepository.classifyPurchase(item.invoiceId, itemId, selectedTags, learnRule)
                 .onSuccess { outcome ->
-                    val message = run {
-                        if (outcome.ruleRequested && outcome.ruleCreated) return@run "Classificada ✓ + regra criada"
-                        if (outcome.ruleRequested && !outcome.ruleCreated) return@run "Classificada ✓ (regra falhou)"
-                        "Compra classificada ✓"
-                    }
-                    _state.update { it.copy(toastMessage = message) }
+                    _state.update { it.copy(toastMessage = outcome.toastMessage()) }
                     loadData()
                 }
                 .onFailure {
@@ -210,4 +207,25 @@ class CartoesViewModel @Inject constructor(
     fun consumeToast() {
         _state.update { it.copy(toastMessage = null) }
     }
+}
+
+internal fun PurchaseClassifyOutcome.toastMessage(): String = when (this) {
+    PurchaseClassifyOutcome.TagsOnly -> "Compra classificada ✓"
+    PurchaseClassifyOutcome.RuleCreated -> "Classificada ✓ + regra criada"
+    PurchaseClassifyOutcome.RuleAlreadyExisted -> "Classificada ✓ · regra já existia"
+    PurchaseClassifyOutcome.RuleFailed -> "Classificada ✓ (regra falhou)"
+}
+
+/** What "Aprender este padrão" promises on a Cartões purchase: the rule is card-agnostic. */
+internal fun learnRuleHint(itemName: String, selectedTags: List<Tag>): String {
+    val tag = selectedTags.firstOrNull { it.kind == TransactionType.EXPENSE }
+        ?: return "Escolha uma tag de despesa para aprender o padrão."
+    // The rule is keyed on the sanitized name, so promise that pattern — or no rule at all when the
+    // name sanitizes away, which is what classifyPurchase will report as RuleFailed.
+    val pattern = TeachPatternSanitizer.clean(itemName)
+        ?: return "Não é possível aprender um padrão a partir de \"$itemName\"."
+    if (selectedTags.size == 1) {
+        return "Próximas compras contendo \"$pattern\" recebem a tag ${tag.name} automaticamente, em qualquer cartão."
+    }
+    return "Próximas compras contendo \"$pattern\" recebem a tag ${tag.name}. As outras valem só para esta compra."
 }

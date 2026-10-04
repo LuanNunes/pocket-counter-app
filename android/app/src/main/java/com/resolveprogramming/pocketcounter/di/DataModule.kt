@@ -13,7 +13,6 @@ import com.resolveprogramming.pocketcounter.data.local.ProductiveSourceStore
 import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleSignIn
 import com.resolveprogramming.pocketcounter.data.remote.GoogleSignInClient
 import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
-import com.resolveprogramming.pocketcounter.data.repository.AssistantRepository
 import com.resolveprogramming.pocketcounter.data.repository.BlockedSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
@@ -31,7 +30,6 @@ import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRe
 import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitAnalyticsRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitCardRepository
-import com.resolveprogramming.pocketcounter.data.repository.RetrofitAssistantRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitNotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTagRepository
@@ -89,11 +87,6 @@ abstract class DataModule {
     abstract fun bindSeriesRepository(
         impl: RetrofitSeriesRepository,
     ): SeriesRepository
-
-    @Binds
-    abstract fun bindAssistantRepository(
-        impl: RetrofitAssistantRepository,
-    ): AssistantRepository
 
     @Binds
     abstract fun bindGoogleSignInClient(

@@ -23,9 +23,7 @@ class ConfirmReadyTest {
         type: TransactionType? = TransactionType.EXPENSE,
         amount: BigDecimal? = BigDecimal("26.74"),
         paymentMethod: PaymentMethod? = PaymentMethod.PIX,
-        cardId: String? = null,
-        suggestedType: TransactionType? = null,
-        tagIds: List<String> = listOf("tag-1"),
+        idTag: String? = "tag-1",
         paymentHint: String? = null,
         text: String = "Compra aprovada DL*UberRides",
         merchant: String? = "DL*UberRides",
@@ -36,7 +34,8 @@ class ConfirmReadyTest {
         channel = NotificationChannel.PUSH,
         time = "agora",
         received = "2026-06-30T13:25:00Z",
-        text = text,
+        // The method now comes from the notification's own wording, never from a rule.
+        text = text + methodWording(paymentMethod),
         status = status,
         parsed = ParsedNotification(
             type = type,
@@ -45,14 +44,17 @@ class ConfirmReadyTest {
             merchantRaw = merchant,
             paymentHint = paymentHint,
         ),
-        suggestions = ClassificationSuggestion(
-            tagIds = tagIds,
-            paymentMethod = paymentMethod,
-            cardId = cardId,
-            transactionType = suggestedType,
-        ),
+        suggestions = ClassificationSuggestion(idTag = idTag),
         tokens = emptyList(),
     )
+
+    private val methodWordings = mapOf(
+        PaymentMethod.PIX to " via pix",
+        PaymentMethod.CREDIT to " no crédito",
+    )
+
+    /** The parser reads the method off the text, so a method only reaches a draft if it is worded in. */
+    private fun methodWording(method: PaymentMethod?): String = methodWordings[method].orEmpty()
 
     @Test
     fun `AUTO notification with a saveable draft is confirm-ready`() {
@@ -72,7 +74,7 @@ class ConfirmReadyTest {
         // determineStatus can return AUTO without a cardId; one-tap must not create an invalid tx.
         val item = confirmReadyItemOf(
             ClassifiedNotification(
-                notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT, cardId = null),
+                notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT),
                 pendingTransactionId = null,
             ),
             NotificationEvidence(),
@@ -85,10 +87,14 @@ class ConfirmReadyTest {
     fun `AUTO with CREDIT method and a card is confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(
-                notification(NotificationStatus.AUTO, paymentMethod = PaymentMethod.CREDIT, cardId = "card-1"),
+                notification(
+                    NotificationStatus.AUTO,
+                    paymentMethod = PaymentMethod.CREDIT,
+                    paymentHint = "final 3685",
+                ),
                 pendingTransactionId = null,
             ),
-            NotificationEvidence(),
+            NotificationEvidence(last4Map = mapOf("card-1" to "3685")),
         )
 
         assertNotNull(item)
@@ -130,10 +136,10 @@ class ConfirmReadyTest {
     }
 
     @Test
-    fun `AUTO with no type and no suggested type is not confirm-ready`() {
+    fun `AUTO with no parsed type is not confirm-ready`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(
-                notification(NotificationStatus.AUTO, type = null, suggestedType = null),
+                notification(NotificationStatus.AUTO, type = null),
                 pendingTransactionId = null,
             ),
             NotificationEvidence(),
@@ -143,21 +149,7 @@ class ConfirmReadyTest {
     }
 
     @Test
-    fun `AUTO with no parsed type but a suggested type is confirm-ready`() {
-        val item = confirmReadyItemOf(
-            ClassifiedNotification(
-                notification(NotificationStatus.AUTO, type = null, suggestedType = TransactionType.EXPENSE),
-                pendingTransactionId = null,
-            ),
-            NotificationEvidence(),
-        )
-
-        assertNotNull(item)
-        assertEquals(TransactionType.EXPENSE, item!!.draft.type)
-    }
-
-    @Test
-    fun `AUTO invoice-payment confirmation with a null parsed type and no suggested type is never confirm-ready`() {
+    fun `AUTO invoice-payment confirmation with a null parsed type is never confirm-ready`() {
         // A fresh parse only: once RemoteMappers.toClassified rebuilds `parsed` from server storage,
         // an already-captured push carries type = EXPENSE instead of null, guarded separately in
         // HomeViewModel.classifyOne (see HomeViewModelTest).
@@ -167,7 +159,7 @@ class ConfirmReadyTest {
 
         val item = confirmReadyItemOf(
             ClassifiedNotification(
-                notification(NotificationStatus.AUTO, type = parsed.type, amount = parsed.amount, suggestedType = null),
+                notification(NotificationStatus.AUTO, type = parsed.type, amount = parsed.amount),
                 pendingTransactionId = null,
             ),
             NotificationEvidence(),
@@ -177,13 +169,12 @@ class ConfirmReadyTest {
     }
 
     @Test
-    fun `evidence from the notification overrides the rule's card`() {
+    fun `the card comes from the notification's last4 evidence`() {
         val item = confirmReadyItemOf(
             ClassifiedNotification(
                 notification(
                     NotificationStatus.AUTO,
                     paymentMethod = PaymentMethod.CREDIT,
-                    cardId = "card-rule",
                     paymentHint = "final 3685",
                 ),
                 pendingTransactionId = null,
@@ -202,7 +193,6 @@ class ConfirmReadyTest {
                 notification(
                     NotificationStatus.AUTO,
                     paymentMethod = PaymentMethod.CREDIT,
-                    cardId = "card-rule",
                     paymentHint = "final 9999",
                 ),
                 pendingTransactionId = null,

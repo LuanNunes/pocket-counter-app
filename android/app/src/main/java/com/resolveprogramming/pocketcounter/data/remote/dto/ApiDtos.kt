@@ -76,44 +76,16 @@ data class CategoryDto(
 )
 
 @Serializable
-data class ClassificationRuleTagDto(
-    val idTag: String,
-    val idCategory: String,
-)
-
-@Serializable
 data class ClassificationRuleDto(
     val id: String? = null,
-    val patterns: List<String> = emptyList(),
-    val matchType: String? = null,              // "CONTAINS" | "EXACT" | "REGEX"
+    val pattern: String = "",
+    val idTag: String? = null,                  // SUGGEST iff non-null
+    val idCategory: String? = null,             // read-only, projected from the tag; never sent
     val active: Boolean? = null,
     val appliedCount: Int = 0,                  // read-only
-    val transactionType: String? = null,        // "INCOME" | "EXPENSE"
-    val paymentMethod: String? = null,          // PaymentMethodEnum name (UPPERCASE)
-    val cardId: String? = null,                 // UUID of the credit card
-    val tagIds: List<ClassificationRuleTagDto> = emptyList(),
-    // "SUGGEST" (default) assigns type/payment/tags; "IGNORE" auto-ignores matching notifications.
+    // "SUGGEST" (default) assigns the tag; "IGNORE" auto-ignores matching notifications.
     // null is omitted on write (encodeDefaults=false) so SUGGEST rules stay wire-compatible.
     val action: String? = null,
-)
-
-/**
- * Answer to POST/PUT of a rule. The server collapses patterns that are redundant against others in the
- * SAME rule, so [patterns] is what it actually stored — which can be shorter than what was sent.
- */
-@Serializable
-data class ClassificationRuleWriteResultDto(
-    val id: String,
-    val patterns: List<String> = emptyList(),
-    val droppedPatterns: List<DroppedRulePatternDto> = emptyList(),
-)
-
-@Serializable
-data class DroppedRulePatternDto(
-    val pattern: String,
-    val reason: String,          // "DUPLICATE" | "DOMINATED"
-    val supersededBy: String,    // a pattern still present in ClassificationRuleWriteResultDto.patterns
-    val message: String,         // localized server-side, like StatementSkippedRowDto.reason
 )
 
 @Serializable
@@ -160,16 +132,14 @@ data class ParsedNotificationDto(
 
 @Serializable
 data class ClassificationSuggestionDto(
-    val transactionType: String? = null,      // "INCOME" | "EXPENSE"
-    val paymentMethod: String? = null,        // PaymentMethodEnum name (UPPERCASE)
-    val cardId: String? = null,               // UUID
-    val tagIds: List<String> = emptyList(),
+    val idTag: String? = null,
+    val idCategory: String? = null,           // read-only projection of the tag
 )
 
 @Serializable
 data class ClassifyResponseDto(
     val notificationId: String,
-    val status: String,                       // "AUTO" | "NEEDS_TAGS" | "NEEDS_REVIEW"
+    val status: String,                       // Backend emits "AUTO" | "NEEDS_REVIEW"; the "NEEDS_TAGS" branch is legacy-defensive
     val parsed: ParsedNotificationDto = ParsedNotificationDto(),
     val suggestions: ClassificationSuggestionDto = ClassificationSuggestionDto(),
     val pendingTransactionId: String? = null,

@@ -2,9 +2,12 @@ package com.resolveprogramming.pocketcounter.ui.contextos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.repository.ClassificationRuleRepository
 import com.resolveprogramming.pocketcounter.data.repository.ContextInput
 import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
+import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -39,8 +42,13 @@ sealed interface TagFormMode {
 /** A guess at the cause: the backend does not say which field collided. */
 private const val SAVE_FAILURE = "Não foi possível salvar (nome já existe?)"
 
-data class ContextDeleteTarget(val id: String, val name: String, val tagCount: Int)
-data class TagDeleteTarget(val id: String, val name: String)
+data class ContextDeleteTarget(val id: String, val name: String, val tagCount: Int, val ruleCount: Int)
+
+/**
+ * [ruleCount] is 0 for income categories: rules can only reference expense tags, so a stale count
+ * must never warn on a category deleted through this same path.
+ */
+data class TagDeleteTarget(val id: String, val name: String, val ruleCount: Int)
 
 data class ContextosTagsUiState(
     val sections: List<ContextSection> = emptyList(),
@@ -54,6 +62,8 @@ data class ContextosTagsUiState(
     val tagForm: TagFormMode? = null,
     val editingTag: Tag? = null,
     val tagFormError: String? = null,
+    /** Learned SUGGEST rules per tag id, counted at load so opening a dialog stays synchronous. */
+    val ruleCountByTagId: Map<String, Int> = emptyMap(),
     val confirmDeleteContext: ContextDeleteTarget? = null,
     val confirmDeleteTag: TagDeleteTarget? = null,
     val toastMessage: String? = null,
@@ -79,9 +89,17 @@ internal fun buildContextSections(contexts: List<TagContext>, tags: List<Tag>): 
 internal fun incomeCategories(tags: List<Tag>): List<Tag> =
     tags.filter { it.kind == TransactionType.INCOME }
 
+/** How many learned rules each tag id carries. IGNORE rules have no tag, so only SUGGEST counts. */
+internal fun ruleCountByTagId(rules: List<ClassificationRule>): Map<String, Int> =
+    rules.filter { it.action == RuleAction.SUGGEST }
+        .mapNotNull { it.idTag }
+        .groupingBy { it }
+        .eachCount()
+
 @HiltViewModel
 class ContextosTagsViewModel @Inject constructor(
     private val tagRepository: TagRepository,
+    private val ruleRepository: ClassificationRuleRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ContextosTagsUiState())
@@ -94,11 +112,13 @@ class ContextosTagsViewModel @Inject constructor(
             val contextsResult = tagRepository.getAllContexts()
             val tags = tagRepository.getAllTags().getOrDefault(emptyList())
             val contexts = contextsResult.getOrDefault(emptyList())
+            val rules = ruleRepository.getAll().getOrDefault(emptyList())
             _state.update {
                 it.copy(
                     sections = buildContextSections(contexts, tags),
                     incomeCategories = incomeCategories(tags),
                     contexts = contexts,
+                    ruleCountByTagId = ruleCountByTagId(rules),
                     isLoading = false,
                     // Distinguish a load failure from a genuinely empty list.
                     toastMessage = "Não foi possível carregar".takeIf { contextsResult.isFailure } ?: it.toastMessage,
@@ -156,9 +176,16 @@ class ContextosTagsViewModel @Inject constructor(
 
     fun requestDeleteContext(id: String) {
         val section = _state.value.sections.firstOrNull { it.context?.id == id } ?: return
+        val counts = _state.value.ruleCountByTagId
+        val ruleCount = section.tags.sumOf { counts[it.id] ?: 0 }
         _state.update {
             it.copy(
-                confirmDeleteContext = ContextDeleteTarget(id, section.context?.name.orEmpty(), section.tags.size),
+                confirmDeleteContext = ContextDeleteTarget(
+                    id = id,
+                    name = section.context?.name.orEmpty(),
+                    tagCount = section.tags.size,
+                    ruleCount = ruleCount,
+                ),
             )
         }
     }
@@ -224,7 +251,9 @@ class ContextosTagsViewModel @Inject constructor(
     fun requestDeleteTag(id: String) {
         val tag = (_state.value.sections.flatMap { it.tags } + _state.value.incomeCategories)
             .firstOrNull { it.id == id } ?: return
-        _state.update { it.copy(confirmDeleteTag = TagDeleteTarget(id, tag.name)) }
+        val ruleCount = (_state.value.ruleCountByTagId[id] ?: 0)
+            .takeIf { tag.kind == TransactionType.EXPENSE } ?: 0
+        _state.update { it.copy(confirmDeleteTag = TagDeleteTarget(id, tag.name, ruleCount)) }
     }
 
     fun cancelDeleteTag() = _state.update { it.copy(confirmDeleteTag = null) }

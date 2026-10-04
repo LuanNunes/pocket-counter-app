@@ -1,13 +1,9 @@
 package com.resolveprogramming.pocketcounter.domain.model
 
+/**
+ * What `/classify` suggests for a notification: the one tag a matched SUGGEST rule points at.
+ * Payment method, card and type are not part of the contract; they come from the parsed text.
+ */
 data class ClassificationSuggestion(
-    val tagIds: List<String>,
-    val paymentMethod: PaymentMethod? = null,
-    val cardId: String? = null,
-    /**
-     * Transaction type carried by a matched SUGGEST rule. Used as a fallback when the per-notification
-     * parse couldn't determine the type ([WizardDraft.fromNotification]); the `/pending` list carries
-     * no suggestions, so this is only ever populated from a `/classify` response.
-     */
-    val transactionType: TransactionType? = null,
+    val idTag: String? = null,
 )

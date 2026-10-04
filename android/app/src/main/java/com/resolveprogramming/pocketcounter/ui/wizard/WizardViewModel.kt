@@ -13,13 +13,13 @@ import com.resolveprogramming.pocketcounter.data.repository.NotificationReposito
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodDictionaryRepository
 import com.resolveprogramming.pocketcounter.data.repository.PaymentMethodPrefsRepository
 import com.resolveprogramming.pocketcounter.data.repository.ProductiveSourceRepository
+import com.resolveprogramming.pocketcounter.data.repository.RuleWriteOutcome
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagInput
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
 import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.IgnoreScope
-import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.NotificationItem
 import com.resolveprogramming.pocketcounter.domain.model.NotificationStatus
@@ -39,15 +39,14 @@ import com.resolveprogramming.pocketcounter.domain.notification.PaymentMethodRes
 import com.resolveprogramming.pocketcounter.domain.notification.SourceBlocklist
 import com.resolveprogramming.pocketcounter.domain.notification.resolveDraftFromNotification
 import com.resolveprogramming.pocketcounter.domain.rules.IgnoreOptions
-import com.resolveprogramming.pocketcounter.domain.rules.RuleTeachPlanner
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternResolver
-import com.resolveprogramming.pocketcounter.domain.rules.TeachPlan
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.contextos.TagFormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -94,6 +93,11 @@ data class WizardUiState(
     val unknownCardLast4: String? = null,
     /** User-configured enabled payment methods; used to filter the method-selection UI. */
     val enabledMethods: Set<PaymentMethod> = PaymentMethodPreferences.default,
+    /**
+     * Whether the load resolved a payment method. Stored, not derived: derived from the live draft,
+     * the payment step's support line would vanish the instant the user picked a method.
+     */
+    val paymentPrefilled: Boolean = false,
     /** Confirmed transactions this notification's source app has already produced on this device. */
     val sourceTransactionCount: Int = 0,
     val tagForm: TagFormMode? = null,
@@ -117,6 +121,10 @@ data class WizardUiState(
             if (effectiveTagType == TransactionType.EXPENSE) return contexts.isNotEmpty()
             return true
         }
+
+    /** The teach toggle is disabled, not failing, when no selected tag could carry a rule. */
+    val canTeachRule: Boolean
+        get() = draft.teachableTag(allTags) != null
 
     val selectionRange: IntRange?
         get() = if (selectionAnchor != null && selectionFocus != null) {
@@ -199,6 +207,12 @@ class WizardViewModel @Inject constructor(
             val issuerDeferred = async {
                 runCatching { issuerCardRepository.getMap() }.getOrDefault(emptyMap())
             }
+            // Read through the repository, not off the state snapshot: the init collector may not
+            // have emitted yet, and a user down to one enabled method would lose the prefill.
+            val enabledDeferred = async {
+                runCatching { paymentMethodPrefsRepository.enabledMethods.first() }
+                    .getOrDefault(PaymentMethodPreferences.default)
+            }
 
             val base = baseDeferred.await()
             if (base == null) {
@@ -238,7 +252,7 @@ class WizardViewModel @Inject constructor(
                     pendingTransactionId = classified.pendingTransactionId,
                     isConfirmingPending = true,
                     isLoading = false,
-                    enabledMethods = _state.value.enabledMethods,
+                    enabledMethods = enabledDeferred.await(),
                     toastMessage = _state.value.toastMessage,
                 )
                 return@launch
@@ -258,12 +272,13 @@ class WizardViewModel @Inject constructor(
                     cards = cards,
                     learnedIssuers = issuerDeferred.await(),
                     paymentMethodDictionary = dictDeferred.await(),
+                    enabledMethods = enabledDeferred.await(),
                 ),
             )
 
             // Switching to a different item resets to that item's fresh draft/step/tokens; only the
-            // on-screen transition kept the previous item visible until this point.
-            // enabledMethods is a cross-concern that survives the item reset.
+            // on-screen transition kept the previous item visible until this point. enabledMethods
+            // comes from the same read the prefill used, so state and prefill cannot disagree.
             _state.value = WizardUiState(
                 notification = notification,
                 draft = resolved.draft,
@@ -276,7 +291,8 @@ class WizardViewModel @Inject constructor(
                 tokens = tokens,
                 isLoading = false,
                 unknownCardLast4 = resolved.unknownLast4,
-                enabledMethods = _state.value.enabledMethods,
+                enabledMethods = enabledDeferred.await(),
+                paymentPrefilled = resolved.draft.paymentMethod != null,
                 toastMessage = degradeToast ?: _state.value.toastMessage,
                 sourceTransactionCount = productiveDeferred.await(),
             )
@@ -655,26 +671,16 @@ class WizardViewModel @Inject constructor(
 
     /**
      * Creates an IGNORE-action classification rule carrying [pattern] verbatim — the pattern the
-     * dialog named is what gets stored, not a re-derived one. Carries no tags/type: broad patterns
-     * the SUGGEST path refuses are accepted here, since a rule with no tags can't mis-tag anything.
+     * dialog named is what gets stored, not a re-derived one. Carries no tag: broad patterns the
+     * SUGGEST path refuses are accepted here, since a rule with no tag can't mis-tag anything.
+     * A Duplicate means the rule is already there, which is what the user asked for.
      */
     private suspend fun learnIgnorePatternRule(pattern: String): String? {
-        val created = classificationRuleRepository.create(
-            ClassificationRule(
-                id = null,
-                patterns = listOf(pattern),
-                matchType = "CONTAINS",
-                active = true,
-                appliedCount = 0,
-                transactionType = null,
-                paymentMethod = null,
-                cardId = null,
-                tags = emptyList(),
-                action = RuleAction.IGNORE,
-            ),
-        )
-        if (created.isSuccess) return null
-        return "Notificação ignorada, mas não foi possível salvar a regra."
+        val created = classificationRuleRepository.create(ClassificationRule.ignore(pattern))
+        return when (created.getOrNull()) {
+            RuleWriteOutcome.Saved, RuleWriteOutcome.Duplicate -> null
+            is RuleWriteOutcome.Rejected, null -> "Notificação ignorada, mas não foi possível salvar a regra."
+        }
     }
 
     /**
@@ -735,40 +741,19 @@ class WizardViewModel @Inject constructor(
     }
 
     /**
-     * Merges or creates a learned classification rule when the user enabled "Aprender este padrão".
-     *
-     * [RuleTeachPlanner] targets the oldest active SUGGEST rule holding a pattern that both matches
-     * this notification and names the same merchant as the taught one, so a correction edits the rule
-     * the user saw go wrong instead of a gateway's — see [RuleTeachPlanner.plan]. The taught payment
-     * method rides along: without a "final NNNN" hint (Uber, PIX, débito) classify has nothing to
-     * derive it from, and a merchant's method is a property of the merchant. The card does not — it
-     * comes from each notification's own evidence. Best-effort — failures are swallowed.
+     * Teaches a SUGGEST rule when the user enabled "Aprender este padrão". A rule carries exactly one
+     * tag, so the first tag the user picked — [WizardDraft.tagIds] is append-ordered — is the one
+     * taught; the others apply to this transaction only. A DUPLICATE means the rule is already there.
+     * Best-effort — failures are swallowed.
      */
     private suspend fun learnRuleIfRequested(draft: WizardDraft) {
         if (!draft.learnRule) return
         val notification = _state.value.notification ?: return
         val pattern = TeachPatternResolver.resolve(draft, notification, forIgnoreRule = false) ?: return
-        // Only tags with a context serialize into the rule (ClassificationRuleTagDto needs idCategory).
-        val ruleTags = _state.value.allTags.filter { it.id in draft.tagIds && !it.idContext.isNullOrBlank() }
-        if (ruleTags.isEmpty()) return
-        // A failed load must NOT read as "no rules exist": that would create a duplicate of the very
-        // rule we couldn't see, on every 401/timeout. Skipping one teach is the cheaper failure.
-        val existing = classificationRuleRepository.getAll().getOrElse { return }
-        val plan = RuleTeachPlanner.plan(
-            existing = existing,
-            notificationText = notification.text,
-            pattern = pattern,
-            type = draft.type,
-            paymentMethod = draft.paymentMethod,
-            tags = ruleTags,
-        )
-        runCatching {
-            when (plan) {
-                is TeachPlan.Update -> classificationRuleRepository.update(plan.rule)
-                is TeachPlan.Create -> classificationRuleRepository.create(plan.rule)
-                is TeachPlan.NoOp -> Unit
-            }
-        }
+        val tag = draft.teachableTag(_state.value.allTags) ?: return
+        val rule = ClassificationRule.suggest(pattern, tag.id)
+        if (rule.writeBlocker(tag.kind) != null) return
+        classificationRuleRepository.create(rule)
     }
 
     /**

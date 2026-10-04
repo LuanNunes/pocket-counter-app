@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.BarChart
@@ -79,7 +78,6 @@ fun MaisScreen(
         Entry("Relatório", "Tendências por mês, trimestre, ano", Icons.Filled.BarChart) { onOpenRoute("relatorio") },
         Entry("Regras aprendidas", "Classificação automática", Icons.Filled.AutoFixHigh) { onOpenRoute("regras") },
         Entry("Contextos & Tags", "Organize suas análises", Icons.Filled.Sell) { onOpenRoute("contextos") },
-        Entry("Assistente", "Tire dúvidas sobre suas finanças", Icons.Filled.AutoAwesome) { onOpenRoute("assistente") },
     )
     val settingsEntry =
         Entry("Configurações", "Segurança, pagamentos e captura", Icons.Filled.Settings) { onOpenRoute("configuracoes") }

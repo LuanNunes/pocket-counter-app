@@ -145,10 +145,15 @@ fun ContextosTagsScreen(
             onDismissRequest = viewModel::cancelDeleteContext,
             title = { Text("Excluir contexto?", color = PocketTheme.colors.text) },
             text = {
-                Text(
-                    "“${target.name}” será removido. Suas ${target.tagCount} tag(s) ficam sem contexto; os lançamentos continuam funcionando.",
-                    color = PocketTheme.colors.text2,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "“${target.name}” será removido. Suas ${target.tagCount} tag(s) ficam sem contexto; os lançamentos continuam funcionando.",
+                        color = PocketTheme.colors.text2,
+                    )
+                    if (target.ruleCount > 0) {
+                        Text(contextRulesWarning(target.ruleCount), color = PocketTheme.colors.warn)
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = viewModel::confirmDeleteContext) {
@@ -168,7 +173,7 @@ fun ContextosTagsScreen(
         AlertDialog(
             onDismissRequest = viewModel::cancelDeleteTag,
             title = { Text("Excluir tag?", color = PocketTheme.colors.text) },
-            text = { Text("“${target.name}” será removida das transações que a usam.", color = PocketTheme.colors.text2) },
+            text = { Text(tagDeleteMessage(target), color = PocketTheme.colors.text2) },
             confirmButton = {
                 TextButton(onClick = viewModel::confirmDeleteTag) {
                     Text("Excluir", color = PocketTheme.colors.expense)
@@ -183,6 +188,20 @@ fun ContextosTagsScreen(
         )
     }
 }
+
+/**
+ * The rules sentence is the whole warning — no scare words, no second confirmation. It is absent at
+ * zero, and [TagDeleteTarget.ruleCount] is already zero for an income category.
+ */
+internal fun tagDeleteMessage(target: TagDeleteTarget): String {
+    val lead = "“${target.name}” será removida das transações que a usam."
+    if (target.ruleCount <= 0) return lead
+    if (target.ruleCount == 1) return "$lead 1 regra aprendida que usa esta tag também será excluída."
+    return "$lead ${target.ruleCount} regras aprendidas que usam esta tag também serão excluídas."
+}
+
+internal fun contextRulesWarning(ruleCount: Int): String =
+    "$ruleCount regra(s) aprendida(s) dessas tags também serão excluídas."
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

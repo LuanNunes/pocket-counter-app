@@ -113,9 +113,4 @@ object NetworkModule {
     @Singleton
     fun provideSeriesApi(retrofit: Retrofit): SeriesApi =
         retrofit.create(SeriesApi::class.java)
-
-    @Provides
-    @Singleton
-    fun provideAssistantApi(retrofit: Retrofit): com.resolveprogramming.pocketcounter.data.remote.api.AssistantApi =
-        retrofit.create(com.resolveprogramming.pocketcounter.data.remote.api.AssistantApi::class.java)
 }

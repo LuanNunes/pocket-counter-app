@@ -1,21 +1,22 @@
 package com.resolveprogramming.pocketcounter.ui.regras
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
@@ -31,19 +32,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
-import com.resolveprogramming.pocketcounter.domain.model.CreditCard
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethod
-import com.resolveprogramming.pocketcounter.domain.model.PaymentMethodPreferences
 import com.resolveprogramming.pocketcounter.domain.model.RuleAction
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
-import com.resolveprogramming.pocketcounter.ui.wizard.label
+import com.resolveprogramming.pocketcounter.ui.components.FormErrorNote
+import com.resolveprogramming.pocketcounter.ui.components.FormLabel
+import com.resolveprogramming.pocketcounter.ui.components.FormSwitchRow
+import com.resolveprogramming.pocketcounter.ui.components.FormTextField
 import com.resolveprogramming.pocketcounter.ui.components.ManageTopBar
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadge
 import com.resolveprogramming.pocketcounter.ui.components.PocketBadgeVariant
@@ -55,7 +59,10 @@ import com.resolveprogramming.pocketcounter.ui.components.PocketToastHost
 import com.resolveprogramming.pocketcounter.ui.components.PocketToastState
 import com.resolveprogramming.pocketcounter.ui.components.SquareIconButton
 import com.resolveprogramming.pocketcounter.ui.components.TabId
+import com.resolveprogramming.pocketcounter.ui.components.TagPicker
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+
+private const val SHEET_MAX_HEIGHT_FRACTION = 0.86f
 
 @Composable
 fun RulesScreen(
@@ -94,7 +101,6 @@ fun RulesScreen(
                         items(state.rules.size, key = { state.rules[it].id ?: "idx_$it" }) { i ->
                             RegraCard(
                                 rule = state.rules[i],
-                                cardsById = state.cardsById,
                                 tagsById = state.tagsById,
                                 contextsById = state.contextsById,
                                 onEdit = { id -> viewModel.openEdit(id) },
@@ -131,10 +137,12 @@ fun RulesScreen(
     state.editTarget?.let { rule ->
         RegraEditSheet(
             rule = rule,
-            cards = state.cardsById.values.toList(),
-            enabledMethods = state.enabledMethods,
+            tags = remember(state.tagsById) { state.tagsById.values.toList() },
+            contexts = remember(state.contextsById) { state.contextsById.values.toList() },
             saving = state.savingEdit,
-            onSave = { method, cardId -> viewModel.saveEdit(method, cardId) },
+            errorMessage = state.editError,
+            onClearError = viewModel::clearEditError,
+            onSave = { pattern, idTag, active -> viewModel.saveEdit(pattern, idTag, active) },
             onDismiss = viewModel::cancelEdit,
         )
     }
@@ -161,177 +169,157 @@ private fun EmptyState() {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RegraCard(
+internal fun RegraCard(
     rule: ClassificationRule,
-    cardsById: Map<String, CreditCard>,
     tagsById: Map<String, Tag>,
     contextsById: Map<String, TagContext>,
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
-    // Tapping anywhere on the card (except the delete button, which consumes its own click) opens the
-    // payment-method editor. IGNORE rules have no payment target, so they stay non-editable.
-    val editable = rule.id != null && rule.action == RuleAction.SUGGEST
+    val editId = rule.id
+    // The merge sits on the clickable node so the row is one labelled, actionable target; the two
+    // touch targets inside carry their own merge, which is what keeps them separately focusable.
     val cardModifier = Modifier
         .fillMaxWidth()
-        .let { base -> if (editable) base.clickable { onEdit(rule.id!!) } else base }
+        .let { base -> editId?.let { id -> base.clickable { onEdit(id) } } ?: base }
+        .semantics(mergeDescendants = true) { }
+    val tag = rule.idTag?.let { tagsById[it] }
+    val tagLabel = tag?.name ?: "tag removida".takeIf { rule.idTag != null }
+
     PocketCard(modifier = cardModifier) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = rule.patterns.joinToString(", ").ifBlank { "sem padrão" },
+                    text = rule.pattern.ifBlank { "sem padrão" },
                     style = PocketTheme.typography.monoSm,
                     color = PocketTheme.colors.text,
                     modifier = Modifier.weight(1f),
                 )
-                rule.transactionType?.let { type ->
-                    val isIncome = type == TransactionType.INCOME
-                    PocketBadge(
-                        text = "Receita".takeIf { isIncome } ?: "Despesa",
-                        variant = PocketBadgeVariant.INCOME.takeIf { isIncome }
-                            ?: PocketBadgeVariant.EXPENSE,
-                    )
-                    Spacer(Modifier.size(8.dp))
+                if (rule.active == false) {
+                    PocketBadge(text = "inativa", variant = PocketBadgeVariant.SOFT)
+                    Spacer(Modifier.width(8.dp))
                 }
                 rule.id?.let { id ->
-                    SquareIconButton(
-                        icon = Icons.Filled.Close,
-                        contentDescription = "Excluir",
-                        onClick = { onDelete(id) },
-                    )
+                    Box(Modifier.semantics(mergeDescendants = true) { }) {
+                        SquareIconButton(
+                            icon = Icons.Filled.Close,
+                            contentDescription = "Excluir",
+                            onClick = { onDelete(id) },
+                        )
+                    }
                 }
             }
 
             Spacer(Modifier.height(6.dp))
             Text(
-                text = ruleOutcomeLabel(rule, cardsById),
+                text = ruleOutcomeLabel(rule),
                 style = PocketTheme.typography.bodyXs,
                 color = PocketTheme.colors.text3,
             )
 
-            if (rule.tags.isNotEmpty()) {
+            if (tagLabel != null) {
                 Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    rule.tags.forEach { tag ->
-                        val name = tagsById[tag.id]?.name ?: return@forEach
-                        val dotColor = (tag.idContext?.let { contextsById[it] }?.color ?: tag.color)
-                            ?.let { Color(it) }
-                            ?: PocketTheme.colors.text3
-                        TagDotChip(name = name, dotColor = dotColor)
-                    }
-                }
+                val dotColor = tag
+                    ?.let { it.idContext?.let { id -> contextsById[id] }?.color ?: it.color }
+                    ?.let { Color(it) }
+                    ?: PocketTheme.colors.text3
+                TagDotChip(name = tagLabel, dotColor = dotColor)
             }
         }
     }
 }
 
-private fun ruleOutcomeLabel(rule: ClassificationRule, cardsById: Map<String, CreditCard>): String {
-    if (rule.action == RuleAction.IGNORE) return "→ ignorar"
-    val outcome = listOfNotNull(
-        rule.paymentMethod?.label(),
-        rule.cardId?.let { cardsById[it]?.name },
-        rule.tags.size.takeIf { it > 0 }?.let { "+ $it tags" },
-        rule.appliedCount.takeIf { it > 0 }?.let { "aplicada ${it}×" },
-    ).joinToString(" · ")
-    return "sem destino".takeIf { outcome.isBlank() } ?: "→ $outcome"
+private fun ruleOutcomeLabel(rule: ClassificationRule): String {
+    val applied = "aplicada ${rule.appliedCount}×".takeIf { rule.appliedCount > 0 } ?: "ainda não aplicada"
+    if (rule.action == RuleAction.IGNORE) return "→ ignorar" + " · $applied".takeIf { rule.appliedCount > 0 }.orEmpty()
+    return applied
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RegraEditSheet(
+internal fun RegraEditSheet(
     rule: ClassificationRule,
-    cards: List<CreditCard>,
-    enabledMethods: Set<PaymentMethod>,
+    tags: List<Tag>,
+    contexts: List<TagContext>,
     saving: Boolean,
-    onSave: (PaymentMethod?, String?) -> Unit,
+    errorMessage: String?,
+    onClearError: () -> Unit,
+    onSave: (pattern: String, idTag: String?, active: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var method by remember(rule.id) { mutableStateOf(rule.paymentMethod) }
-    var cardId by remember(rule.id) { mutableStateOf(rule.cardId) }
-    // Expense rules can be CREDIT; income rules can't (mirrors the wizard's payment invariant).
-    val methods = PaymentMethodPreferences.selectable(enabledMethods, rule.paymentMethod, rule.transactionType)
+    val isSuggest = rule.action == RuleAction.SUGGEST
+    var pattern by remember(rule.id) { mutableStateOf(rule.pattern) }
+    var idTag by remember(rule.id) { mutableStateOf(rule.idTag.takeIf { isSuggest }) }
+    // `active` is a tri-state on the wire and the list reads "on" as `!= false`; the editor
+    // always writes a plain Boolean, so the null goes away on the first save.
+    var active by remember(rule.id) { mutableStateOf(rule.active != false) }
+
+    val trimmed = pattern.trim()
+    val tagKind = idTag?.let { id -> tags.firstOrNull { it.id == id }?.kind }
+    val blocker = rule.copy(pattern = trimmed, idTag = idTag).writeBlocker(tagKind)
+
+    // Same cap and pinned-CTA shape as ClassifyPurchaseSheet: unbounded, the tag picker pushes the
+    // sheet flush to the top and scrolls "Salvar" out of reach.
+    val maxSheetHeight = LocalConfiguration.current.screenHeightDp.dp * SHEET_MAX_HEIGHT_FRACTION
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            "Forma de pagamento",
-            style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-            color = PocketTheme.colors.text,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            rule.patterns.joinToString(", ").ifBlank { "sem padrão" },
-            style = PocketTheme.typography.bodyXs,
-            color = PocketTheme.colors.text3,
-        )
-        Spacer(Modifier.height(16.dp))
+        Column(modifier = Modifier.fillMaxWidth().heightIn(max = maxSheetHeight)) {
+            Text(
+                "Editar regra",
+                style = PocketTheme.typography.stepQuestion,
+                color = PocketTheme.colors.text,
+                modifier = Modifier.semantics { heading() },
+            )
+            Spacer(Modifier.height(16.dp))
 
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            methods.forEach { m ->
-                SelectChip(
-                    label = m.label(),
-                    selected = method == m,
-                    onClick = {
-                        // Tap the selected method again to clear it (rule ends up with no method).
-                        method = m.takeIf { method != m }
-                        if (method != PaymentMethod.CREDIT) cardId = null
-                    },
-                )
-            }
-        }
-
-        if (method == PaymentMethod.CREDIT && cards.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Text("Cartão", style = PocketTheme.typography.bodySm, color = PocketTheme.colors.text2)
-            Spacer(Modifier.height(8.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
             ) {
-                cards.forEach { card ->
-                    SelectChip(
-                        label = card.name,
-                        selected = cardId == card.id,
-                        onClick = { cardId = card.id },
+                FormLabel("Padrão")
+                Spacer(Modifier.height(8.dp))
+                FormTextField(
+                    value = pattern,
+                    onValueChange = {
+                        pattern = it.take(ClassificationRule.MAX_PATTERN_LENGTH)
+                        if (errorMessage != null) onClearError()
+                    },
+                    placeholder = "parte do texto da notificação",
+                )
+
+                if (errorMessage != null) {
+                    Spacer(Modifier.height(8.dp))
+                    FormErrorNote(errorMessage)
+                }
+
+                if (isSuggest) {
+                    Spacer(Modifier.height(20.dp))
+                    FormLabel("Tag")
+                    Spacer(Modifier.height(8.dp))
+                    TagPicker(
+                        type = TransactionType.EXPENSE,
+                        tags = tags,
+                        contexts = contexts,
+                        selectedTagIds = listOfNotNull(idTag),
+                        onToggleTag = { id -> idTag = id.takeIf { it != idTag } },
                     )
                 }
+
+                FormSwitchRow(label = "Ativa", checked = active, onCheckedChange = { active = it })
             }
+
+            Spacer(Modifier.height(20.dp))
+            PocketButton(
+                text = "Salvar",
+                onClick = { onSave(trimmed, idTag, active) },
+                enabled = !saving && blocker == null,
+                fillMaxWidth = true,
+            )
+            Spacer(Modifier.height(8.dp))
         }
-
-        Spacer(Modifier.height(20.dp))
-        // A CREDIT method needs a card selected before it can be saved.
-        val canSave = !saving && (method != PaymentMethod.CREDIT || cardId != null)
-        PocketButton(
-            text = "Salvar",
-            onClick = { onSave(method, cardId) },
-            enabled = canSave,
-            fillMaxWidth = true,
-        )
-        Spacer(Modifier.height(8.dp))
     }
-}
-
-@Composable
-private fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val bg = PocketTheme.colors.accentBg.takeIf { selected } ?: PocketTheme.colors.surface
-    val border = PocketTheme.colors.accent.takeIf { selected } ?: PocketTheme.colors.line
-    Text(
-        text = label,
-        style = PocketTheme.typography.bodySm,
-        color = PocketTheme.colors.text.takeIf { selected } ?: PocketTheme.colors.text2,
-        modifier = Modifier
-            .border(1.dp, border, PocketTheme.shapes.pill)
-            .background(bg, PocketTheme.shapes.pill)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    )
 }
 
 @Composable

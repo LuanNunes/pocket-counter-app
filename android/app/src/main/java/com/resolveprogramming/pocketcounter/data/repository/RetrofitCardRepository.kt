@@ -2,12 +2,9 @@ package com.resolveprogramming.pocketcounter.data.repository
 
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
-import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
 import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
 import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
-import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleDto
-import com.resolveprogramming.pocketcounter.data.remote.dto.ClassificationRuleTagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
@@ -16,6 +13,8 @@ import com.resolveprogramming.pocketcounter.domain.model.CreditCard
 import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
 import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
 import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -36,7 +35,7 @@ import javax.inject.Singleton
 class RetrofitCardRepository @Inject constructor(
     private val creditCardApi: CreditCardApi,
     private val transactionApi: TransactionApi,
-    private val classificationRuleApi: ClassificationRuleApi,
+    private val classificationRuleRepository: ClassificationRuleRepository,
     private val invoiceItemApi: InvoiceItemApi,
 ) : CardRepository {
 
@@ -116,7 +115,7 @@ class RetrofitCardRepository @Inject constructor(
         itemId: String,
         tags: List<Tag>,
         learnRule: Boolean,
-    ): Result<ClassifyOutcome> = runCatching {
+    ): Result<PurchaseClassifyOutcome> = runCatching {
         // Fetch the item so the tags-only edit round-trips its name/amount unchanged. If the
         // fetch fails or the item is gone, fail the call — never PUT empty name/zero amount,
         // which would clobber the server's item (the parent invoice total is autoTotal'd from it).
@@ -135,15 +134,11 @@ class RetrofitCardRepository @Inject constructor(
         )
         invoiceItemApi.updateItem(invoiceId, itemId, body)
 
-        if (!learnRule) {
-            return@runCatching ClassifyOutcome(ruleRequested = false, ruleCreated = false)
-        }
+        if (!learnRule) return@runCatching PurchaseClassifyOutcome.TagsOnly
 
-        // Only learn tags that carry a category — the backend rule needs {idTag, idCategory}.
-        val ruleTags = tags.filter { !it.idContext.isNullOrBlank() }
-        if (ruleTags.isEmpty()) {
-            return@runCatching ClassifyOutcome(ruleRequested = true, ruleCreated = false)
-        }
+        // `tags` arrives in selection order and a rule holds one tag: the first expense tag wins.
+        val tag = tags.firstOrNull { it.kind == TransactionType.EXPENSE }
+            ?: return@runCatching PurchaseClassifyOutcome.RuleFailed
 
         // Key on the merchant, not the date-stamped item name — a pattern like
         // "<merchant> · 2026-05-28" would never CONTAINS-match a future purchase.
@@ -151,20 +146,14 @@ class RetrofitCardRepository @Inject constructor(
         // A bare gateway marker ("Ifd*") as an item name would mint a rule matching every merchant
         // behind that acquirer, and being the oldest match it would win every classification.
         val pattern = TeachPatternSanitizer.clean(cleanName.takeIf { it.isNotBlank() } ?: existing.name)
-            ?: return@runCatching ClassifyOutcome(ruleRequested = true, ruleCreated = false)
+            ?: return@runCatching PurchaseClassifyOutcome.RuleFailed
 
-        val ruleCreated = runCatching {
-            val dto = ClassificationRuleDto(
-                patterns = listOf(pattern),
-                matchType = "CONTAINS",
-                transactionType = "EXPENSE",
-                paymentMethod = "CREDIT",
-                tagIds = ruleTags.map { ClassificationRuleTagDto(idTag = it.id, idCategory = it.idContext!!) },
-            )
-            classificationRuleApi.create(dto)
-        }.isSuccess
-
-        ClassifyOutcome(ruleRequested = true, ruleCreated = ruleCreated)
+        val written = classificationRuleRepository.create(ClassificationRule.suggest(pattern, tag.id))
+        when (written.getOrNull()) {
+            RuleWriteOutcome.Saved -> PurchaseClassifyOutcome.RuleCreated
+            RuleWriteOutcome.Duplicate -> PurchaseClassifyOutcome.RuleAlreadyExisted
+            is RuleWriteOutcome.Rejected, null -> PurchaseClassifyOutcome.RuleFailed
+        }
     }
 
     override suspend fun addCard(

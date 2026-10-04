@@ -1096,7 +1096,7 @@ internal fun ClassifyPurchaseSheet(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Próximas compras contendo \"${item.name}\" no ${card.name} serão classificadas sozinhas.",
+                            text = learnRuleHint(item.name, selectedTags),
                             style = PocketTheme.typography.bodyXs,
                             color = PocketTheme.colors.text2,
                         )
