@@ -9,7 +9,7 @@ struct APIClientTests {
     private struct Pong: Decodable, Sendable, Equatable { let message: String }
 
     private let base = URL(string: "https://api-dev.pocket-counter.com/")!
-    private let ping = Endpoint<Pong>(method: .get, path: "api/v1/ping")
+    private let ping = Endpoint<Pong>(method: .get, path: "api/v1/ping", authentication: .bearer)
 
     private func client(_ fake: FakeHTTP) -> APIClient { APIClient(baseURL: base, send: fake.send) }
 
@@ -36,7 +36,7 @@ struct APIClientTests {
     func noContent() async throws {
         let fake = FakeHTTP(FakeHTTP.empty(204))
 
-        try await client(fake).sendIgnoringResponse(Endpoint<EmptyResponse>(method: .post, path: "api/v1/auth/logout"))
+        try await client(fake).sendIgnoringResponse(Endpoint<EmptyResponse>(method: .post, path: "api/v1/auth/logout", authentication: .bearer))
 
         #expect(fake.callCount == 1)
     }
@@ -122,7 +122,7 @@ struct APIClientTests {
     @Test("an invalid endpoint fails before sending")
     func invalidRequest() async {
         let fake = FakeHTTP(FakeHTTP.json("{}"))
-        let bad = Endpoint<Pong>(method: .get, path: "/api/v1/ping")
+        let bad = Endpoint<Pong>(method: .get, path: "/api/v1/ping", authentication: .bearer)
 
         let error = await failure(of: bad, using: fake)
 

@@ -42,7 +42,7 @@ struct TokenRefresherTests {
         let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
 
         #expect(outcome == .refreshed("new-access"))
-        #expect(await tokens.tokens() == TokenPair(accessToken: "new-access", refreshToken: "new-refresh"))
+        #expect(await tokens.stored == TokenPair(accessToken: "new-access", refreshToken: "new-refresh"))
         let request = try #require(fake.requests.first)
         #expect(request.httpMethod == "POST")
         #expect(request.url?.path == "/api/v1/auth/refresh")
@@ -78,7 +78,7 @@ struct TokenRefresherTests {
         let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
 
         #expect(outcome == .sessionInvalid)
-        #expect(await tokens.tokens() == nil)
+        #expect(await tokens.stored == nil)
     }
 
     @Test("a 5xx keeps the session")
@@ -89,7 +89,7 @@ struct TokenRefresherTests {
         let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
 
         #expect(outcome == .unavailable)
-        #expect(await tokens.tokens() == stored)
+        #expect(await tokens.stored == stored)
     }
 
     @Test("being offline keeps the session")
@@ -100,7 +100,7 @@ struct TokenRefresherTests {
         let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
 
         #expect(outcome == .unavailable)
-        #expect(await tokens.tokens() == stored)
+        #expect(await tokens.stored == stored)
     }
 
     @Test("an unreadable 200 keeps the session")
@@ -111,7 +111,7 @@ struct TokenRefresherTests {
         let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
 
         #expect(outcome == .unavailable)
-        #expect(await tokens.tokens() == stored)
+        #expect(await tokens.stored == stored)
     }
 
     @Test("ten concurrent callers cause exactly one refresh request and all receive the new token")
@@ -157,5 +157,41 @@ struct TokenRefresherTests {
 
         #expect(second == .refreshed("third"))
         #expect(fake.callCount == 2)
+    }
+
+    @Test("a failing read is unavailable, keeps the stored pair and goes nowhere near the network")
+    func unreadableStore() async {
+        let fake = FakeHTTP(FakeHTTP.json(Self.rotated))
+        let tokens = InMemoryTokenStore(stored, failingReads: 1)
+
+        let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
+
+        #expect(outcome == .unavailable)
+        #expect(await tokens.stored == stored)
+        #expect(fake.callCount == 0)
+    }
+
+    @Test("an unreadable store is consulted again on the next refresh instead of being remembered")
+    func unreadableThenReadable() async {
+        let fake = FakeHTTP(FakeHTTP.json(Self.rotated))
+        let tokens = InMemoryTokenStore(stored, failingReads: 1)
+        let refresher = refresher(fake, tokens: tokens)
+
+        let first = await refresher.accessToken(replacing: "old-access")
+        let second = await refresher.accessToken(replacing: "old-access")
+
+        #expect(first == .unavailable)
+        #expect(second == .refreshed("new-access"))
+        #expect(await tokens.readCount == 2)
+    }
+
+    @Test("a rotation that cannot be persisted still hands back the new access token")
+    func rotationNotPersisted() async {
+        let fake = FakeHTTP(FakeHTTP.json(Self.rotated))
+        let tokens = InMemoryTokenStore(stored, failingWrites: true)
+
+        let outcome = await refresher(fake, tokens: tokens).accessToken(replacing: "old-access")
+
+        #expect(outcome == .refreshed("new-access"))
     }
 }

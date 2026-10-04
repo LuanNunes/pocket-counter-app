@@ -6,6 +6,8 @@ import Testing
 @Suite("JWTPayload")
 struct JWTPayloadTests {
 
+    private static let id = "7b1f0f1e-8b9c-4c2a-9a1d-3f5e6c7d8a90"
+
     private func token(payload: String) -> String {
         let base64url = Data(payload.utf8).base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
@@ -60,17 +62,21 @@ struct JWTPayloadTests {
         #expect(payload.name == nil)
     }
 
-    @Test("the user is named by the claim")
+    @Test("the user is identified by `sub` and named by the claim")
     func userName() throws {
-        let payload = try #require(JWTPayload(accessToken: token(payload: #"{"name":"Ana","email":"a@b.co"}"#)))
+        let claims = #"{"sub":"\#(Self.id)","name":"Ana","email":"a@b.co"}"#
+        let payload = try #require(JWTPayload(accessToken: token(payload: claims)))
 
-        #expect(payload.user == AuthenticatedUser(name: "Ana", email: "a@b.co"))
+        let id = try #require(UserID(rawValue: Self.id))
+        #expect(payload.userId == id)
+        #expect(payload.user == AuthenticatedUser(id: id, name: "Ana", email: "a@b.co"))
         #expect(payload.user?.displayName == "Ana")
     }
 
     @Test("an empty name falls back to the email", arguments: ["", "   "])
     func emptyNameFallsBack(name: String) throws {
-        let payload = try #require(JWTPayload(accessToken: token(payload: #"{"name":"\#(name)","email":"a@b.co"}"#)))
+        let claims = #"{"sub":"\#(Self.id)","name":"\#(name)","email":"a@b.co"}"#
+        let payload = try #require(JWTPayload(accessToken: token(payload: claims)))
 
         #expect(payload.user?.displayName == "a@b.co")
         #expect(payload.user?.email == "a@b.co")
@@ -78,8 +84,24 @@ struct JWTPayloadTests {
 
     @Test("a payload without an email yields no user")
     func noEmailNoUser() throws {
-        let payload = try #require(JWTPayload(accessToken: token(payload: #"{"name":"Ana"}"#)))
+        let payload = try #require(JWTPayload(accessToken: token(payload: #"{"sub":"\#(Self.id)","name":"Ana"}"#)))
 
+        #expect(payload.user == nil)
+    }
+
+    @Test("a `sub` that is not a UUID identifies nobody, so there is no user", arguments: ["42", "", "not-a-uuid"])
+    func subIsNotAUUID(sub: String) throws {
+        let payload = try #require(JWTPayload(accessToken: token(payload: #"{"sub":"\#(sub)","email":"a@b.co"}"#)))
+
+        #expect(payload.userId == nil)
+        #expect(payload.user == nil)
+    }
+
+    @Test("a payload without `sub` identifies nobody")
+    func missingSub() throws {
+        let payload = try #require(JWTPayload(accessToken: token(payload: #"{"email":"a@b.co"}"#)))
+
+        #expect(payload.userId == nil)
         #expect(payload.user == nil)
     }
 }

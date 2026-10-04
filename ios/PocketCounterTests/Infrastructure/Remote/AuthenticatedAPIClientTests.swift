@@ -10,7 +10,7 @@ struct AuthenticatedAPIClientTests {
 
     private let base = URL(string: "https://api-dev.pocket-counter.com/")!
     private let stored = TokenPair(accessToken: "old-access", refreshToken: "old-refresh")
-    private let ping = Endpoint<Pong>(method: .get, path: "api/v1/ping")
+    private let ping = Endpoint<Pong>(method: .get, path: "api/v1/ping", authentication: .bearer)
     private static let rotated = #"{"accessToken":"new-access","refreshToken":"new-refresh","expiresIn":900,"tokenType":"Bearer"}"#
     private static let pong = #"{"message":"pong"}"#
 
@@ -36,16 +36,27 @@ struct AuthenticatedAPIClientTests {
         #expect(bearer(fake.requests.first) == "Bearer old-access")
     }
 
-    @Test("without a stored token the request goes out with no Authorization header")
+    @Test("a bearer endpoint with no stored token is never sent")
     func noToken() async {
-        let fake = FakeHTTP(FakeHTTP.empty(401))
+        let fake = FakeHTTP(FakeHTTP.json(Self.pong))
         let client = make(fake.send, tokens: InMemoryTokenStore(nil))
 
-        let error = await statusCode(of: ping, using: client)
+        let error = await apiError(of: ping, using: client)
 
-        #expect(error == 401)
+        #expect(error == .sessionExpired)
+        #expect(fake.callCount == 0)
+    }
+
+    @Test("a credentials endpoint with no stored token is still sent, without a bearer")
+    func noTokenCredentials() async throws {
+        let fake = FakeHTTP(FakeHTTP.json(Self.pong))
+        let client = make(fake.send, tokens: InMemoryTokenStore(nil))
+        let login = Endpoint<Pong>(method: .post, path: "api/v1/auth/login", authentication: .credentials)
+
+        let pong = try await client.send(login)
+
+        #expect(pong == Pong(message: "pong"))
         #expect(bearer(fake.requests.first) == nil)
-        #expect(fake.callCount == 1)
     }
 
     @Test("a 401 refreshes the token and retries once with the new bearer")
@@ -71,15 +82,42 @@ struct AuthenticatedAPIClientTests {
         #expect(fake.callCount == 3)
     }
 
-    @Test("when the refresh fails the original 401 comes back and nothing is retried", arguments: [401, 500])
-    func refreshFails(status: Int) async {
-        let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.empty(status))
-        let client = make(fake.send, tokens: InMemoryTokenStore(stored))
+    @Test("a refresh refused with 401 ends the session and reports it expired")
+    func refreshRefused() async {
+        let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.empty(401))
+        let tokens = InMemoryTokenStore(stored)
+        let client = make(fake.send, tokens: tokens)
 
-        let code = await statusCode(of: ping, using: client)
+        let error = await apiError(of: ping, using: client)
 
-        #expect(code == 401)
+        #expect(error == .sessionExpired)
+        #expect(await tokens.stored == nil)
         #expect(fake.callCount == 2)
+    }
+
+    @Test("a refresh that hits a server error reports authentication unavailable and keeps the session")
+    func refreshServerError() async {
+        let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.empty(500))
+        let tokens = InMemoryTokenStore(stored)
+        let client = make(fake.send, tokens: tokens)
+
+        let error = await apiError(of: ping, using: client)
+
+        #expect(error == .authenticationUnavailable)
+        #expect(await tokens.stored == stored)
+        #expect(fake.callCount == 2)
+    }
+
+    @Test("a refresh that cannot reach the server reports authentication unavailable and keeps the session")
+    func refreshOffline() async {
+        let fake = FakeHTTP(FakeHTTP.empty(401), .failure(URLError(.notConnectedToInternet)))
+        let tokens = InMemoryTokenStore(stored)
+        let client = make(fake.send, tokens: tokens)
+
+        let error = await apiError(of: ping, using: client)
+
+        #expect(error == .authenticationUnavailable)
+        #expect(await tokens.stored == stored)
     }
 
     @Test("a 401 from an auth endpoint never triggers a refresh")
@@ -87,10 +125,22 @@ struct AuthenticatedAPIClientTests {
         let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.json(Self.rotated))
         let client = make(fake.send, tokens: InMemoryTokenStore(stored))
 
-        let code = await statusCode(of: Endpoint<Pong>(method: .post, path: "api/v1/auth/login"), using: client)
+        let code = await statusCode(of: Endpoint<Pong>(method: .post, path: "api/v1/auth/login", authentication: .credentials), using: client)
 
         #expect(code == 401)
         #expect(fake.callCount == 1)
+    }
+
+    @Test("a bearer endpoint under /auth/ still refreshes and retries")
+    func bearerAuthEndpointRefreshes() async throws {
+        let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.json(Self.rotated), FakeHTTP.json(Self.pong))
+        let client = make(fake.send, tokens: InMemoryTokenStore(stored))
+        let providers = Endpoint<Pong>(method: .get, path: "api/v1/auth/providers", authentication: .bearer)
+
+        _ = try await client.send(providers)
+
+        #expect(fake.requests.map(\.url?.path) == ["/api/v1/auth/providers", "/api/v1/auth/refresh", "/api/v1/auth/providers"])
+        #expect(bearer(fake.requests.last) == "Bearer new-access")
     }
 
     @Test("a burst of six 401s causes one refresh and twelve sends of the original request")
@@ -128,7 +178,7 @@ struct AuthenticatedAPIClientTests {
         let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.json(Self.rotated), FakeHTTP.empty(204))
         let client = make(fake.send, tokens: InMemoryTokenStore(stored))
 
-        try await client.sendIgnoringResponse(Endpoint<EmptyResponse>(method: .delete, path: "api/v1/things/1"))
+        try await client.sendIgnoringResponse(Endpoint<EmptyResponse>(method: .delete, path: "api/v1/things/1", authentication: .bearer))
 
         #expect(fake.callCount == 3)
     }
@@ -148,5 +198,36 @@ struct AuthenticatedAPIClientTests {
             guard case .status(let code, _) = error else { return nil }
             return code
         }
+    }
+
+    private func apiError<R>(of endpoint: Endpoint<R>, using client: AuthenticatedAPIClient) async -> APIError? {
+        do {
+            _ = try await client.send(endpoint)
+            return nil
+        } catch {
+            return error
+        }
+    }
+
+    @Test("a failing read reports authentication unavailable before any request goes out")
+    func unreadableStore() async {
+        let fake = FakeHTTP(FakeHTTP.json(Self.pong))
+        let client = make(fake.send, tokens: InMemoryTokenStore(stored, failingReads: 1))
+
+        let error = await apiError(of: ping, using: client)
+
+        #expect(error == .authenticationUnavailable)
+        #expect(fake.callCount == 0)
+    }
+
+    @Test("a 401 whose refresh succeeds but cannot be persisted still retries with the new bearer")
+    func rotationNotPersisted() async throws {
+        let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.json(Self.rotated), FakeHTTP.json(Self.pong))
+        let client = make(fake.send, tokens: InMemoryTokenStore(stored, failingWrites: true))
+
+        let pong = try await client.send(ping)
+
+        #expect(pong == Pong(message: "pong"))
+        #expect(bearer(fake.requests.last) == "Bearer new-access")
     }
 }

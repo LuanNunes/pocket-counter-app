@@ -15,3 +15,14 @@ struct CardID: RawRepresentable, Hashable, Sendable {
 struct ContextID: RawRepresentable, Hashable, Sendable {
     let rawValue: String
 }
+
+/// The server identifies users by UUID. `rawValue` stays the string it was given, not
+/// `UUID.uuidString`, so the wire form is preserved.
+struct UserID: RawRepresentable, Hashable, Sendable {
+    let rawValue: String
+
+    init?(rawValue: String) {
+        guard UUID(uuidString: rawValue) != nil else { return nil }
+        self.rawValue = rawValue
+    }
+}

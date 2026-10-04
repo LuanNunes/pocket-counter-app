@@ -1,3 +1,5 @@
+import OSLog
+
 actor TokenRefresher {
     enum Outcome: Sendable, Equatable {
         case refreshed(String)
@@ -6,11 +8,8 @@ actor TokenRefresher {
     }
 
     private struct RefreshBody: Encodable, Sendable { let token: String }
-    private struct RefreshResponse: Decodable, Sendable {
-        let accessToken: String
-        let refreshToken: String
-    }
 
+    private let logger = Logger(subsystem: "com.resolveprogramming.pocketcounter", category: "auth")
     private var inFlight: Task<Outcome, Never>?
     private let client: APIClient
     private let tokens: any TokenStoring
@@ -33,22 +32,35 @@ actor TokenRefresher {
     }
 
     private func performRefresh(replacing staleToken: String?) async -> Outcome {
-        guard let current = await tokens.tokens() else { return .sessionInvalid }
+        let current: TokenPair?
+        do { current = try await tokens.tokens() } catch { return .unavailable }
+        guard let current else { return .sessionInvalid }
         if let staleToken, current.accessToken != staleToken { return .refreshed(current.accessToken) }
-        let endpoint = Endpoint<RefreshResponse>(
-            method: .post, path: "api/v1/auth/refresh", body: RefreshBody(token: current.refreshToken)
+        let endpoint = Endpoint<TokenResponse>(
+            method: .post, path: "api/v1/auth/refresh", authentication: .credentials,
+            body: RefreshBody(token: current.refreshToken)
         )
+        let response: TokenResponse
         do {
-            let response = try await client.send(endpoint)
-            let pair = TokenPair(accessToken: response.accessToken, refreshToken: response.refreshToken)
-            try await tokens.save(pair)
-            return .refreshed(pair.accessToken)
-        } catch let error as APIError {
-            guard case .status(let code, _) = error, code == 401 || code == 403 else { return .unavailable }
-            await tokens.clear()
-            return .sessionInvalid
+            response = try await client.send(endpoint)
         } catch {
-            return .unavailable
+            guard case .status(let code, _) = error, code == 401 || code == 403 else { return .unavailable }
+            do {
+                try await tokens.clear()
+            } catch {
+                logger.fault("Revoked tokens could not be cleared; the next launch will act on them")
+            }
+            return .sessionInvalid
         }
+        let pair = TokenPair(accessToken: response.accessToken, refreshToken: response.refreshToken)
+        do {
+            try await tokens.save(pair)
+        } catch {
+            // The server already revoked the old refresh token; the new access token is good, so
+            // let the in-flight request finish. Accepted: the store still holds the revoked pair,
+            // so the next 401 signs the user out.
+            logger.error("Rotated tokens could not be persisted; session will not survive relaunch")
+        }
+        return .refreshed(pair.accessToken)
     }
 }

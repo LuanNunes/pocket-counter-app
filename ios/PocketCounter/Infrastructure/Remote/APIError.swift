@@ -1,11 +1,15 @@
 import Foundation
 
-enum APIError: Error, Sendable {
+enum APIError: Error, Sendable, Equatable {
     case invalidRequest(String)
     case transport(URLError)
     case status(code: Int, server: ServerMessage?)
     case decoding(endpoint: String, underlying: String)
     case cancelled
+    /// The access token was rejected and the refresh refused; the session is already cleared.
+    case sessionExpired
+    /// Could not authenticate right now (server error, offline, unreadable store). Session intact; retryable.
+    case authenticationUnavailable
 }
 
 struct ServerMessage: Sendable, Equatable {

@@ -26,8 +26,8 @@ struct APISessionRepositoryTests {
 
         let user = try await make(fake, tokens: tokens).signIn(login())
 
-        #expect(user == AuthenticatedUser(name: "Ana", email: "ana@b.com"))
-        #expect(await tokens.tokens() == TokenPair(accessToken: accessToken, refreshToken: "refresh-1"))
+        #expect(user == AuthenticatedUser(id: JWTFixture.userId, name: "Ana", email: "ana@b.com"))
+        #expect(await tokens.stored == TokenPair(accessToken: accessToken, refreshToken: "refresh-1"))
         let request = try #require(fake.requests.first)
         #expect(request.url?.path == "/api/v1/auth/login")
         #expect(request.httpMethod == "POST")
@@ -43,7 +43,7 @@ struct APISessionRepositoryTests {
 
         let user = try await make(fake).signIn(login())
 
-        #expect(user == AuthenticatedUser(name: "Bia", email: "canonical@b.com"))
+        #expect(user == AuthenticatedUser(id: JWTFixture.userId, name: "Bia", email: "canonical@b.com"))
     }
 
     @Test("a token without an email falls back to the typed one")
@@ -53,7 +53,7 @@ struct APISessionRepositoryTests {
 
         let user = try await make(fake).signIn(login())
 
-        #expect(user == AuthenticatedUser(name: nil, email: "ana@b.com"))
+        #expect(user == AuthenticatedUser(id: JWTFixture.userId, name: nil, email: "ana@b.com"))
     }
 
     private static let envelope = #"{"code":"X","message":"Server says no","details":[],"correlationId":"c","timestamp":"t"}"#
@@ -73,7 +73,7 @@ struct APISessionRepositoryTests {
         let failure = await signInFailure(make(fake, tokens: tokens))
 
         #expect(failure == expected)
-        #expect(await tokens.tokens() == nil)
+        #expect(await tokens.stored == nil)
     }
 
     @Test("a transport failure is unreachable")
@@ -81,6 +81,13 @@ struct APISessionRepositoryTests {
         let fake = FakeHTTP(.failure(URLError(.notConnectedToInternet)))
 
         #expect(await signInFailure(make(fake)) == .unreachable)
+    }
+
+    @Test("a cancelled sign-in is abandoned, not an offline failure", arguments: [
+        FakeHTTP.Reply.failure(URLError(.cancelled)), .failure(CancellationError()),
+    ])
+    func cancelled(reply: FakeHTTP.Reply) async {
+        #expect(await signInFailure(make(FakeHTTP(reply))) == .abandoned)
     }
 
     @Test("a rejection without the error envelope still carries a readable message")
@@ -115,8 +122,8 @@ struct APISessionRepositoryTests {
 
         let user = try await make(fake, tokens: tokens).register(registration)
 
-        #expect(user == AuthenticatedUser(name: "Ana", email: "ana@b.com"))
-        #expect(await tokens.tokens() == TokenPair(accessToken: accessToken, refreshToken: "refresh-1"))
+        #expect(user == AuthenticatedUser(id: JWTFixture.userId, name: "Ana", email: "ana@b.com"))
+        #expect(await tokens.stored == TokenPair(accessToken: accessToken, refreshToken: "refresh-1"))
         let request = try #require(fake.requests.first)
         #expect(request.url?.path == "/api/v1/auth/register")
         let body = try #require(request.httpBody)
@@ -147,15 +154,42 @@ struct APISessionRepositoryTests {
         let fake = FakeHTTP(FakeHTTP.empty(500))
         let tokens = InMemoryTokenStore(TokenPair(accessToken: accessToken, refreshToken: "r"))
 
-        #expect(await make(fake, tokens: tokens).restore() == .signedIn(AuthenticatedUser(name: "Ana", email: "ana@b.com")))
+        let user = AuthenticatedUser(id: JWTFixture.userId, name: "Ana", email: "ana@b.com")
+
+        #expect(await make(fake, tokens: tokens).restore() == .signedIn(user))
         #expect(fake.callCount == 0)
     }
 
-    @Test("an unreadable stored access token restores as signed out")
-    func restoreGarbage() async {
-        let tokens = InMemoryTokenStore(TokenPair(accessToken: "garbage", refreshToken: "r"))
+    @Test("a stored access token that does not name a user restores as signed out and is cleared", arguments: [
+        "garbage",
+        JWTFixture.token(email: "ana@b.com", name: "Ana", sub: "42"),
+        JWTFixture.token(email: "ana@b.com", name: "Ana", sub: nil),
+        JWTFixture.token(email: nil, name: "Ana"),
+    ])
+    func restoreUnusableToken(accessToken: String) async {
+        let tokens = InMemoryTokenStore(TokenPair(accessToken: accessToken, refreshToken: "r"))
 
         #expect(await make(FakeHTTP(FakeHTTP.empty(500)), tokens: tokens).restore() == .signedOut)
+        #expect(await tokens.stored == nil)
+    }
+
+    @Test("an unusable token that cannot be cleared restores as undetermined, never as signed out")
+    func restoreUnusableTokenClearFails() async {
+        let pair = TokenPair(accessToken: "garbage", refreshToken: "r")
+        let tokens = InMemoryTokenStore(pair, failingClear: true)
+
+        #expect(await make(FakeHTTP(FakeHTTP.empty(500)), tokens: tokens).restore() == .undetermined)
+        #expect(await tokens.stored == pair)
+    }
+
+    @Test("a token that does not identify its user is a server failure and is not stored", arguments: [nil, "42"])
+    func signInWithoutUserId(sub: String?) async {
+        let token = JWTFixture.token(email: "ana@b.com", name: "Ana", sub: sub)
+        let fake = FakeHTTP(FakeHTTP.json(#"{"accessToken":"\#(token)","refreshToken":"r","expiresIn":900,"tokenType":"Bearer"}"#))
+        let tokens = InMemoryTokenStore()
+
+        #expect(await signInFailure(make(fake, tokens: tokens)) == .server)
+        #expect(await tokens.stored == nil)
     }
 
     @Test("signing out posts the refresh token to logout and clears the tokens")
@@ -163,31 +197,67 @@ struct APISessionRepositoryTests {
         let fake = FakeHTTP(FakeHTTP.empty(204))
         let tokens = InMemoryTokenStore(TokenPair(accessToken: accessToken, refreshToken: "refresh-1"))
 
-        await make(fake, tokens: tokens).signOut()
+        try await make(fake, tokens: tokens).signOut()
 
         let request = try #require(fake.requests.first)
         #expect(request.url?.path == "/api/v1/auth/logout")
         #expect(request.httpBody.flatMap { String(data: $0, encoding: .utf8) } == #"{"token":"refresh-1"}"#)
-        #expect(await tokens.tokens() == nil)
+        #expect(await tokens.stored == nil)
     }
 
     @Test("signing out clears the tokens even when the logout call fails", arguments: [
         FakeHTTP.empty(500), FakeHTTP.Reply.failure(URLError(.notConnectedToInternet)),
     ])
-    func signOutFailing(reply: FakeHTTP.Reply) async {
+    func signOutFailing(reply: FakeHTTP.Reply) async throws {
         let tokens = InMemoryTokenStore(TokenPair(accessToken: accessToken, refreshToken: "r"))
 
-        await make(FakeHTTP(reply), tokens: tokens).signOut()
+        try await make(FakeHTTP(reply), tokens: tokens).signOut()
 
-        #expect(await tokens.tokens() == nil)
+        #expect(await tokens.stored == nil)
     }
 
     @Test("signing out with no tokens makes no request")
-    func signOutWithoutTokens() async {
+    func signOutWithoutTokens() async throws {
         let fake = FakeHTTP(FakeHTTP.empty(204))
 
-        await make(fake).signOut()
+        try await make(fake).signOut()
 
         #expect(fake.callCount == 0)
+    }
+
+    @Test("a failing read restores as undetermined, never as signed out")
+    func restoreUnreadable() async {
+        let tokens = InMemoryTokenStore(TokenPair(accessToken: accessToken, refreshToken: "r"), failingReads: 1)
+
+        #expect(await make(FakeHTTP(FakeHTTP.empty(500)), tokens: tokens).restore() == .undetermined)
+    }
+
+    @Test("signing out with a failing read makes no request and still clears the tokens")
+    func signOutUnreadable() async throws {
+        let fake = FakeHTTP(FakeHTTP.empty(204))
+        let tokens = InMemoryTokenStore(TokenPair(accessToken: accessToken, refreshToken: "r"), failingReads: 1)
+
+        try await make(fake, tokens: tokens).signOut()
+
+        #expect(fake.callCount == 0)
+        #expect(await tokens.stored == nil)
+    }
+
+    @Test("a local clear that fails is reported, and the stored pair is left in place")
+    func signOutClearFails() async {
+        let pair = TokenPair(accessToken: accessToken, refreshToken: "r")
+        let tokens = InMemoryTokenStore(pair, failingClear: true)
+
+        await #expect(throws: AuthenticationFailure.server) {
+            try await make(FakeHTTP(FakeHTTP.empty(204)), tokens: tokens).signOut()
+        }
+
+        #expect(await tokens.stored == pair)
+    }
+
+    @Test("a refused refresh is a server failure, not wrong credentials")
+    func sessionExpiredIsServer() {
+        #expect(AuthenticationFailure(APIError.sessionExpired) == .server)
+        #expect(AuthenticationFailure(APIError.authenticationUnavailable) == .unreachable)
     }
 }

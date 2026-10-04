@@ -15,8 +15,14 @@ struct JWTPayload: Decodable, Sendable, Equatable {
         self = payload
     }
 
+    /// A token whose `sub` is not a valid `UserID` is unusable: every later request keys on it.
+    var userId: UserID? {
+        sub.flatMap(UserID.init(rawValue:))
+    }
+
     var user: AuthenticatedUser? {
-        email.map { AuthenticatedUser(name: name, email: $0) }
+        guard let userId, let email else { return nil }
+        return AuthenticatedUser(id: userId, name: name, email: email)
     }
 
     // base64url has no padding and a different alphabet; `Data(base64Encoded:)` accepts neither.

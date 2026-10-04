@@ -14,7 +14,7 @@ struct EndpointTests {
         ("https://host.com/prefix/", "https://host.com/prefix/api/v1/auth/login"),
     ])
     func urlAssembly(base: String, expected: String) throws {
-        let endpoint = Endpoint<EmptyResponse>(method: .post, path: "api/v1/auth/login")
+        let endpoint = Endpoint<EmptyResponse>(method: .post, path: "api/v1/auth/login", authentication: .bearer)
 
         let request = try endpoint.urlRequest(baseURL: #require(URL(string: base)))
 
@@ -23,7 +23,7 @@ struct EndpointTests {
 
     @Test("a leading slash on the path is rejected, since it would drop the base path")
     func leadingSlash() throws {
-        let endpoint = Endpoint<EmptyResponse>(method: .get, path: "/api/v1/x")
+        let endpoint = Endpoint<EmptyResponse>(method: .get, path: "/api/v1/x", authentication: .bearer)
         let base = try #require(URL(string: "https://host.com/prefix/"))
 
         #expect(throws: APIError.self) { try endpoint.urlRequest(baseURL: base) }
@@ -32,7 +32,7 @@ struct EndpointTests {
     @Test("query items are encoded onto the URL")
     func query() throws {
         let endpoint = Endpoint<EmptyResponse>(
-            method: .get, path: "api/v1/t", query: [URLQueryItem(name: "ref", value: "2026-10")]
+            method: .get, path: "api/v1/t", authentication: .bearer, query: [URLQueryItem(name: "ref", value: "2026-10")]
         )
 
         let request = try endpoint.urlRequest(baseURL: #require(URL(string: "https://h.com/")))
@@ -42,7 +42,7 @@ struct EndpointTests {
 
     @Test("a request without a body sends Accept only")
     func noBodyHeaders() throws {
-        let endpoint = Endpoint<EmptyResponse>(method: .get, path: "api/v1/x")
+        let endpoint = Endpoint<EmptyResponse>(method: .get, path: "api/v1/x", authentication: .bearer)
 
         let request = try endpoint.urlRequest(baseURL: #require(URL(string: "https://h.com/")))
 
@@ -54,12 +54,21 @@ struct EndpointTests {
 
     @Test("a request with a body sends it as JSON")
     func bodyHeaders() throws {
-        let endpoint = Endpoint<EmptyResponse>(method: .post, path: "api/v1/x", body: Body(email: "a@b.co"))
+        let endpoint = Endpoint<EmptyResponse>(method: .post, path: "api/v1/x", authentication: .bearer, body: Body(email: "a@b.co"))
 
         let request = try endpoint.urlRequest(baseURL: #require(URL(string: "https://h.com/")))
 
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
         #expect(request.httpBody.flatMap { String(data: $0, encoding: .utf8) } == #"{"email":"a@b.co"}"#)
+    }
+
+    @Test("attaching a bearer keeps the authentication declaration", arguments: [
+        Endpoint<EmptyResponse>.Authentication.bearer, .credentials,
+    ])
+    func bearingPreservesAuthentication(authentication: Endpoint<EmptyResponse>.Authentication) {
+        let endpoint = Endpoint<EmptyResponse>(method: .get, path: "api/v1/x", authentication: authentication)
+
+        #expect(endpoint.bearing("t").authentication == authentication)
     }
 }

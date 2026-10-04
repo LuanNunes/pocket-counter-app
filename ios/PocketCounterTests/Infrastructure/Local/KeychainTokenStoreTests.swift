@@ -10,76 +10,89 @@ struct KeychainTokenStoreTests {
     private let first = TokenPair(accessToken: "access-1", refreshToken: "refresh-1")
     private let second = TokenPair(accessToken: "access-2", refreshToken: "refresh-2")
 
-    @Test("an empty store has no tokens")
-    func empty() async {
+    /// `defer` cannot `await`, so the cleanup runs on both paths here instead: a throwing
+    /// `save` or a failed `try` would otherwise leak a real Keychain item.
+    private func withStore(_ body: (KeychainTokenStore) async throws -> Void) async throws {
         let store = KeychainTokenStore(scope: scope)
+        do {
+            try await body(store)
+        } catch {
+            try? await store.clear()
+            throw error
+        }
+        try await store.clear()
+    }
 
-        #expect(await store.tokens() == nil)
+    @Test("an empty store has no tokens")
+    func empty() async throws {
+        try await withStore { store in
+            let tokens = try await store.tokens()
+
+            #expect(tokens == nil)
+        }
     }
 
     @Test("a saved pair is read back")
     func roundTrip() async throws {
-        let store = KeychainTokenStore(scope: scope)
+        try await withStore { store in
+            try await store.save(first)
 
-        try await store.save(first)
-
-        #expect(await store.tokens() == first)
-
-        await store.clear()
+            #expect(try await store.tokens() == first)
+        }
     }
 
     @Test("a saved pair survives a new instance, so it came from the Keychain and not the cache")
     func persists() async throws {
-        let writer = KeychainTokenStore(scope: scope)
-        try await writer.save(first)
+        try await withStore { writer in
+            try await writer.save(first)
 
-        let reader = KeychainTokenStore(scope: scope)
+            let reader = KeychainTokenStore(scope: scope)
 
-        #expect(await reader.tokens() == first)
-
-        await writer.clear()
+            #expect(try await reader.tokens() == first)
+        }
     }
 
     @Test("saving again replaces the whole pair")
     func rotation() async throws {
-        let store = KeychainTokenStore(scope: scope)
-        try await store.save(first)
+        try await withStore { store in
+            try await store.save(first)
 
-        try await store.save(second)
+            try await store.save(second)
 
-        #expect(await store.tokens() == second)
-        #expect(await KeychainTokenStore(scope: scope).tokens() == second)
-
-        await store.clear()
+            #expect(try await store.tokens() == second)
+            #expect(try await KeychainTokenStore(scope: scope).tokens() == second)
+        }
     }
 
     @Test("clearing removes the pair from the cache and the Keychain")
     func clear() async throws {
-        let store = KeychainTokenStore(scope: scope)
-        try await store.save(first)
+        try await withStore { store in
+            try await store.save(first)
 
-        await store.clear()
+            try await store.clear()
 
-        #expect(await store.tokens() == nil)
-        #expect(await KeychainTokenStore(scope: scope).tokens() == nil)
+            #expect(try await store.tokens() == nil)
+            #expect(try await KeychainTokenStore(scope: scope).tokens() == nil)
+        }
     }
 
     @Test("clearing an empty store is harmless")
-    func clearEmpty() async {
-        let store = KeychainTokenStore(scope: scope)
+    func clearEmpty() async throws {
+        try await withStore { store in
+            try await store.clear()
 
-        await store.clear()
+            let tokens = try await store.tokens()
 
-        #expect(await store.tokens() == nil)
+            #expect(tokens == nil)
+        }
     }
 
     @Test("scopes do not share tokens")
     func scopesIsolated() async throws {
-        let store = KeychainTokenStore(scope: scope)
-        try await store.save(first)
+        try await withStore { store in
+            try await store.save(first)
 
-        #expect(await KeychainTokenStore(scope: "test.\(UUID())").tokens() == nil)
-
-        await store.clear()
+            #expect(try await KeychainTokenStore(scope: "test.\(UUID())").tokens() == nil)
+        }
     }
 }

@@ -19,7 +19,10 @@ struct AppConfiguration: Sendable {
         }
         guard let raw = baseURLString, !raw.isEmpty else { throw Invalid.missingBaseURL }
         // A bare `https://` in an xcconfig is truncated to `https:`; $(SLASH) avoids it.
-        guard let url = URL(string: raw), url.scheme != nil, url.host() != nil else {
+        // `Endpoint` appends its relative path by concatenation, so the trailing slash is
+        // restored here: without it every request would go to `…pocket-counter.comapi/v1/…`.
+        let normalized = raw.hasSuffix("/") ? raw : raw + "/"
+        guard let url = URL(string: normalized), url.scheme != nil, url.host() != nil else {
             throw Invalid.malformedBaseURL(raw)
         }
         self.environment = environment

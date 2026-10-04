@@ -41,9 +41,31 @@ struct AppConfigurationTests {
         }
     }
 
+    @Test("a base URL without the trailing slash `Endpoint` relies on gets one", arguments: [
+        ("https://api.pocket-counter.com", "https://api.pocket-counter.com/"),
+        ("https://api.pocket-counter.com/api", "https://api.pocket-counter.com/api/"),
+        ("http://localhost:8080", "http://localhost:8080/"),
+    ])
+    func trailingSlash(raw: String, expected: String) throws {
+        let config = try AppConfiguration(environmentName: "dev", baseURLString: raw)
+
+        #expect(config.baseURL.absoluteString == expected)
+    }
+
+    @Test("a normalized base URL joins an endpoint path without swallowing the host")
+    func joinsEndpointPath() throws {
+        let config = try AppConfiguration(environmentName: "dev", baseURLString: "https://api.pocket-counter.com")
+        let endpoint = Endpoint<EmptyResponse>(method: .post, path: "api/v1/auth/login", authentication: .credentials)
+
+        let request = try endpoint.urlRequest(baseURL: config.baseURL)
+
+        #expect(request.url?.absoluteString == "https://api.pocket-counter.com/api/v1/auth/login")
+    }
+
     @Test("the main bundle reads both keys from its Info.plist")
     func mainBundle() throws {
         let config = try AppConfiguration.mainBundle()
         #expect(config.baseURL.host != nil)
+        #expect(config.baseURL.absoluteString.hasSuffix("/"))
     }
 }

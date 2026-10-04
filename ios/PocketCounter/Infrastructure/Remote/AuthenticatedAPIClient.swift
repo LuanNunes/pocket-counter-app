@@ -26,15 +26,27 @@ struct AuthenticatedAPIClient: Sendable {
         _ endpoint: Endpoint<R>,
         call: (Endpoint<R>) async throws(APIError) -> T
     ) async throws(APIError) -> T {
-        let sentToken = await tokens.tokens()?.accessToken
+        let sentToken: String?
+        do {
+            sentToken = try await tokens.tokens()?.accessToken
+        } catch {
+            throw .authenticationUnavailable
+        }
+        // A bearer endpoint with no token is not sent: it could succeed as an anonymous read.
+        if endpoint.authentication == .bearer, sentToken == nil { throw .sessionExpired }
         do {
             return try await call(sentToken.map(endpoint.bearing) ?? endpoint)
         } catch {
             guard case .status(let code, _) = error, code == 401 else { throw error }
-            // Paid bug on Android: a 401 from /auth/ (a dead refresh token) must not refresh again.
-            guard !endpoint.path.hasPrefix("api/v1/auth/") else { throw error }
-            guard case .refreshed(let fresh) = await refresher.accessToken(replacing: sentToken) else { throw error }
-            return try await call(endpoint.bearing(fresh))
+            guard endpoint.authentication == .bearer else { throw error }
+            switch await refresher.accessToken(replacing: sentToken) {
+            case .refreshed(let fresh):
+                return try await call(endpoint.bearing(fresh))
+            case .sessionInvalid:
+                throw .sessionExpired
+            case .unavailable:
+                throw .authenticationUnavailable
+            }
         }
     }
 }
