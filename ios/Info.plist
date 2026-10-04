@@ -27,6 +27,9 @@
 	<!-- The backend URL for this configuration, injected from Config/*.xcconfig. -->
 	<key>API_BASE_URL</key>
 	<string>$(API_BASE_URL)</string>
+	<!-- Explicit environment name; the Keychain scope depends on it, so no default. -->
+	<key>APP_ENVIRONMENT</key>
+	<string>$(APP_ENVIRONMENT)</string>
 	<!--
 	  Allows the Local configuration to reach the backend on localhost. This is the narrow
 	  exception, NOT NSAllowsArbitraryLoads: it covers localhost, *.local and link-local

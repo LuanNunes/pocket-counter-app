@@ -36,6 +36,11 @@ enum PocketColor {
     /// `.exp` is `--label`: an expense is the default case, so its value is not colored.
     static let expense = Color.primary
 
+    /// `--red` darkened for **text**, the third ink pair. systemRed on `cell` measures
+    /// 3.6:1 in light mode, which fails AA — the same trap `incomeInk` and `warningInk`
+    /// exist for. Light is Apple's increased-contrast systemRed rather than a new hue.
+    static let destructiveInk = Color("destructiveInk")
+
     /// `--red`, reserved for destructive actions — `.btn.dst`, `.mi.dst`, `.catc-del`.
     static let destructive = Color.red
 

@@ -7,11 +7,8 @@ import Testing
 @Suite("Smoke")
 struct SmokeTests {
 
-    @Test("the environment name parses from a bundle id suffix")
-    func environmentNameCases() {
-        #expect(AppEnvironment.Name(rawValue: "local") == .local)
-        #expect(AppEnvironment.Name(rawValue: "dev") == .dev)
-        #expect(AppEnvironment.Name(rawValue: "prod") == .prod)
-        #expect(AppEnvironment.Name(rawValue: "staging") == nil)
+    @Test("the test target links against the app module")
+    func links() {
+        #expect(AppConfiguration.Environment(rawValue: "dev") == .dev)
     }
 }

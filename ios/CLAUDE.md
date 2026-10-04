@@ -88,8 +88,10 @@ Infrastructure APIClient, Keychain, DTOs, mappers, repository impls
 
 * `Domain/` must not `import SwiftUI`, must not know `URLSession`, must not reference a DTO.
 * DTOs never leave `Infrastructure/`; mappers are the only conversion point.
-* `APIError` is infrastructure — the Application layer translates it into a typed
-  per-use-case error before it reaches a view.
+* `APIError` is infrastructure and never leaves `Infrastructure/`. The **repository
+  implementation** translates it into the typed error the Domain declares — translating it
+  in `Application/` would force that layer to import an infrastructure type, inverting the
+  very arrow this layering exists to protect.
 
 ## Hard rules
 
