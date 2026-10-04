@@ -49,8 +49,9 @@ right scheme selected; the commands above are for scripting and reproducible ver
 * `Info.plist` sits at `ios/Info.plist`, **outside** the synchronized group on purpose: a
   plist inside it would also be copied as a bundle resource.
 * `//` starts a comment in xcconfig, so a literal `https://` truncates to `https:`. URLs go
-  through `$(SLASH)` — see `Config/Dev.xcconfig`. `AppEnvironment.baseURL` fails fast with
-  that exact hint if it ever breaks.
+  through `$(SLASH)` — see `Config/Dev.xcconfig`. `AppConfiguration` fails fast with that
+  exact hint if it ever breaks, and restores the trailing slash `Endpoint` concatenates onto,
+  so a dropped `$(SLASH)` cannot send every request to `…pocket-counter.comapi/v1/…`.
 * Schemes must stay **shared** (`xcshareddata/xcschemes/`). An unshared scheme lives in
   `xcuserdata/`, which is gitignored, and vanishes for everyone else.
 * A scheme with an empty `<TestPlans></TestPlans>` element makes `xcodebuild test` fail with
@@ -79,19 +80,49 @@ right scheme selected; the commands above are for scripting and reproducible ver
 ```
 Presentation   SwiftUI views + @Observable models + DesignSystem
       ↓
-Application    use cases, orchestration
+Service        use cases, orchestration
       ↓
-Domain         entities, value objects, repository protocols
+Model          entities, value objects, enums, DTOs, contracts
       ↑
-Infrastructure APIClient, Keychain, DTOs, mappers, repository impls
+Repository     contract implementations
+      ↓
+Infrastructure APIClient, Keychain, mappers
 ```
 
-* `Domain/` must not `import SwiftUI`, must not know `URLSession`, must not reference a DTO.
-* DTOs never leave `Infrastructure/`; mappers are the only conversion point.
+The layer names mirror `pocket-counter-core` on the backend, so a concept sits in the same
+place in Kotlin and in Swift: `Model/{Entity,DTO,Contract,Enum}`, `Service/`, `Repository/`,
+`Infrastructure/`. `Presentation/` has no backend counterpart and keeps its name.
+
+* `Model/` must not `import SwiftUI` and must not know `URLSession`. Every other layer may
+  depend on it; it depends on nothing.
+* `Model/Contract/` holds the protocols (`SessionRepository`, `TokenStoring`). `Service/`
+  takes the protocol, `Repository/` implements it — **the arrow from `Repository/` still
+  points up into `Model/`**. The protocol moved next to the types it speaks about; the
+  inversion it exists for did not change.
+* A contract whose implementation **is** a piece of infrastructure stays in
+  `Infrastructure/`, not `Repository/`: `KeychainTokenStore` implements `TokenStoring` from
+  `Infrastructure/Local/`, because it is the Keychain, not a repository over it. `Repository/`
+  is for implementations that compose infrastructure into a domain operation —
+  `APISessionRepository` is one. Both arrows point up into `Model/` either way.
+* `Model/DTO/` holds wire shapes: `Codable` and nothing else, no rules and no behavior.
+  `Infrastructure/Mapper/` is the only place a DTO becomes an entity, and `Service/` and
+  `Presentation/` only ever see entities. Folders do not enforce this — Swift compiles the
+  app as one module — so it is a review rule.
 * `APIError` is infrastructure and never leaves `Infrastructure/`. The **repository
-  implementation** translates it into the typed error the Domain declares — translating it
-  in `Application/` would force that layer to import an infrastructure type, inverting the
-  very arrow this layering exists to protect.
+  implementation** translates it into the typed error the contract declares — translating it
+  in `Service/` would force that layer to import an infrastructure type, inverting the very
+  arrow this layering exists to protect. `.sessionExpired` (the refresh was refused; the
+  session is already cleared) and `.authenticationUnavailable` (could not authenticate right
+  now; the session is intact and the call is retryable) mean different things to the user, so
+  every repository must translate both. The switch over `APIError` is **exhaustive, with no
+  `default:`** — that is what makes a new case a compile error instead of a silent
+  "something went wrong".
+* **A failure to read is not an absence.** A `TokenStoring` read that throws
+  `TokenStoreUnavailable` says "cannot tell", not "signed out" — a read before first unlock
+  answers `errSecInteractionNotAllowed` with the session perfectly intact. It is never
+  cached, and `SessionStatus.undetermined` is how the session gate renders it: a retry, never
+  the login screen. Signing a user out because a question could not be answered is the bug
+  this pair of rules exists to prevent.
 
 ## Hard rules
 
@@ -116,19 +147,23 @@ Infrastructure APIClient, Keychain, DTOs, mappers, repository impls
 
 ## Adding an endpoint
 
-1. DTO in `Infrastructure/DTO/`
+1. DTO in `Model/DTO/`
 2. `Endpoint` in `Infrastructure/Remote/Endpoints/`
-3. mapper in `Infrastructure/Mapper/`
-4. implementation in `Infrastructure/Repository/`
-5. register it in `AppContainer`
+3. declare its `authentication:` — `.bearer`, unless the request carries its own credential
+   (a password, a refresh token), which is `.credentials`. It decides whether a 401 triggers
+   a refresh: refreshing after a rejected credential both loops and signs out a healthy
+   session.
+4. mapper in `Infrastructure/Mapper/`
+5. implementation in `Repository/`
+6. register it in `AppContainer`
 
-Write the mapper test first. Protocols in `Domain/Repository/` do not change without a real
+Write the mapper test first. Protocols in `Model/Contract/` do not change without a real
 need.
 
 ## Testing
 
-Swift Testing. Priority: Domain → use cases → mappers/validation → networking (refresh and
-retry). Domain tests touch no network, no database, no UI framework and no DI container —
+Swift Testing. Priority: Model → use cases → mappers/validation → networking (refresh and
+retry). Model tests touch no network, no database, no UI framework and no DI container —
 if one is needed, the dependency is in the wrong place. Test behavior, not implementation
 details.
 

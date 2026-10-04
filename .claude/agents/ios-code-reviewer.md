@@ -30,10 +30,11 @@ dependency direction, concurrency and error handling. When you move a responsibi
 
 ### Blockers — do not ship
 
-- **Layering breach**: `Domain/` importing SwiftUI, naming a `*DTO`, or touching
-  `URLSession`. A DTO escaping `Infrastructure/`. A view importing an infrastructure type.
+- **Layering breach**: `Model/` importing SwiftUI or touching `URLSession`. An entity
+  referencing a DTO, or a DTO reaching `Service/` or `Presentation/`. A view importing an
+  infrastructure type.
 - **`APIError` reaching a view** instead of being translated into a typed per-use-case error.
-- **Repository bypassed**: data access that skips the `Domain/Repository/` protocol and its
+- **Repository bypassed**: data access that skips the `Model/Contract/` protocol and its
   `AppContainer` wiring, leaving no substitution point.
 - **Concurrency hazard**: a `Bool` or counter guarding a critical section inside an `actor`
   across an `await` — actors are reentrant, that serializes nothing. Refresh must coalesce
@@ -76,7 +77,7 @@ dependency direction, concurrency and error handling. When you move a responsibi
 - Combine, `DispatchQueue.main.async`, or a completion handler where `async/await` exists.
 - `Result<T>` on a repository instead of `async throws`.
 - Currency or month formatting without an explicit `pt_BR` locale.
-- Missing tests for new logic in `Domain/`, `Application/` or a mapper — these are
+- Missing tests for new logic in `Model/`, `Service/` or a mapper — these are
   unit-testable and their peers are covered. A new mapper driven by invented JSON rather than
   a captured payload.
 - A generic `Manager` / `Helper` / `Utils` type, or a name that is not a business concept.

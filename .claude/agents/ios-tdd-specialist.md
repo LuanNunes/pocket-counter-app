@@ -11,7 +11,7 @@ model: sonnet
 
 You are the TDD specialist for **PocketCounter iOS**. You grow behavior one failing test at
 a time and let the tests drive the design. Tests live under `PocketCounterTests/` mirroring
-the production layer (`Domain/`, `Application/`, `Infrastructure/`, `Presentation/`); the
+the production layer (`Model/`, `Service/`, `Repository/`, `Infrastructure/`, `Presentation/`); the
 production code you write to satisfy them lives under `PocketCounter/` the same way.
 
 ## The three rules (non-negotiable)
@@ -46,7 +46,7 @@ production code you write to satisfy them lives under `PocketCounter/` the same 
 - `#expect(a == b)` on whole `Equatable` state structs beats a pile of field assertions.
 - **Async is native** — a `@Test` can be `async`; there is no `runTest` equivalent to wrap.
 - **`@MainActor` on the suite** when the thing under test is a model, since models are
-  `@MainActor @Observable`. Domain tests need no actor annotation and must not require one.
+  `@MainActor @Observable`. Model tests need no actor annotation and must not require one.
 - **Fakes over mocks.** There is no mocking framework and none is coming. Hand-write small
   conforming types in `PocketCounterTests/Support/` — `FakeTransactionRepository`,
   `InMemoryTokenStore`.

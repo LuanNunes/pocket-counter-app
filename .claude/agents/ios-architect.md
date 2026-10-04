@@ -889,26 +889,30 @@ change, say so — never plan an edit there.
 
 ## Layering, with the dependency arrow made explicit
 
-§9 lists the layer stack. In this project the Domain/Infrastructure seam is inverted per
-§10 — `Domain` declares the repository protocols and `Infrastructure` implements them:
+§9 is the generic reference stack. **This project overrides both its names and its arrows:**
+the layers mirror `pocket-counter-core` on the backend, and the seam is inverted per §10 —
+`Model` declares the contracts and `Repository` implements them:
 
 ```
 Presentation (SwiftUI views + @Observable models)
       ↓
-Application (use cases, orchestration)
+Service (use cases, orchestration)
       ↓
-Domain (entities, value objects, repository protocols)
+Model (entities, value objects, enums, DTOs, contracts)
       ↑
-Infrastructure (APIClient, Keychain, DTOs, mappers, repository impls)
+Repository (contract implementations) → Infrastructure (APIClient, Keychain, mappers)
 ```
 
-Hard constraints, enforced by review and by `ArchitectureTests`:
+Hard constraints, enforced by review (there is no `ArchitectureTests` target yet):
 
-* `Domain/` must not `import SwiftUI`, must not know `URLSession`, must not reference any
-  `*DTO` type.
-* DTOs never leave `Infrastructure/`. Mappers are the only conversion point.
-* `APIError` is infrastructure. The Application layer translates it into a typed per-use-case
-  error before it reaches a view (§14).
+* `Model/` must not `import SwiftUI` and must not know `URLSession`. It depends on nothing.
+* DTOs live in `Model/DTO/` and must not reach `Service/` or `Presentation/`; an entity must
+  not reference one. Mappers in `Infrastructure/Mapper/` are the only conversion point.
+  Swift compiles the app as one module, so folders enforce nothing — this is a review rule.
+* `APIError` is infrastructure and never leaves `Infrastructure/`. The **repository
+  implementation** translates it into the typed error the contract declares (§14) — doing it
+  in `Service/` would force that layer to import an infrastructure type, inverting the arrow.
+  The exhaustive `switch`, with no `default:`, is what forces each new case to be answered.
 
 ## Project-specific invariants worth protecting
 

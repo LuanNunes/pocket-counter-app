@@ -25,13 +25,15 @@ patterns. You do not redesign; if the plan is wrong, push back before writing.
 ## Layering
 
 ```
-Presentation → Application → Domain ← Infrastructure
+Presentation → Service → Model ← Repository, Infrastructure
 ```
 
-- `Domain/` must not `import SwiftUI`, must not know `URLSession`, must not name a `*DTO`.
-- DTOs never leave `Infrastructure/`. Mappers are the only conversion point.
-- `APIError` is infrastructure. `Application` translates it into a typed per-use-case error
-  before it reaches a view.
+- `Model/` must not `import SwiftUI` and must not know `URLSession`.
+- DTOs live in `Model/DTO/` and must not reach `Service/` or `Presentation/`; an entity must
+  not reference one. Mappers in `Infrastructure/Mapper/` are the only conversion point.
+- `APIError` is infrastructure and never leaves `Infrastructure/`. The **repository
+  implementation** translates it into the typed error the contract declares — never
+  `Service/`, which would have to import an infrastructure type to do it.
 - A new file dropped in the right folder joins the target automatically — the project uses
   file-system-synchronized groups. **Never hand-edit `project.pbxproj` to add sources.**
 
@@ -46,8 +48,8 @@ Presentation → Application → Domain ← Infrastructure
   `TabView` bar, `.presentationDetents`. Never rebuild it with `.ultraThinMaterial` plus a
   drawn border. Glass goes on controls floating over scrolling content, never on content,
   and never glass over glass — group with `GlassEffectContainer`.
-- **Every data dependency goes through a protocol in `Domain/Repository/`**, implemented in
-  `Infrastructure/Repository/` and wired in `AppContainer`. Models receive the protocol in
+- **Every data dependency goes through a protocol in `Model/Contract/`**, implemented in
+  `Repository/` and wired in `AppContainer`. Models receive the protocol in
   `init` — never reach into the environment for one, never construct a concrete repository.
 - **One `state` struct per model**, `private(set)`, `Equatable`, mutated only on the
   `MainActor`. The model is `@MainActor @Observable`.
