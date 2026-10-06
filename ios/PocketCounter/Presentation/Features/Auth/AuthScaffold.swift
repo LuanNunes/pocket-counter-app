@@ -76,11 +76,6 @@ struct AuthScaffold<Content: View>: View {
             PocketPrimaryButton("Entrar", role: .onHero) {}
                 .padding(.top, 20)
 
-            AuthPathDivider()
-                .padding(.vertical, 20)
-
-            GoogleSignInButton {}
-
             Spacer(minLength: 24)
         }
     }
