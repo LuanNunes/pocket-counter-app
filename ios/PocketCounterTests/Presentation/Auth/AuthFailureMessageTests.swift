@@ -34,6 +34,11 @@ struct AuthFailureMessageTests {
             == AuthMessage(kind: .error, text: "Este e-mail já está cadastrado", action: .signInWithThisAccount))
     }
 
+    @Test("the duplicate e-mail action is labelled with what it does")
+    func signInActionTitle() {
+        #expect(AuthMessage.Action.signInWithThisAccount.title == "Entrar nesta conta")
+    }
+
     @Test("the same 401 reads differently on the Google path: no password was typed")
     func sameFailureDiffersByPath() {
         #expect(text(.invalidCredentials, .password)?.text == "E-mail ou senha incorretos")

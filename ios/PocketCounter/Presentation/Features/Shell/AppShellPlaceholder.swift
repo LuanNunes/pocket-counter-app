@@ -62,17 +62,20 @@ struct AppShellPlaceholder: View {
 }
 
 #if DEBUG
-private let previewUser = AuthenticatedUser(
-    id: UserID(rawValue: "7b1f0f1e-8b9c-4c2a-9a1d-3f5e6c7d8a90")!,
-    name: "Ana",
-    email: "ana@b.com"
-)
+/// `UserID` is failable because it validates a UUID, so the literal is unwrapped here rather
+/// than forced: a typo in it must leave the preview blank, never trap the whole canvas.
+private let previewUser = UserID(rawValue: "7b1f0f1e-8b9c-4c2a-9a1d-3f5e6c7d8a90")
+    .map { AuthenticatedUser(id: $0, name: "Ana", email: "ana@b.com") }
 
 #Preview("Signed in") {
-    AppShellPlaceholder(user: previewUser, signOutFailed: false) {}
+    if let previewUser {
+        AppShellPlaceholder(user: previewUser, signOutFailed: false) {}
+    }
 }
 
 #Preview("Sign-out failed") {
-    AppShellPlaceholder(user: previewUser, signOutFailed: true) {}
+    if let previewUser {
+        AppShellPlaceholder(user: previewUser, signOutFailed: true) {}
+    }
 }
 #endif

@@ -99,23 +99,80 @@ struct SessionModelTests {
         #expect(!model.state.isResolving)
     }
 
-    @Test("failed resolves are counted until the escape is offered, and a conclusive answer resets them")
+    @Test("failed resolves are counted, the escape is offered from the second, and a conclusive answer resets them")
     func failedAttempts() async {
-        let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .undetermined, .signedOut])
+        let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .signedOut])
         let model = SessionModel(repository: fake)
 
         await model.resolve()
         #expect(model.state.failedResolveAttempts == 1)
         #expect(!model.state.offersEscape)
         await model.resolve()
-        #expect(!model.state.offersEscape)
-        await model.resolve()
-        #expect(model.state.failedResolveAttempts == 3)
+        #expect(model.state.failedResolveAttempts == 2)
         #expect(model.state.offersEscape)
         await model.resolve()
 
         #expect(model.state.failedResolveAttempts == 0)
         #expect(!model.state.offersEscape)
+    }
+
+    @Test("a restore that answers after the user chose the password path is dropped")
+    func staleRestoreIsDropped() async {
+        let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .signedIn(.fixture)])
+        let model = SessionModel(repository: fake)
+        await model.resolve()
+        await model.resolve()
+        await fake.hold()
+
+        let retry = Task { await model.resolve() }
+        await fake.untilRestoreIsSuspended()
+        model.preferPassword()
+        await fake.release()
+        await retry.value
+
+        #expect(model.state.gate == .undetermined)
+        #expect(model.state.failedResolveAttempts == 2)
+        #expect(!model.state.isResolving)
+    }
+
+    @Test("a sign-in that lands clears the password preference")
+    func signInClearsThePreference() async throws {
+        let fake = FakeSessionRepository(signIn: .success(user))
+        let model = SessionModel(repository: fake)
+        model.preferPassword()
+
+        try await model.signIn(credentials())
+
+        #expect(model.state.gate == .signedIn(user))
+        #expect(!model.state.prefersPassword)
+    }
+
+    @Test("a registration that lands clears the password preference")
+    func registerClearsThePreference() async throws {
+        let fake = FakeSessionRepository(signIn: .success(user))
+        let model = SessionModel(repository: fake)
+        model.preferPassword()
+
+        try await model.register(Registration(name: "Ana", email: "ana@b.com", password: "segredo12"))
+
+        #expect(!model.state.prefersPassword)
+    }
+
+    @Test("cancelling the escape returns to the splash, keeping the failed attempts, and resolving works again")
+    func cancelPasswordEscape() async {
+        let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .signedIn(.fixture)])
+        let model = SessionModel(repository: fake)
+        await model.resolve()
+        await model.resolve()
+        model.preferPassword()
+
+        model.cancelPasswordEscape()
+
+        #expect(!model.state.prefersPassword)
+        #expect(model.state.gate == .undetermined)
+        #expect(model.state.offersEscape)
+        await model.resolve()
+        #expect(model.state.gate == .signedIn(.fixture))
     }
 
     @Test("a successful sign-in moves the gate to the returned user")

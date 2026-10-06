@@ -12,11 +12,13 @@ final class SessionModel {
 
     func resolve() async {
         // Two triggers: the root `.task` and the retry button.
-        guard !state.isResolving else { return }
+        guard !state.isResolving, !state.prefersPassword else { return }
         state.isResolving = true
         defer { state.isResolving = false }
 
-        switch await repository.restore() {
+        let status = await repository.restore()
+        guard !state.prefersPassword else { return }
+        switch status {
         case .signedIn(let user):
             state.gate = .signedIn(user)
             state.failedResolveAttempts = 0
@@ -29,18 +31,31 @@ final class SessionModel {
         }
     }
 
+    func preferPassword() {
+        state.prefersPassword = true
+    }
+
+    /// Back from the escape Login to the splash. The gate and the failed attempts are untouched.
+    func cancelPasswordEscape() {
+        state.prefersPassword = false
+    }
+
     /// Stores the tokens and moves the gate as one step; the form only renders the failure.
     func signIn(_ credentials: LoginCredentials) async throws(AuthenticationFailure) {
         let user = try await repository.signIn(credentials)
-        state.gate = .signedIn(user)
-        state.failedResolveAttempts = 0
+        authenticated(as: user)
     }
 
     /// A first registration signs the user in, so it moves the gate exactly as `signIn` does.
     func register(_ registration: Registration) async throws(AuthenticationFailure) {
         let user = try await repository.register(registration)
+        authenticated(as: user)
+    }
+
+    private func authenticated(as user: AuthenticatedUser) {
         state.gate = .signedIn(user)
         state.failedResolveAttempts = 0
+        state.prefersPassword = false
     }
 
     /// On failure the tokens are still stored, so the gate stays `.signedIn`: showing Login

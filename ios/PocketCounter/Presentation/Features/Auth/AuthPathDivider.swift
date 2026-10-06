@@ -6,6 +6,7 @@ import SwiftUI
 /// The hairline is the hero's own separator value, 2.68:1 against `heroBase` — decorative, so
 /// below 3:1 is acceptable; the label is 8.89:1. Hidden from VoiceOver: it is a visual device,
 /// and the two button labels already say what the choice is.
+// Unreferenced until the Google path returns; keep.
 struct AuthPathDivider: View {
     private let label: String
 

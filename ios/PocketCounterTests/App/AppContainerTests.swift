@@ -9,7 +9,7 @@ struct AppContainerTests {
 
     private func container(_ environment: String, keychain: FakeKeychain, send: FakeHTTP = FakeHTTP(FakeHTTP.empty(500))) throws -> AppContainer {
         let configuration = try AppConfiguration(environmentName: environment, baseURLString: "https://h.com/")
-        return AppContainer(configuration: configuration, keychain: keychain.access, send: send.send)
+        return AppContainer.forTesting(configuration: configuration, keychain: keychain.access, send: send.send)
     }
 
     @Test("the Keychain service is scoped by environment", arguments: ["local", "dev", "prod"])

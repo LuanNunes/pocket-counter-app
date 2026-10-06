@@ -1,27 +1,27 @@
 import SwiftUI
 
-/// The only stateful wrapper around `LoginView`. Rebuilt when the gate leaves and returns, which
-/// is what resets the form after a sign-out.
+/// The only stateful wrapper around `LoginView`. The model is owned by `AuthFlow`, which is rebuilt
+/// when the gate leaves and returns — that is what resets the form after a sign-out.
 struct LoginScreen: View {
-    @State private var model: LoginModel
-    private let onRegister: () -> Void
-
-    init(signIn: @escaping SignInAction, onRegister: @escaping () -> Void) {
-        _model = State(initialValue: LoginModel(signIn: signIn))
-        self.onRegister = onRegister
-    }
+    let model: LoginModel
+    let onRegister: () -> Void
+    var onBack: (() -> Void)?
 
     var body: some View {
-        LoginView(state: model.state) { action in
+        LoginView(state: model.state, offersBack: onBack != nil) { action in
             // Navigation is the view's job; the model has no opinion about it.
-            guard action != .register else { return onRegister() }
-            model.handle(action)
+            switch action {
+            case .register: onRegister()
+            case .back: onBack?()
+            case .emailChanged, .passwordChanged, .submit: model.handle(action)
+            }
         }
+        .onDisappear { model.cancel() }
     }
 }
 
 #if DEBUG
 #Preview {
-    LoginScreen(signIn: { _ in }, onRegister: {})
+    LoginScreen(model: LoginModel(signIn: { _ in }), onRegister: {})
 }
 #endif

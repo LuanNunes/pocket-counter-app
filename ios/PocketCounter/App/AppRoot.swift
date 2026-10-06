@@ -7,9 +7,7 @@ struct AppRoot: View {
 
     @Environment(\.scenePhase) private var scenePhase
 
-    /// The escape offered after two failed retries. Local to the gate: it changes what is shown,
-    /// never the stored session.
-    @State private var prefersPassword = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -17,21 +15,20 @@ struct AppRoot: View {
             case .resolving:
                 LaunchSplash(phase: .restoring)
 
-            case .undetermined where prefersPassword:
+            // One branch, so Login keeps one structural identity.
+            case .signedOut,
+                 .undetermined where session.state.prefersPassword:
                 login
 
             case .undetermined:
                 LaunchSplash(
                     phase: .unreadable(
-                        attempts: session.state.failedResolveAttempts,
+                        offersEscape: session.state.offersEscape,
                         isRetrying: session.state.isResolving
                     ),
                     onRetry: { Task { await retry() } },
-                    onUsePassword: { prefersPassword = true }
+                    onUsePassword: { session.preferPassword() }
                 )
-
-            case .signedOut:
-                login
 
             case .signedIn(let user):
                 AppShellPlaceholder(
@@ -42,18 +39,28 @@ struct AppRoot: View {
                 }
             }
         }
-        .animation(.timingCurve(0.32, 0.72, 0, 1, duration: 0.42), value: session.state.gate)
+        .animation(gateAnimation, value: session.state.gate)
         .task { await session.resolve() }
         .onChange(of: scenePhase) { _, phase in
-            // The common cause of `.undetermined` is a read before first unlock; by the time the
-            // user foregrounds the app it resolves on its own.
-            guard phase == .active, session.state.gate == .undetermined else { return }
+            // A read before first unlock resolves itself on foreground. Not under the escape
+            // form: success there moves the gate into the account they may be leaving.
+            guard phase == .active, session.state.gate == .undetermined, !session.state.prefersPassword else { return }
             Task { await session.resolve() }
         }
     }
 
+    private var gateAnimation: Animation {
+        guard !reduceMotion else { return .easeOut(duration: 0.15) }
+
+        return .timingCurve(0.32, 0.72, 0, 1, duration: 0.42)
+    }
+
     private var login: some View {
-        AuthFlow(signIn: session.signIn, register: session.register)
+        AuthFlow(
+            signIn: session.signIn,
+            register: session.register,
+            onBack: session.state.prefersPassword ? { session.cancelPasswordEscape(); Task { await retry() } } : nil
+        )
     }
 
     private func retry() async {

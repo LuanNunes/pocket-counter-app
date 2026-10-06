@@ -34,12 +34,33 @@ struct RegisterModelTests {
         #expect(model.state.canSubmit)
     }
 
+    @Test("asking to sign in instead leaves the form untouched: navigating is the view's job")
+    func signInInstead() {
+        let model = model()
+        fill(model)
+        let before = model.state
+
+        model.handle(.signInWithExistingAccount)
+
+        #expect(model.state == before)
+    }
+
     @Test("a blank name blocks submitting even with a valid e-mail and password")
     func blankName() {
         let model = model()
         model.handle(.nameChanged("   "))
         model.handle(.emailChanged("ana@b.com"))
         model.handle(.passwordChanged("segredo12"))
+
+        #expect(!model.state.canSubmit)
+    }
+
+    @Test("a password of only spaces blocks submitting even at the minimum length")
+    func blankPassword() {
+        let model = model()
+        model.handle(.nameChanged("Ana"))
+        model.handle(.emailChanged("ana@b.com"))
+        model.handle(.passwordChanged(String(repeating: " ", count: Registration.minimumPasswordLength)))
 
         #expect(!model.state.canSubmit)
     }
@@ -135,6 +156,43 @@ struct RegisterModelTests {
 
         #expect(recorder.calls.count == 1)
         #expect(!model.state.isSubmitting)
+    }
+
+    @Test("a submit cancelled before it starts never reaches register and leaves the message showing")
+    func cancelledBeforeStart() async {
+        var calls = 0
+        let model = model(.failure(.emailAlreadyRegistered)) { _ in calls += 1 }
+        fill(model)
+        await model.submit()
+        let shown = model.state.message
+        #expect(shown != nil)
+
+        model.handle(.submit)
+        model.cancel()
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(calls == 1)
+        #expect(model.state.message == shown)
+        #expect(!model.state.isSubmitting)
+    }
+
+    @Test("a failure arriving after the screen was left renders nothing")
+    func cancelledInFlightFailure() async {
+        let recorder = RegisterRecorder()
+        let failing = RegisterModel { registration throws(AuthenticationFailure) in
+            try await recorder.action(registration)
+            throw .server
+        }
+        fill(failing)
+        recorder.hold()
+
+        failing.handle(.submit)
+        await recorder.untilSuspended()
+        failing.cancel()
+        recorder.release()
+        while failing.state.isSubmitting { await Task.yield() }
+
+        #expect(failing.state.message == nil)
     }
 }
 

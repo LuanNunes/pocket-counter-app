@@ -7,6 +7,7 @@ enum LoginAction: Equatable {
     case passwordChanged(String)
     case submit
     case register
+    case back
 }
 
 /// Takes the one verb it needs rather than the `SessionModel`: a login form has no business
@@ -25,6 +26,7 @@ final class LoginModel {
     private(set) var state = State()
     private let signIn: SignInAction
     private var consecutiveInvalidCredentials = 0
+    private var inFlight: Task<Void, Never>?
 
     init(signIn: @escaping SignInAction) {
         self.signIn = signIn
@@ -37,14 +39,28 @@ final class LoginModel {
         case .passwordChanged(let password):
             state.password = password
         case .submit:
-            Task { await submit() }
-        case .register:
+            inFlight = Task { await submit() }
+        case .register, .back:
             break
         }
     }
 
+    /// Starts the form afresh: the password and message belonged to whoever typed before.
+    func seed(email: String) {
+        state.email = email
+        state.password = ""
+        state.message = nil
+        consecutiveInvalidCredentials = 0
+    }
+
+    /// Screen left with a request open: nothing is rendered, counters stay put.
+    func cancel() {
+        inFlight?.cancel()
+        inFlight = nil
+    }
+
     func submit() async {
-        guard !state.isSubmitting else { return }
+        guard !state.isSubmitting, !Task.isCancelled else { return }
         state.message = nil
         state.isSubmitting = true
         defer { state.isSubmitting = false }
@@ -59,6 +75,7 @@ final class LoginModel {
         do {
             try await signIn(credentials)
         } catch {
+            guard !Task.isCancelled else { return }
             show(error)
         }
     }

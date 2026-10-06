@@ -33,7 +33,14 @@ struct RegisterView: View {
                     PocketInlineMessage(
                         kind: message.displayKind,
                         text: message.text,
-                        secondary: message.secondary
+                        secondary: message.secondary,
+                        action: message.action.map { action in
+                            PocketInlineMessage.Action(title: action.title) {
+                                switch action {
+                                case .signInWithThisAccount: onAction(.signInWithExistingAccount)
+                                }
+                            }
+                        }
                     )
                     .padding(.top, 12)
                 }
@@ -54,6 +61,7 @@ struct RegisterView: View {
         }
         .navigationTitle("Criar conta")
         .navigationBarTitleDisplayMode(.inline)
+        .tint(PocketColor.onHero)
     }
 
     private var fieldGroup: some View {
@@ -147,6 +155,23 @@ struct RegisterView: View {
                 email: "ana@b.com",
                 password: "segredo12",
                 message: AuthMessage(kind: .error, text: "Este e-mail já está cadastrado")
+            )
+        ) { _ in }
+    }
+}
+
+#Preview("E-mail already taken, with action") {
+    NavigationStack {
+        RegisterView(
+            state: .init(
+                name: "Ana",
+                email: "ana@b.com",
+                password: "segredo12",
+                message: AuthMessage(
+                    kind: .error,
+                    text: "Este e-mail já está cadastrado",
+                    action: .signInWithThisAccount
+                )
             )
         ) { _ in }
     }

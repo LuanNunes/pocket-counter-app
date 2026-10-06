@@ -24,6 +24,8 @@ struct PocketPrimaryButton: View {
     private let isLoading: Bool
     private let action: () -> Void
 
+    /// Read here, above this view's own `.disabled(isLoading)`, so it reflects only ancestors.
+    @Environment(\.isEnabled) private var isEnabled
     @ScaledMetric(relativeTo: .body) private var minHeight = PocketMetrics.primaryButtonHeight
 
     init(_ title: String, role: Role, isLoading: Bool = false, action: @escaping () -> Void) {
@@ -37,7 +39,7 @@ struct PocketPrimaryButton: View {
         Button(action: action) {
             label
         }
-        .buttonStyle(PrimaryFillStyle(fill: fill, ink: ink, minHeight: minHeight))
+        .buttonStyle(PrimaryFillStyle(fill: fill, ink: ink, minHeight: minHeight, isDisabledByAncestor: !isEnabled))
         .disabled(isLoading)
         .accessibilityLabel(title)
         .busy(isLoading)
@@ -74,14 +76,16 @@ struct PocketPrimaryButton: View {
 }
 
 /// `glass.css:119-121`: 52pt, radius 26, 40% opacity when disabled. The dimming is read from the
-/// environment rather than passed in, so `.disabled()` anywhere up the chain is honoured.
+/// environment, so an ancestor `.disabled()` still dims. Loading alone does not, or the spinner
+/// would fade with the fill.
 private struct PrimaryFillStyle: ButtonStyle {
     let fill: Color
     let ink: Color
     let minHeight: CGFloat
+    let isDisabledByAncestor: Bool
 
     func makeBody(configuration: Configuration) -> some View {
-        Surface(configuration: configuration, fill: fill, ink: ink, minHeight: minHeight)
+        Surface(configuration: configuration, fill: fill, ink: ink, minHeight: minHeight, isDisabledByAncestor: isDisabledByAncestor)
     }
 
     private struct Surface: View {
@@ -89,8 +93,7 @@ private struct PrimaryFillStyle: ButtonStyle {
         let fill: Color
         let ink: Color
         let minHeight: CGFloat
-
-        @Environment(\.isEnabled) private var isEnabled
+        let isDisabledByAncestor: Bool
 
         var body: some View {
             configuration.label
@@ -101,7 +104,7 @@ private struct PrimaryFillStyle: ButtonStyle {
         }
 
         private var opacity: Double {
-            guard isEnabled else { return 0.40 }
+            guard !isDisabledByAncestor else { return 0.40 }
 
             return configuration.isPressed ? 0.85 : 1
         }

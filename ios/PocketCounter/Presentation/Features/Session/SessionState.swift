@@ -1,6 +1,6 @@
 struct SessionState: Equatable, Sendable {
-    /// Failed resolves in a row — the first attempt and two retries — before the escape to Login is offered.
-    static let escapeThreshold = 3
+    /// Failed resolves in a row — the first attempt and one retry — before the escape is offered.
+    static let escapeThreshold = 2
 
     enum Gate: Equatable, Sendable {
         /// `restore()` has not answered yet.
@@ -17,11 +17,9 @@ struct SessionState: Equatable, Sendable {
     /// `signOut` threw: the tokens are still stored, so the gate did not move.
     var signOutFailed = false
     var failedResolveAttempts = 0
+    /// Session fact, not view state: a `restore()` in flight must see it and drop its answer.
+    var prefersPassword = false
 
-    /// Whether `.undetermined` may reveal its way to the Login screen.
-    ///
-    /// That escape is the one place Login is reachable from `.undetermined`. It must **never**
-    /// call `signOut()` or touch `TokenStoring`: the stored session stays intact, and a fresh
-    /// sign-in simply overwrites it.
+    /// Whether `.undetermined` may reveal the way to Login.
     var offersEscape: Bool { failedResolveAttempts >= Self.escapeThreshold }
 }

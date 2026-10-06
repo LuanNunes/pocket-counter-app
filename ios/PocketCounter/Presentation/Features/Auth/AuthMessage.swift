@@ -2,7 +2,15 @@
 /// picks a symbol from it, so it never rests on hue alone.
 struct AuthMessage: Equatable, Sendable {
     enum Kind: Equatable, Sendable { case error, offline }
-    enum Action: Equatable, Sendable { case signInWithThisAccount }
+    enum Action: Equatable, Sendable {
+        case signInWithThisAccount
+
+        var title: String {
+            switch self {
+            case .signInWithThisAccount: "Entrar nesta conta"
+            }
+        }
+    }
 
     let kind: Kind
     let text: String

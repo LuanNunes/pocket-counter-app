@@ -78,6 +78,6 @@ enum PocketMetrics {
     /// The leading glyph of a field row.
     static let fieldIconSize: CGFloat = 20
 
-    /// Vertical breathing room above and below a full-screen form, past the safe area.
+    /// Vertical breathing room above a full-screen form, past the safe area.
     static let formContentInset: CGFloat = 48
 }

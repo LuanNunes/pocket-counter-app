@@ -7,6 +7,7 @@ enum RegisterFormAction: Equatable {
     case emailChanged(String)
     case passwordChanged(String)
     case submit
+    case signInWithExistingAccount
 }
 
 @MainActor
@@ -20,10 +21,14 @@ final class RegisterModel {
         /// `nil` renders nothing.
         var message: AuthMessage?
 
-        /// UTF-16 units, matching the backend's Kotlin `String.length`.
+        /// Asks the entity, so the button and `submit()` can never disagree about the rule.
         var canSubmit: Bool {
-            !name.isBlank && !email.isBlank
-                && password.utf16.count >= Registration.minimumPasswordLength
+            do {
+                _ = try Registration(name: name, email: email, password: password)
+                return true
+            } catch {
+                return false
+            }
         }
     }
 
@@ -45,18 +50,20 @@ final class RegisterModel {
             state.password = password
         case .submit:
             inFlight = Task { await submit() }
+        case .signInWithExistingAccount:
+            break
         }
     }
 
-    /// Tapping Back with a request open. The only state change is clearing the busy flag —
-    /// nobody is waiting for an answer, so nothing is rendered.
+    /// Changes no state: the `defer` in `submit()` clears the busy flag, and no failure renders.
+    /// A registration already sent still lands: the account exists and `SessionModel` signs it in.
     func cancel() {
         inFlight?.cancel()
         inFlight = nil
     }
 
     func submit() async {
-        guard !state.isSubmitting else { return }
+        guard !state.isSubmitting, !Task.isCancelled else { return }
         state.message = nil
         state.isSubmitting = true
         defer { state.isSubmitting = false }
@@ -71,6 +78,7 @@ final class RegisterModel {
         do {
             try await register(registration)
         } catch {
+            guard !Task.isCancelled else { return }
             state.message = AuthFailureMessage.text(for: error, path: .register)
         }
     }

@@ -6,6 +6,8 @@ import SwiftUI
 /// panel over a static gradient reads as a flat translucent slab.
 struct LoginView: View {
     let state: LoginModel.State
+    /// Set only when Login was reached through the splash's password escape.
+    var offersBack = false
     let onAction: (LoginAction) -> Void
 
     private enum Field { case email, password }
@@ -14,13 +16,14 @@ struct LoginView: View {
     var body: some View {
         AuthScaffold {
             VStack(alignment: .leading, spacing: 0) {
-                Spacer(minLength: 48)
+                Spacer(minLength: PocketMetrics.formContentInset)
 
                 AuthBrandMark(.compact)
 
                 Text("Entrar")
                     .pocketFont(PocketFont.largeTitle)
                     .foregroundStyle(PocketColor.onHero)
+                    .accessibilityAddTraits(.isHeader)
                     .padding(.top, 24)
 
                 Text("Faça login para continuar")
@@ -50,7 +53,7 @@ struct LoginView: View {
                 .padding(.top, 20)
 
                 Button("Não tem conta? Criar conta") { onAction(.register) }
-                    .font(.subheadline.weight(.semibold))
+                    .pocketFont(PocketFont.link)
                     .foregroundStyle(PocketColor.onHero)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 32)
@@ -59,7 +62,23 @@ struct LoginView: View {
                 Spacer(minLength: 24)
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(offersBack ? .visible : .hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if offersBack {
+                ToolbarItem(placement: .navigation) {
+                    Button { onAction(.back) } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "chevron.backward")
+                            Text("Tentar novamente")
+                        }
+                    }
+                    .tint(PocketColor.onHero)
+                    .accessibilityHint("Sai deste formulário e tenta abrir sua sessão salva outra vez.")
+                    .disabled(state.isSubmitting)
+                }
+            }
+        }
     }
 
     private var fieldGroup: some View {
@@ -142,6 +161,10 @@ struct LoginView: View {
             )
         )
     ) { _ in }
+}
+
+#Preview("Escape, with a way back") {
+    LoginView(state: .init(), offersBack: true) { _ in }
 }
 
 #Preview("Offline") {

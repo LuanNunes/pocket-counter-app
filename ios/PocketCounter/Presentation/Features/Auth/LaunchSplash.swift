@@ -5,8 +5,8 @@ import SwiftUI
 struct LaunchSplash: View {
     enum Phase: Equatable {
         case restoring
-        /// `attempts` drives the escape hatch, revealed from the second failure on.
-        case unreadable(attempts: Int, isRetrying: Bool)
+        /// `offersEscape` is `SessionState.offersEscape`; the threshold is not repeated here.
+        case unreadable(offersEscape: Bool, isRetrying: Bool)
     }
 
     let phase: Phase
@@ -30,8 +30,8 @@ struct LaunchSplash: View {
                             .tint(PocketColor.onHero)
                             .transition(.opacity)
                     }
-                case .unreadable(let attempts, let isRetrying):
-                    unreadable(attempts: attempts, isRetrying: isRetrying)
+                case .unreadable(let offersEscape, let isRetrying):
+                    unreadable(offersEscape: offersEscape, isRetrying: isRetrying)
                 }
             }
             .padding(.horizontal, PocketMetrics.screenMargin)
@@ -48,10 +48,10 @@ struct LaunchSplash: View {
     }
 
     @ViewBuilder
-    private func unreadable(attempts: Int, isRetrying: Bool) -> some View {
+    private func unreadable(offersEscape: Bool, isRetrying: Bool) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 28))
+                .pocketFont(PocketFont.notice)
                 .foregroundStyle(PocketColor.onHero)
                 .accessibilityHidden(true)
 
@@ -69,13 +69,14 @@ struct LaunchSplash: View {
             PocketPrimaryButton("Tentar novamente", role: .onHero, isLoading: isRetrying, action: onRetry)
                 .padding(.top, 8)
 
-            if attempts >= 2 {
+            if offersEscape {
                 // The user's own choice, not the gate deciding. Discards nothing: navigating to
                 // Login never clears tokens, and abandoning it leaves the session for next launch.
                 Button("Entrar com e-mail e senha", action: onUsePassword)
-                    .font(.subheadline.weight(.semibold))
+                    .pocketFont(PocketFont.link)
                     .foregroundStyle(PocketColor.onHero)
                     .padding(.top, 4)
+                    .disabled(isRetrying)
             }
         }
     }
@@ -85,14 +86,14 @@ struct LaunchSplash: View {
 #Preview("Restoring") { LaunchSplash(phase: .restoring) }
 
 #Preview("Unreadable") {
-    LaunchSplash(phase: .unreadable(attempts: 1, isRetrying: false))
+    LaunchSplash(phase: .unreadable(offersEscape: false, isRetrying: false))
 }
 
 #Preview("Unreadable, escape offered") {
-    LaunchSplash(phase: .unreadable(attempts: 2, isRetrying: false))
+    LaunchSplash(phase: .unreadable(offersEscape: true, isRetrying: false))
 }
 
 #Preview("Retrying") {
-    LaunchSplash(phase: .unreadable(attempts: 2, isRetrying: true))
+    LaunchSplash(phase: .unreadable(offersEscape: true, isRetrying: true))
 }
 #endif

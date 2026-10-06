@@ -182,6 +182,49 @@ struct LoginModelTests {
         #expect(recorder.calls.count == 1)
     }
 
+    @Test("a submit cancelled before it starts never reaches the sign-in")
+    func cancelledBeforeStart() async {
+        let model = model()
+        filled(model)
+
+        model.handle(.submit)
+        model.cancel()
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(recorder.calls.isEmpty)
+        #expect(!model.state.isSubmitting)
+    }
+
+    @Test("a submit cancelled before it starts leaves the message that was showing")
+    func cancelledBeforeStartKeepsTheMessage() async {
+        let model = model(failing: .invalidCredentials)
+        filled(model)
+        await model.submit()
+        let shown = model.state.message
+        #expect(shown != nil)
+
+        model.handle(.submit)
+        model.cancel()
+        for _ in 0..<10 { await Task.yield() }
+
+        #expect(model.state.message == shown)
+    }
+
+    @Test("a submit cancelled while the call is open renders no failure and re-enables the form")
+    func cancelledInFlight() async {
+        let model = model(failing: .server)
+        filled(model)
+        recorder.hold()
+
+        model.handle(.submit)
+        await recorder.untilSuspended()
+        model.cancel()
+        recorder.release()
+        while model.state.isSubmitting { await Task.yield() }
+
+        #expect(model.state.message == nil)
+    }
+
     @Test("the register action leaves the form untouched: navigating is the view's job")
     func register() {
         let model = model()
@@ -191,5 +234,30 @@ struct LoginModelTests {
         model.handle(.register)
 
         #expect(model.state == before)
+    }
+
+    @Test("seeding an address replaces the e-mail and clears the password and the message")
+    func seeding() async {
+        let model = model(failing: .invalidCredentials)
+        filled(model)
+        await model.submit()
+        #expect(model.state.message != nil)
+
+        model.seed(email: "bia@c.com")
+
+        #expect(model.state == LoginModel.State(email: "bia@c.com"))
+    }
+
+    @Test("seeding an address restarts the wrong-password count")
+    func seedingRestartsCount() async {
+        let model = model(failing: .invalidCredentials, .invalidCredentials)
+        filled(model)
+        await model.submit()
+
+        model.seed(email: "bia@c.com")
+        model.handle(.passwordChanged("secret"))
+        await model.submit()
+
+        #expect(model.state.message == AuthMessage(kind: .error, text: "E-mail ou senha incorretos"))
     }
 }
