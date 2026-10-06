@@ -52,7 +52,7 @@ enum PocketColor {
     /// elliptical gradient whose radii are fractions of the frame.
     static var heroSurface: some View {
         ZStack {
-            Color("heroBase")
+            heroBase
             EllipticalGradient(
                 colors: [Color("heroHighlight"), .clear],
                 center: .topTrailing,
@@ -61,6 +61,10 @@ enum PocketColor {
             )
         }
     }
+
+    /// The gradient's solid base, flat. Also the ink for a label on a white fill over the
+    /// hero, which is the only readable primary button there: 11.52:1.
+    static let heroBase = Color("heroBase")
 
     static let heroShadow = Color("heroShadow")
 
@@ -72,4 +76,19 @@ enum PocketColor {
     static let onHeroExpense = Color("onHeroExpense")
     static let onHeroIncome = Color("onHeroIncome")
     static let onHeroWarning = Color("onHeroWarning")
+
+    // MARK: - Google sign-in
+
+    // Google's dark variant: sRGB (not display-P3 like the rest of this file), fixed in both
+    // appearances, never recoloured. The white variant would compete with the primary button.
+
+    /// #E3E3E3 label. 14.47:1 on `googleButtonSurface`.
+    static let googleButtonInk = Color("googleButtonInk")
+
+    /// #131314 body, opaque. Never `.glassEffect` — Google fixes this colour.
+    static let googleButtonSurface = Color("googleButtonSurface")
+
+    /// #8E918F. Google's mandated 1pt border, 3.62:1 on `heroBase` — load-bearing, since the
+    /// body alone is 1.61:1. Falls to 2.09:1 on `heroHighlight`, so keep the button low.
+    static let googleButtonBorder = Color("googleButtonBorder")
 }

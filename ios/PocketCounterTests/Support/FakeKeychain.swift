@@ -16,6 +16,7 @@ final class FakeKeychain: @unchecked Sendable {
     private var readCalls = 0
     private var removeCalls = 0
     private var written: [Data] = []
+    private var seenServices: [String] = []
 
     /// The last scripted read repeats once the earlier ones are consumed.
     init(reads: [Read], writeStatus: OSStatus = errSecSuccess, removeStatus: OSStatus = errSecSuccess) {
@@ -38,23 +39,28 @@ final class FakeKeychain: @unchecked Sendable {
     var readCount: Int { lock.withLock { readCalls } }
     var removeCount: Int { lock.withLock { removeCalls } }
     var writes: [Data] { lock.withLock { written } }
+    /// Every service name any operation addressed, in call order.
+    var services: [String] { lock.withLock { seenServices } }
 
     var access: KeychainAccess {
         KeychainAccess(
-            read: { [self] _, _ in
+            read: { [self] service, _ in
                 lock.withLock {
+                    seenServices.append(service)
                     readCalls += 1
                     return reads.count > 1 ? reads.removeFirst() : reads[0]
                 }
             },
-            write: { [self] _, _, data in
+            write: { [self] service, _, data in
                 lock.withLock {
+                    seenServices.append(service)
                     written.append(data)
                     return writeStatus
                 }
             },
-            remove: { [self] _, _ in
+            remove: { [self] service, _ in
                 lock.withLock {
+                    seenServices.append(service)
                     removeCalls += 1
                     return removeStatus
                 }

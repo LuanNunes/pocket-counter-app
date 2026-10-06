@@ -63,4 +63,21 @@ enum PocketMetrics {
     /// `.qa-home-b`
     static let quickAddHeight: CGFloat = 52
     static let quickAddRadius: CGFloat = 26
+
+    /// `.btn` — the full-width primary button. Equal to `quickAdd*` by coincidence, not by
+    /// derivation, so the two are not aliased.
+    static let primaryButtonHeight: CGFloat = 52
+    static let primaryButtonRadius: CGFloat = 26
+
+    // MARK: Fields
+
+    /// A field row is taller than the read-only `rowMinHeight`: it carries a caret and a
+    /// keyboard, and 52 leaves a text field feeling cramped.
+    static let fieldRowMinHeight: CGFloat = 56
+    static let fieldRowPaddingV: CGFloat = 14
+    /// The leading glyph of a field row.
+    static let fieldIconSize: CGFloat = 20
+
+    /// Vertical breathing room above and below a full-screen form, past the safe area.
+    static let formContentInset: CGFloat = 48
 }

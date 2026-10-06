@@ -47,3 +47,7 @@ extension HistoryItem {
         .fixture(amount: amount, type: .income, statusPayment: status)
     }
 }
+
+extension AuthenticatedUser {
+    static let fixture = AuthenticatedUser(id: JWTFixture.userId, name: "Ana", email: "ana@b.com")
+}

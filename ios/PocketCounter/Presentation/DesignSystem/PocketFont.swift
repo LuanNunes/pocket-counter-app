@@ -56,6 +56,13 @@ enum PocketFont {
 
     /// `.tl-v` — 17/600. An emphasised value: a tile figure, a total.
     static let valueEmphasis = PocketTextStyle(.system(.body, weight: .semibold))
+
+    /// `.badge` — 10.5/700, 0.04em. An uppercased, tracked eyebrow label. Apply
+    /// `.textCase(.uppercase)` at the call site; the tracking is what the uppercase needs.
+    static let eyebrow = PocketTextStyle(.system(.caption, weight: .bold), tracking: 0.48)
+
+    /// The 28pt symbol that opens a full-screen notice. `.title` *is* 28pt, and scales.
+    static let notice = PocketTextStyle(.system(.title, weight: .semibold))
 }
 
 extension View {

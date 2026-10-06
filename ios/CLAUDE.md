@@ -128,6 +128,16 @@ place in Kotlin and in Swift: `Model/{Entity,DTO,Contract,Enum}`, `Service/`, `R
 
 * **Zero external dependencies**: `URLSession`, `Codable`, `Security`, `OSLog`. Adding a
   package needs explicit approval and a sentence on what Apple's SDK cannot do.
+  * **One approved exception, 2026-10-04: `GoogleSignIn-iOS`**, for Google sign-in.
+    What Apple's SDK cannot do: `ASWebAuthenticationSession` can run Google's OAuth web flow,
+    but it cannot mint an ID token carrying the **server's** web-client audience without us
+    implementing the code exchange and PKCE ourselves, and it cannot reuse the Google account
+    the device has already authorised — which is exactly what `setServerClientId` buys the
+    Android app. The backend compares `aud` against one configured client id
+    (`GoogleOAuthService.validateIdToken`), so matching Android's server-client-id approach is
+    what keeps the backend unchanged.
+    The SDK is confined to `Infrastructure/`, behind a `GoogleIdentityProviding` contract in
+    `Model/Contract/`. **`Presentation/` must never `import GoogleSignIn`.**
 * **DI is a hand-built `AppContainer`.** Constructor injection into models; no singletons,
   no service locator, no DI framework.
 * `async/await` only. No Combine, no `DispatchQueue.main.async`.
