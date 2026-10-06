@@ -172,16 +172,16 @@ private fun Chevron(icon: ImageVector, contentDescription: String?, onClick: () 
 }
 
 /**
- * The month-summary card. The headline figure is what is **still to pay** ([HomeKpis.pendingTotal]),
- * not the net saldo: with credit-card faturas counted as expenses the saldo is negative almost every
- * month, so it answers nothing, while the pending total is the number the user can act on. [balance]
- * keeps its place in the KPI stack below, so nothing was dropped in the swap.
+ * The month-summary card. The headline figure follows [highlightData] — see [highlightDataFor]
+ * for which month gets which. Under [HighlightData.BALANCE] no pending figure is shown at all,
+ * headline or stack; otherwise [balance] keeps its row in the KPI stack below the pending headline.
  */
 @Composable
 fun BalanceHero(
     monthLabel: String,
     kpis: HomeKpis,
     balance: BigDecimal,
+    highlightData: HighlightData,
     hasLoadedMonth: Boolean,
 ) {
     // The hero stays dark in both themes; KPI dot/value colors read from the always-dark palette.
@@ -189,9 +189,7 @@ fun BalanceHero(
     val cardBg = dark.surface
     val ink = dark.text
     val placeholderInk = ink.copy(alpha = 0.45f)
-    val reducedMotion = LocalReducedMotion.current
     val formatter = currency()
-    val pending = formatter.format(kpis.pendingTotal)
     val expense = formatter.format(kpis.totals.expense)
     val income = formatter.format(kpis.totals.income)
     val saldo = formatter.format(balance)
@@ -210,54 +208,13 @@ fun BalanceHero(
                 )
             },
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .semantics(mergeDescendants = true) {
-                            contentDescription = heroPendingDescription(monthLabel, pending, hasLoadedMonth)
-                            liveRegion = LiveRegionMode.Polite
-                        },
-                ) {
-                    Text(
-                        text = "PENDENTE · ${monthLabel.uppercase(ptBr)}",
-                        style = PocketTheme.typography.sectionHeader,
-                        color = ink.copy(alpha = 0.65f),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    // Figure and tone cross-fade together, so the outgoing one is never redrawn in the
-                    // incoming tone.
-                    Crossfade(
-                        targetState = figureOrDash(pending, hasLoadedMonth) to
-                            pendingTone(kpis.pendingTotal, hasLoadedMonth, dark.warn, ink, placeholderInk),
-                        animationSpec = tween(durationMillis = 0.takeIf { reducedMotion } ?: 200),
-                        label = "heroPending",
-                    ) { (figure, tone) ->
-                        Text(
-                            text = figure,
-                            style = PocketTheme.typography.monoBalance,
-                            color = tone,
-                        )
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .background(ink.copy(alpha = 0.12f), PocketTheme.shapes.icon),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CreditCard,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = ink.copy(alpha = 0.85f),
-                    )
-                }
-            }
+            HeroHeadline(
+                monthLabel = monthLabel,
+                kpis = kpis,
+                balance = balance,
+                highlightData = highlightData,
+                hasLoadedMonth = hasLoadedMonth,
+            )
             Spacer(Modifier.height(16.dp))
             val figureTone = ink.takeIf { hasLoadedMonth } ?: placeholderInk
             KpiStackRow(
@@ -280,17 +237,103 @@ fun BalanceHero(
                 showDivider = true,
                 valueColor = figureTone,
             )
-            // Dot and value share one tone — a green dot beside a white figure reads as two signals.
-            val saldoTone = saldoTone(balance, hasLoadedMonth, dark.income, dark.expense, ink, placeholderInk)
-            KpiStackRow(
-                label = "Saldo do mês",
-                dotColor = saldoTone,
-                value = figureOrDash(saldo, hasLoadedMonth),
-                count = figureOrDash("$monthCount lançs.", hasLoadedMonth),
-                contentDescription = kpiRowDescription("Saldo do mês", saldo, monthCount, hasLoadedMonth),
-                ink = ink,
-                showDivider = true,
-                valueColor = saldoTone,
+            val showSaldoRow = when (highlightData) {
+                HighlightData.PENDING -> true
+                HighlightData.BALANCE -> false
+            }
+            if (showSaldoRow) {
+                // Dot and value share one tone — a green dot beside a white figure reads as two signals.
+                val saldoTone = saldoTone(balance, hasLoadedMonth, dark.income, dark.expense, ink, placeholderInk)
+                KpiStackRow(
+                    label = "Saldo do mês",
+                    dotColor = saldoTone,
+                    value = figureOrDash(saldo, hasLoadedMonth),
+                    count = figureOrDash("$monthCount lançs.", hasLoadedMonth),
+                    contentDescription = kpiRowDescription("Saldo do mês", saldo, monthCount, hasLoadedMonth),
+                    ink = ink,
+                    showDivider = true,
+                    valueColor = saldoTone,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroHeadline(
+    monthLabel: String,
+    kpis: HomeKpis,
+    balance: BigDecimal,
+    highlightData: HighlightData,
+    hasLoadedMonth: Boolean,
+) {
+    val dark = PocketTheme.darkColors
+    val ink = dark.text
+    val placeholderInk = ink.copy(alpha = 0.45f)
+    val reducedMotion = LocalReducedMotion.current
+    val formatter = currency()
+    val figureValue = when (highlightData) {
+        HighlightData.PENDING -> kpis.pendingTotal
+        HighlightData.BALANCE -> balance
+    }
+    val formatted = formatter.format(figureValue)
+    val prefix = when (highlightData) {
+        HighlightData.PENDING -> "PENDENTE"
+        HighlightData.BALANCE -> "SALDO"
+    }
+    val description = when (highlightData) {
+        HighlightData.PENDING -> heroPendingDescription(monthLabel, formatted, hasLoadedMonth)
+        HighlightData.BALANCE -> heroBalanceDescription(monthLabel, formatted, hasLoadedMonth)
+    }
+    val tone = when (highlightData) {
+        HighlightData.PENDING -> pendingTone(kpis.pendingTotal, hasLoadedMonth, dark.warn, ink, placeholderInk)
+        HighlightData.BALANCE -> saldoTone(balance, hasLoadedMonth, dark.income, dark.expense, ink, placeholderInk)
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = description
+                    liveRegion = LiveRegionMode.Polite
+                },
+        ) {
+            Text(
+                text = "$prefix · ${monthLabel.uppercase(ptBr)}",
+                style = PocketTheme.typography.sectionHeader,
+                color = ink.copy(alpha = 0.65f),
+            )
+            Spacer(Modifier.height(8.dp))
+            // Figure and tone cross-fade together, so the outgoing one is never redrawn in the
+            // incoming tone.
+            Crossfade(
+                targetState = figureOrDash(formatted, hasLoadedMonth) to tone,
+                animationSpec = tween(durationMillis = 0.takeIf { reducedMotion } ?: 200),
+                label = "heroFigure",
+            ) { (figure, figureTone) ->
+                Text(
+                    text = figure,
+                    style = PocketTheme.typography.monoBalance,
+                    color = figureTone,
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .background(ink.copy(alpha = 0.12f), PocketTheme.shapes.icon),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.CreditCard,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = ink.copy(alpha = 0.85f),
             )
         }
     }
