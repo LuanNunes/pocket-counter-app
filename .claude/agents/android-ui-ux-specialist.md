@@ -1,7 +1,7 @@
 ---
 name: "android-ui-ux-specialist"
 description: "Expert in Android app UX/UI, Material Design 3, design systems, user flows, accessibility, and developer-ready interface specifications."
-model: opus
+model: fable
 color: purple
 memory: project
 ---

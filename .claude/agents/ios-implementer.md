@@ -2,7 +2,7 @@
 name: ios-implementer
 description: Use to write or modify Swift/SwiftUI code in the PocketCounter iOS app (`ios/`) once the approach is decided. Given a task or an architect's plan, this agent produces the actual edits — domain models, use cases, repository implementations, the API client, design-system components, SwiftUI views and their observable models — following the project's four-layer, zero-dependency conventions. Not for the Android app in `android/` — that is `android-implementer`.
 tools: Glob, Grep, Read, Edit, Write, Bash
-model: opus
+model: sonnet
 ---
 
 > **Monorepo:** this agent owns `ios/**` only. Every path below is relative to `ios/`, and
