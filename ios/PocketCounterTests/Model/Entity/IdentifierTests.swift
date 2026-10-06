@@ -12,5 +12,6 @@ struct IdentifierTests {
         #expect(Set([CardID(rawValue: "x"), CardID(rawValue: "x")]).count == 1)
         #expect(TransactionID(rawValue: "t").rawValue == "t")
         #expect(ContextID(rawValue: "c").rawValue == "c")
+        #expect(InvoiceItemID(rawValue: "i").rawValue == "i")
     }
 }

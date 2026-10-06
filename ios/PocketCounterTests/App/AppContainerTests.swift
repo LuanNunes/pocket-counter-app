@@ -35,4 +35,36 @@ struct AppContainerTests {
         #expect(restored == .signedIn(user))
         #expect(keychain.readCount == 0)
     }
+
+    @Test("two reads of a lookup repository share one cache")
+    func sharedCache() async throws {
+        let http = FakeHTTP(routes: ["/api/v1/tags": FakeHTTP.json("[]")])
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+
+        _ = try await container.tagRepository.tags()
+        _ = try await container.tagRepository.tags()
+
+        #expect(http.callCount == 1)
+    }
+
+    @Test("the ledger use case reads through the same repositories")
+    func loadLedgerSharesCaches() async throws {
+        let http = FakeHTTP(routes: [
+            "/api/v1/transactions/incomes/202610": FakeHTTP.json("[]"),
+            "/api/v1/transactions/expenses/202610": FakeHTTP.json("[]"),
+            "/api/v1/tags": FakeHTTP.json("[]"),
+            "/api/v1/categories": FakeHTTP.json("[]"),
+            "/api/v1/credit-cards": FakeHTTP.json("[]"),
+        ])
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+        let ref = try #require(RefYearMonth(raw: 202610))
+
+        let first = try await container.loadLedger.month(ref)
+        _ = try await container.loadLedger.month(ref)
+
+        #expect(first.lookups.failed.isEmpty)
+        #expect(http.callCount == 2 + 3 + 2)
+    }
 }

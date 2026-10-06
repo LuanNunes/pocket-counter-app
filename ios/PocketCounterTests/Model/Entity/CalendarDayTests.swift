@@ -87,6 +87,22 @@ struct CalendarDayTests {
         }
     }
 
+    @Test("iso parses a yyyy-MM-dd string directly")
+    func isoParses() throws {
+        #expect(try CalendarDay(iso: "2026-10-03") == CalendarDay(year: 2026, month: 10, day: 3))
+    }
+
+    @Test("iso rejects malformed text with the format error")
+    func isoRejectsFormat() {
+        #expect(throws: CalendarDay.Invalid.format("2026-10-3")) { try CalendarDay(iso: "2026-10-3") }
+    }
+
+    @Test("iso reports a well-formed impossible date by the field that is wrong")
+    func isoRejectsImpossibleDate() {
+        #expect(throws: CalendarDay.Invalid.month(13)) { try CalendarDay(iso: "2026-13-01") }
+        #expect(throws: CalendarDay.Invalid.day(29, month: 2, year: 2025)) { try CalendarDay(iso: "2025-02-29") }
+    }
+
     @Test("it converts to the month it falls in, including the December rollover")
     func refYearMonth() throws {
         let october = try CalendarDay(year: 2026, month: 10, day: 31)

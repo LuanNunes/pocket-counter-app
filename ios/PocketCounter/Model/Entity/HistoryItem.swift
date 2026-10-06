@@ -2,6 +2,8 @@ import Foundation
 
 struct HistoryItem: Hashable, Sendable {
     let id: TransactionID
+    /// The month the row belongs to, which a due date may fall outside of.
+    let ref: RefYearMonth
     let date: CalendarDay
     /// Expenses carry a negative sign.
     let amount: Money
@@ -21,6 +23,7 @@ struct HistoryItem: Hashable, Sendable {
 
     init(
         id: TransactionID,
+        ref: RefYearMonth,
         date: CalendarDay,
         amount: Money,
         type: TransactionType,
@@ -35,6 +38,7 @@ struct HistoryItem: Hashable, Sendable {
         isInvoice: Bool = false
     ) {
         self.id = id
+        self.ref = ref
         self.date = date
         self.amount = amount
         self.type = type

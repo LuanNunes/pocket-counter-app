@@ -11,9 +11,19 @@ final class FakeHTTP: @unchecked Sendable {
 
     private let lock = NSLock()
     private var replies: [Reply]
+    private let routes: [String: Reply]
     private var recorded: [URLRequest] = []
 
-    init(_ replies: Reply...) { self.replies = replies }
+    init(_ replies: Reply...) {
+        self.replies = replies
+        routes = [:]
+    }
+
+    /// Answers by request path, so concurrent requests need no agreed order.
+    init(routes: [String: Reply]) {
+        replies = []
+        self.routes = routes
+    }
 
     static func json(_ body: String, status: Int = 200) -> Reply {
         .response(status: status, body: Data(body.utf8))
@@ -28,6 +38,8 @@ final class FakeHTTP: @unchecked Sendable {
         { [self] request in
             let reply = lock.withLock { () -> Reply in
                 recorded.append(request)
+                if let routed = routes[request.url?.path ?? ""] { return routed }
+                if replies.isEmpty { return .response(status: 404, body: Data()) }
                 return replies.count > 1 ? replies.removeFirst() : replies[0]
             }
             switch reply {
