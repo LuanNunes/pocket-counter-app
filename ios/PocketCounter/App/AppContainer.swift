@@ -51,5 +51,11 @@ struct AppContainer {
         LoadLedger(transactions: transactionRepository, tags: tagRepository, cards: creditCardRepository)
     }
 
+    /// Hands the session model the verb it needs, not the repositories.
+    var endSession: SessionEndAction {
+        let caches: [any LookupCaching] = [tagRepository, creditCardRepository]
+        return { for cache in caches { await cache.invalidateLookups() } }
+    }
+
     var sessionRepository: any SessionRepository { APISessionRepository(client: client, tokens: tokens) }
 }

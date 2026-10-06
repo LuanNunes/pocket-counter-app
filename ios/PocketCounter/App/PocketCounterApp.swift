@@ -18,7 +18,7 @@ struct PocketCounterApp: App {
         }
         let container = AppContainer.make(configuration: configuration)
         _container = State(initialValue: container)
-        _session = State(initialValue: SessionModel(repository: container.sessionRepository))
+        _session = State(initialValue: SessionModel(repository: container.sessionRepository, onSessionEnd: container.endSession))
     }
 
     var body: some Scene {

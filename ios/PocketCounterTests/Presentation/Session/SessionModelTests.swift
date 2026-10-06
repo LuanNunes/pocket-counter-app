@@ -14,7 +14,7 @@ struct SessionModelTests {
 
     private func signedIn() async throws -> (SessionModel, FakeSessionRepository) {
         let fake = FakeSessionRepository(signIn: .success(user))
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         try await model.signIn(credentials())
         return (model, fake)
     }
@@ -22,7 +22,7 @@ struct SessionModelTests {
     @Test("registering signs the user in, moving the gate exactly as a sign-in does")
     func registerMovesTheGate() async throws {
         let fake = FakeSessionRepository(restores: [.signedOut], signIn: .success(user))
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
 
         try await model.register(Registration(name: "Ana", email: "ana@b.com", password: "segredo12"))
 
@@ -32,7 +32,7 @@ struct SessionModelTests {
     @Test("a failed registration rethrows and leaves the gate alone")
     func registerFailureLeavesTheGate() async throws {
         let fake = FakeSessionRepository(restores: [.signedOut], signIn: .failure(.emailAlreadyRegistered))
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         await model.resolve()
 
         let input = try Registration(name: "Ana", email: "ana@b.com", password: "segredo12")
@@ -44,7 +44,7 @@ struct SessionModelTests {
 
     @Test("a new model has not resolved anything")
     func initial() {
-        let model = SessionModel(repository: FakeSessionRepository())
+        let model = SessionModel(repository: FakeSessionRepository(), onSessionEnd: {})
 
         #expect(model.state == SessionState())
         #expect(model.state.gate == .resolving)
@@ -56,7 +56,7 @@ struct SessionModelTests {
         (.undetermined, .undetermined),
     ])
     func resolveMaps(status: SessionStatus, gate: SessionState.Gate) async {
-        let model = SessionModel(repository: FakeSessionRepository(restores: [status]))
+        let model = SessionModel(repository: FakeSessionRepository(restores: [status]), onSessionEnd: {})
 
         await model.resolve()
 
@@ -68,7 +68,7 @@ struct SessionModelTests {
     func resolveReentry() async {
         let fake = FakeSessionRepository(restores: [.signedOut])
         await fake.hold()
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
 
         let first = Task { await model.resolve() }
         await fake.untilRestoreIsSuspended()
@@ -84,7 +84,7 @@ struct SessionModelTests {
     @Test("a retry from undetermined keeps that gate while in flight, then commits the answer")
     func retryFromUndetermined() async {
         let fake = FakeSessionRepository(restores: [.undetermined, .signedIn(.fixture)])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         await model.resolve()
         await fake.hold()
 
@@ -102,7 +102,7 @@ struct SessionModelTests {
     @Test("failed resolves are counted, the escape is offered from the second, and a conclusive answer resets them")
     func failedAttempts() async {
         let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .signedOut])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
 
         await model.resolve()
         #expect(model.state.failedResolveAttempts == 1)
@@ -119,7 +119,7 @@ struct SessionModelTests {
     @Test("a restore that answers after the user chose the password path is dropped")
     func staleRestoreIsDropped() async {
         let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .signedIn(.fixture)])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         await model.resolve()
         await model.resolve()
         await fake.hold()
@@ -138,7 +138,7 @@ struct SessionModelTests {
     @Test("a sign-in that lands clears the password preference")
     func signInClearsThePreference() async throws {
         let fake = FakeSessionRepository(signIn: .success(user))
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         model.preferPassword()
 
         try await model.signIn(credentials())
@@ -150,7 +150,7 @@ struct SessionModelTests {
     @Test("a registration that lands clears the password preference")
     func registerClearsThePreference() async throws {
         let fake = FakeSessionRepository(signIn: .success(user))
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         model.preferPassword()
 
         try await model.register(Registration(name: "Ana", email: "ana@b.com", password: "segredo12"))
@@ -161,7 +161,7 @@ struct SessionModelTests {
     @Test("cancelling the escape returns to the splash, keeping the failed attempts, and resolving works again")
     func cancelPasswordEscape() async {
         let fake = FakeSessionRepository(restores: [.undetermined, .undetermined, .signedIn(.fixture)])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         await model.resolve()
         await model.resolve()
         model.preferPassword()
@@ -186,7 +186,7 @@ struct SessionModelTests {
     @Test("a failed sign-in rethrows the failure and leaves the gate alone")
     func signInFailure() async throws {
         let fake = FakeSessionRepository(restores: [.signedOut], signIn: .failure(.invalidCredentials))
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         await model.resolve()
         let input = try credentials()
 
@@ -211,7 +211,7 @@ struct SessionModelTests {
     @Test("a sign-out that fails keeps the user signed in and says so")
     func signOutFailure() async throws {
         let fake = FakeSessionRepository(signIn: .success(user), signOutFailures: [.server])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         try await model.signIn(credentials())
 
         await model.signOut()
@@ -223,7 +223,7 @@ struct SessionModelTests {
     @Test("an abandoned sign-out neither moves the gate nor reports a failure")
     func signOutAbandoned() async throws {
         let fake = FakeSessionRepository(signIn: .success(user), signOutFailures: [.abandoned])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         try await model.signIn(credentials())
 
         await model.signOut()
@@ -235,7 +235,7 @@ struct SessionModelTests {
     @Test("a sign-out that succeeds after a failed one clears the failure")
     func signOutFailureCleared() async throws {
         let fake = FakeSessionRepository(signIn: .success(user), signOutFailures: [.server])
-        let model = SessionModel(repository: fake)
+        let model = SessionModel(repository: fake, onSessionEnd: {})
         try await model.signIn(credentials())
         await model.signOut()
         #expect(model.state.signOutFailed)
@@ -250,7 +250,7 @@ struct SessionModelTests {
     func sessionEndedFromSignedIn() async throws {
         let (model, _) = try await signedIn()
 
-        model.sessionEnded()
+        await model.sessionEnded()
 
         #expect(model.state.gate == .signedOut)
     }
@@ -259,21 +259,64 @@ struct SessionModelTests {
         SessionStatus.signedOut, .undetermined,
     ])
     func sessionEndedElsewhere(status: SessionStatus) async {
-        let model = SessionModel(repository: FakeSessionRepository(restores: [status]))
+        let model = SessionModel(repository: FakeSessionRepository(restores: [status]), onSessionEnd: {})
         await model.resolve()
         let before = model.state
 
-        model.sessionEnded()
+        await model.sessionEnded()
 
         #expect(model.state == before)
     }
 
     @Test("sessionEnded is a no-op while still resolving")
-    func sessionEndedWhileResolving() {
-        let model = SessionModel(repository: FakeSessionRepository())
+    func sessionEndedWhileResolving() async {
+        let model = SessionModel(repository: FakeSessionRepository(), onSessionEnd: {})
 
-        model.sessionEnded()
+        await model.sessionEnded()
 
         #expect(model.state.gate == .resolving)
+    }
+
+    @Test("a successful sign-out runs the session-end action once")
+    func signOutRunsSessionEnd() async throws {
+        let ended = Counter()
+        let model = SessionModel(
+            repository: FakeSessionRepository(signIn: .success(user)), onSessionEnd: { ended.increment() }
+        )
+        try await model.signIn(credentials())
+
+        await model.signOut()
+
+        #expect(ended.count == 1)
+    }
+
+    @Test("a sign-out that fails keeps the session, so it does not run the session-end action")
+    func failedSignOutKeepsCaches() async throws {
+        let ended = Counter()
+        let model = SessionModel(
+            repository: FakeSessionRepository(signIn: .success(user), signOutFailures: [.server]),
+            onSessionEnd: { ended.increment() }
+        )
+        try await model.signIn(credentials())
+
+        await model.signOut()
+
+        #expect(ended.count == 0)
+    }
+
+    @Test("sessionEnded runs the session-end action only when it ends a signed-in session")
+    func sessionEndedRunsSessionEnd() async throws {
+        let ended = Counter()
+        let model = SessionModel(
+            repository: FakeSessionRepository(signIn: .success(user)), onSessionEnd: { ended.increment() }
+        )
+        await model.sessionEnded()
+        #expect(ended.count == 0)
+        try await model.signIn(credentials())
+
+        await model.sessionEnded()
+        await model.sessionEnded()
+
+        #expect(ended.count == 1)
     }
 }

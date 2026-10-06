@@ -48,6 +48,32 @@ struct AppContainerTests {
         #expect(http.callCount == 1)
     }
 
+    @Test("after a sign-out the next lookup read goes to the network, never to the previous user's cache")
+    func signOutDropsLookupCaches() async throws {
+        let http = FakeHTTP(routes: [
+            "/api/v1/tags": FakeHTTP.json("[]"),
+            "/api/v1/categories": FakeHTTP.json("[]"),
+            "/api/v1/credit-cards": FakeHTTP.json("[]"),
+        ])
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+        let model = SessionModel(
+            repository: FakeSessionRepository(signIn: .success(.fixture)), onSessionEnd: container.endSession
+        )
+        try await model.signIn(LoginCredentials(email: "ana@b.com", password: "secret"))
+        _ = try await container.tagRepository.tags()
+        _ = try await container.tagRepository.categories()
+        _ = try await container.creditCardRepository.cards()
+        #expect(http.callCount == 3)
+
+        await model.signOut()
+        _ = try await container.tagRepository.tags()
+        _ = try await container.tagRepository.categories()
+        _ = try await container.creditCardRepository.cards()
+
+        #expect(http.callCount == 6)
+    }
+
     @Test("the ledger use case reads through the same repositories")
     func loadLedgerSharesCaches() async throws {
         let http = FakeHTTP(routes: [
