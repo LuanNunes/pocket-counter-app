@@ -17,6 +17,7 @@ extension CalendarDay {
 extension HistoryItem {
     static func fixture(
         id: String = "t1",
+        ref: RefYearMonth? = nil,
         date: CalendarDay = .fixture,
         amount: Decimal = 10,
         type: TransactionType = .expense,
@@ -28,6 +29,7 @@ extension HistoryItem {
     ) -> HistoryItem {
         HistoryItem(
             id: TransactionID(rawValue: id),
+            ref: ref ?? date.refYearMonth,
             date: date,
             amount: Money(amount),
             type: type,

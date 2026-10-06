@@ -47,7 +47,10 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
     var refYearMonth: RefYearMonth { RefYearMonth(containing: self) }
 
     init(from decoder: Decoder) throws {
-        let text = try decoder.singleValueContainer().decode(String.self)
+        try self.init(iso: decoder.singleValueContainer().decode(String.self))
+    }
+
+    init(iso text: String) throws {
         let parts = text.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.map(\.count) == [4, 2, 2], parts.allSatisfy({ $0.allSatisfy(\.isASCIIDigit) }),
               let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2])

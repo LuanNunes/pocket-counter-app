@@ -57,6 +57,22 @@ tomadas como contrato:
   Android (`NotificationListenerService`). O iOS não tem equivalente, então o banner não é
   implementável como mostrado.
 
+## Campos do protótipo que o backend não tem
+
+Verificado contra `../../../pocket-counter` em 2026-10-06. Não são atrasos: não há coluna.
+
+* **Limite e `last4` do cartão.** `more.jsx:129` mostra `•••• {last4}` e `:134` calcula
+  `{Math.round((tot / c.limit) * 100)}% do limite`, mas `CreditCardDto` é exatamente
+  `id/idUser/name/brand?/closingDay?/color?`. Os valores de `data.js:342` são amostra. A
+  entidade iOS foi remodelada para o contrato e **o anel de uso fica de fora** — preenchê-lo
+  com `limit: 0` daria "100% do limite", um número plausível e errado. Volta se o backend
+  ganhar a coluna.
+* **Cor própria da tag.** `GET /api/v1/tags` é uma projeção JPQL de 6 argumentos
+  (`TagRepository.kt:31`) e não devolve `color` nem `idSeries` — só
+  `GET /api/v1/tags/category/{id}` devolve a tag inteira. Por isso o chip é pintado pela
+  **categoria** (`store.jsx:82` já define a cadeia tag → categoria → neutro), e a cor
+  própria da tag só é alcançável na tela de Categorias & Tags.
+
 ## Se você precisar vê-lo rodando
 
 Falta um HTML host que carregue React + Babel por CDN e os arquivos nesta ordem —

@@ -1,13 +1,18 @@
 import Observation
 
+/// What must be forgotten when a session ends, so the next account never reads this one's data.
+typealias SessionEndAction = @Sendable () async -> Void
+
 @MainActor
 @Observable
 final class SessionModel {
     private(set) var state = SessionState()
     private let repository: any SessionRepository
+    private let onSessionEnd: SessionEndAction
 
-    init(repository: any SessionRepository) {
+    init(repository: any SessionRepository, onSessionEnd: @escaping SessionEndAction) {
         self.repository = repository
+        self.onSessionEnd = onSessionEnd
     }
 
     func resolve() async {
@@ -73,11 +78,12 @@ final class SessionModel {
                 return
             }
         }
-        sessionEnded()
+        await sessionEnded()
     }
 
-    func sessionEnded() {
+    func sessionEnded() async {
         guard case .signedIn = state.gate else { return }
         state.gate = .signedOut
+        await onSessionEnd()
     }
 }

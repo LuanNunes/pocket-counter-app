@@ -26,3 +26,7 @@ struct UserID: RawRepresentable, Hashable, Sendable {
         self.rawValue = rawValue
     }
 }
+
+struct InvoiceItemID: RawRepresentable, Hashable, Sendable {
+    let rawValue: String
+}

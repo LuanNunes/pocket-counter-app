@@ -1,7 +1,10 @@
+import OSLog
+
 struct AuthenticatedAPIClient: Sendable {
     private let client: APIClient
     private let tokens: any TokenStoring
     private let refresher: TokenRefresher
+    private let logger = Logger(subsystem: "com.resolveprogramming.pocketcounter", category: "auth")
 
     init(client: APIClient, tokens: any TokenStoring, refresher: TokenRefresher) {
         self.client = client
@@ -41,12 +44,30 @@ struct AuthenticatedAPIClient: Sendable {
             guard endpoint.authentication == .bearer else { throw error }
             switch await refresher.accessToken(replacing: sentToken) {
             case .refreshed(let fresh):
-                return try await call(endpoint.bearing(fresh))
+                return try await retry(endpoint.bearing(fresh), call: call)
             case .sessionInvalid:
                 throw .sessionExpired
             case .unavailable:
                 throw .authenticationUnavailable
             }
+        }
+    }
+
+    /// A server refusing a token it just minted has ended the session.
+    private func retry<R, T>(
+        _ endpoint: Endpoint<R>,
+        call: (Endpoint<R>) async throws(APIError) -> T
+    ) async throws(APIError) -> T {
+        do {
+            return try await call(endpoint)
+        } catch {
+            guard case .status(401, _) = error else { throw error }
+            do {
+                try await tokens.clear()
+            } catch {
+                logger.fault("Refused tokens could not be cleared; the next launch will act on them")
+            }
+            throw .sessionExpired
         }
     }
 }

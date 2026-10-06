@@ -71,14 +71,16 @@ struct AuthenticatedAPIClientTests {
         #expect(bearer(fake.requests.last) == "Bearer new-access")
     }
 
-    @Test("a second 401 is returned as is, with no second refresh")
+    @Test("a 401 right after a refresh ends the session and reports it expired, with no second refresh")
     func secondUnauthorized() async {
         let fake = FakeHTTP(FakeHTTP.empty(401), FakeHTTP.json(Self.rotated), FakeHTTP.empty(401))
-        let client = make(fake.send, tokens: InMemoryTokenStore(stored))
+        let tokens = InMemoryTokenStore(stored)
+        let client = make(fake.send, tokens: tokens)
 
-        let code = await statusCode(of: ping, using: client)
+        let error = await apiError(of: ping, using: client)
 
-        #expect(code == 401)
+        #expect(error == .sessionExpired)
+        #expect(await tokens.stored == nil)
         #expect(fake.callCount == 3)
     }
 

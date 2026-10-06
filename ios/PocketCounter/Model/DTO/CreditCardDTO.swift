@@ -1,9 +1,9 @@
 import Foundation
 
-struct CreditCard: Hashable, Sendable {
-    let id: CardID
+struct CreditCardDTO: Decodable, Sendable {
+    let id: String
     let name: String
     let brand: String?
     let closingDay: Int?
-    let color: UInt32?
+    let color: String?
 }

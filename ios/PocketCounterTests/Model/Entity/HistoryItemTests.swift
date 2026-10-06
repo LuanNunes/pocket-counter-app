@@ -47,27 +47,28 @@ struct HistoryItemTests {
 @Suite("Tag, TagContext and CreditCard")
 struct CatalogEntityTests {
 
-    @Test("a tag carries its kind and optional context, colour and series")
+    @Test("a tag carries its kind and optional context and colour")
     func tag() {
         let tag = Tag(id: TagID(rawValue: "g"), name: "Mercado", kind: .expense)
 
         #expect(tag.contextId == nil)
         #expect(tag.color == nil)
-        #expect(tag.seriesId == nil)
         #expect(tag != Tag(id: TagID(rawValue: "g"), name: "Mercado", kind: .income))
     }
 
-    @Test("a context has a name and a colour")
+    @Test("a context may have no colour")
     func context() {
-        let context = TagContext(id: ContextID(rawValue: "c"), name: "Casa", color: 0xFF112233)
+        let context = TagContext(id: ContextID(rawValue: "c"), name: "Casa", color: nil)
 
-        #expect(context.color == 0xFF112233)
+        #expect(context.color == nil)
     }
 
-    @Test("a card keeps its limit as money")
+    @Test("a card carries only what the backend sends")
     func card() {
-        let card = CreditCard(id: CardID(rawValue: "k"), name: "Nubank", brand: "mastercard", last4: "1234", limit: Money(5000), billDay: 10)
+        let card = CreditCard(id: CardID(rawValue: "k"), name: "Nubank", brand: nil, closingDay: nil, color: nil)
 
-        #expect(card.limit == Money(5000))
+        #expect(card.brand == nil)
+        #expect(card.closingDay == nil)
+        #expect(card.color == nil)
     }
 }
