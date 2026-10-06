@@ -34,6 +34,14 @@ struct RefYearMonth: Hashable, Comparable, Sendable {
         RefYearMonth(unchecked: calendar.component(.year, from: date) * 100 + calendar.component(.month, from: date))
     }
 
+    static func january(of year: Int) -> RefYearMonth {
+        RefYearMonth(unchecked: year * 100 + 1)
+    }
+
+    static func december(of year: Int) -> RefYearMonth {
+        RefYearMonth(unchecked: year * 100 + 12)
+    }
+
     func next() -> RefYearMonth {
         RefYearMonth(unchecked: month == 12 ? raw + 89 : raw + 1)
     }

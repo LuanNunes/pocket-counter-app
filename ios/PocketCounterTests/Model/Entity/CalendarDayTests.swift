@@ -15,6 +15,13 @@ struct CalendarDayTests {
         #expect(day.day == 3)
     }
 
+    @Test("the first day of a month is day 1 of that month")
+    func firstDay() throws {
+        let ref = try RefYearMonth(year: 2026, month: 10)
+
+        #expect(CalendarDay.first(of: ref) == (try CalendarDay(year: 2026, month: 10, day: 1)))
+    }
+
     @Test("a month outside 1-12 is rejected", arguments: [0, 13])
     func rejectsInvalidMonth(month: Int) {
         #expect(throws: CalendarDay.Invalid.month(month)) {

@@ -55,4 +55,17 @@ struct PocketFormatTests {
     func monthLabelWithYear() {
         #expect(PocketFormat.monthLabel(year: 2025, month: 3, showingYear: true) == "março de 2025")
     }
+
+    @Test("a standalone month name is pt-BR, and capitalised on request", arguments: [
+        (1, "janeiro", "Janeiro"), (2, "fevereiro", "Fevereiro"), (3, "março", "Março"),
+        (4, "abril", "Abril"), (5, "maio", "Maio"), (6, "junho", "Junho"),
+        (7, "julho", "Julho"), (8, "agosto", "Agosto"), (9, "setembro", "Setembro"),
+        (10, "outubro", "Outubro"), (11, "novembro", "Novembro"), (12, "dezembro", "Dezembro"),
+    ])
+    func monthName(month: Int, plain: String, capitalized: String) throws {
+        let ref = try RefYearMonth(year: 2026, month: month)
+
+        #expect(PocketFormat.monthName(ref, capitalized: false) == plain)
+        #expect(PocketFormat.monthName(ref, capitalized: true) == capitalized)
+    }
 }
