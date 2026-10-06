@@ -19,10 +19,10 @@ import java.text.NumberFormat
 import java.util.Locale
 
 /**
- * The headline figure is the pending total, not the saldo — that swap is the point of the card, so
- * it is asserted here rather than left to a screenshot. Expected money strings go through the same
- * formatter the card uses: pt-BR puts a non-breaking space after "R$", which a hand-typed literal
- * would get wrong.
+ * The headline follows the navigated month: the pending total for the current and future months,
+ * the saldo for a closed one — asserted here rather than left to a screenshot. Expected money
+ * strings go through the same formatter the card uses: pt-BR puts a non-breaking space after "R$",
+ * which a hand-typed literal would get wrong.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -60,13 +60,19 @@ class BalanceHeroTest {
         pendingCount = 0,
     )
 
-    private fun setHero(kpis: HomeKpis, balance: String, hasLoadedMonth: Boolean = true) {
+    private fun setHero(
+        kpis: HomeKpis,
+        balance: String,
+        hasLoadedMonth: Boolean = true,
+        highlightData: HighlightData = HighlightData.PENDING,
+    ) {
         compose.setContent {
             PocketTheme {
                 BalanceHero(
                     monthLabel = "Agosto 2026",
                     kpis = kpis,
                     balance = BigDecimal(balance),
+                    highlightData = highlightData,
                     hasLoadedMonth = hasLoadedMonth,
                 )
             }
@@ -151,5 +157,39 @@ class BalanceHeroTest {
         compose
             .onNodeWithContentDescription("Despesas, ${brl.format(BigDecimal("47606.36"))}, 47 lançamentos")
             .assertExists()
+    }
+
+    @Test
+    fun `balance highlight leads with the saldo under a SALDO header`() {
+        setHero(kpis(), balance = "-24631.31", highlightData = HighlightData.BALANCE)
+
+        compose.onNodeWithText("SALDO · AGOSTO 2026").assertIsDisplayed()
+        compose.onNodeWithText(brl.format(BigDecimal("-24631.31"))).assertIsDisplayed()
+    }
+
+    @Test
+    fun `balance highlight drops the saldo row from the KPI stack`() {
+        setHero(kpis(), balance = "-24631.31", highlightData = HighlightData.BALANCE)
+
+        compose.onAllNodesWithText("Saldo do mês").assertCountEquals(0)
+        compose.onNodeWithText("Despesas").assertIsDisplayed()
+        compose.onNodeWithText("Receitas").assertIsDisplayed()
+    }
+
+    @Test
+    fun `balance highlight shows no pending figure anywhere`() {
+        setHero(kpis(), balance = "-24631.31", highlightData = HighlightData.BALANCE)
+
+        compose.onAllNodesWithText("PENDENTE · AGOSTO 2026").assertCountEquals(0)
+        compose.onAllNodesWithText(brl.format(BigDecimal("7912.92"))).assertCountEquals(0)
+    }
+
+    @Test
+    fun `balance highlight shows an em dash and announces loading while the month is unknown`() {
+        setHero(zeroKpis(), balance = "0", hasLoadedMonth = false, highlightData = HighlightData.BALANCE)
+
+        // Headline plus the Despesas and Receitas values and their counts.
+        compose.onAllNodesWithText(UNKNOWN_FIGURE, useUnmergedTree = true).assertCountEquals(5)
+        compose.onNodeWithContentDescription("Saldo de Agosto 2026, carregando").assertExists()
     }
 }

@@ -29,6 +29,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
+import com.resolveprogramming.pocketcounter.ui.home.components.HighlightData
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -174,6 +175,53 @@ class HomeViewModelTest {
         val s = vm.state.value
         assertFalse(s.isCurrentMonth)
         assertEquals(0, s.pendingReviewCount)
+    }
+
+    @Test
+    fun `the hero leads with pending on the current month`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(HighlightData.PENDING, vm.state.value.highlightData)
+    }
+
+    @Test
+    fun `selectMonth to a past month leads the hero with the balance`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(HighlightData.BALANCE, vm.state.value.highlightData)
+    }
+
+    @Test
+    fun `selectMonth to a future month keeps the hero on pending`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectMonth(1)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(HighlightData.PENDING, vm.state.value.highlightData)
+    }
+
+    @Test
+    fun `the highlighted figure flips before the ledger commits the new month`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        coEvery { transactionRepository.getMonth(any()) } coAnswers {
+            gate.await()
+            Result.success(monthItems)
+        }
+
+        vm.selectMonth(-1)
+        testDispatcher.scheduler.runCurrent()
+
+        assertEquals(HighlightData.BALANCE, vm.state.value.highlightData)
+        assertFalse(vm.state.value.hasLoadedMonth)
     }
 
     @Test
