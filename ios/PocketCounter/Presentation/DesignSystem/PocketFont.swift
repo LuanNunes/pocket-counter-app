@@ -51,6 +51,9 @@ enum PocketFont {
     /// `.mp-l` — 16. The label inside a control, such as the month pill.
     static let controlLabel = PocketTextStyle(.system(.callout))
 
+    /// `.mp-l` month run — 16/600. Equal to `heroKpiValue` by coincidence, so not aliased.
+    static let controlLabelEmphasis = PocketTextStyle(.system(.callout, weight: .semibold))
+
     /// `.tab` — 10.5/600
     static let tabLabel = PocketTextStyle(.system(.caption2, weight: .semibold))
 

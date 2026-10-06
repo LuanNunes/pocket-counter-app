@@ -87,8 +87,8 @@ struct GlassBarButton: View {
             GlassCircleButton(systemImage: "plus", accessibilityLabel: "Adicionar", prominent: true) {}
 
             GlassCapsuleBar {
-                GlassBarButton(systemImage: "chevron.left", accessibilityLabel: "Mês anterior") {}
-                GlassBarButton(systemImage: "chevron.right", accessibilityLabel: "Próximo mês", isEnabled: false) {}
+                GlassBarButton(systemImage: "magnifyingglass", accessibilityLabel: "Buscar") {}
+                GlassBarButton(systemImage: "line.3.horizontal.decrease", accessibilityLabel: "Filtrar", isEnabled: false) {}
             }
         }
     }

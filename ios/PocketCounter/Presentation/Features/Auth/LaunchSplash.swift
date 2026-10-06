@@ -39,8 +39,8 @@ struct LaunchSplash: View {
         .preferredColorScheme(.dark)
         .task(id: phase) {
             guard phase == .restoring else { return }
-            try? await Task.sleep(for: .milliseconds(600))
-            withAnimation(.easeOut(duration: 0.2)) { showsSpinner = true }
+            try? await Task.sleep(for: PocketMotion.indicatorGrace)
+            withAnimation(PocketMotion.quick) { showsSpinner = true }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("PocketCounter")

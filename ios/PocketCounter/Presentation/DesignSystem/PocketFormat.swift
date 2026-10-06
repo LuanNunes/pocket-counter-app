@@ -16,7 +16,8 @@ enum PocketFormat {
         return value.formatted(.currency(code: "BRL").locale(locale))
     }
 
-    /// The month name as the design shows it: pt-BR, lower-case.
+    /// The lower-case in-sentence form: day labels and the month pill's VoiceOver value.
+    /// `monthName` is the standalone form.
     ///
     /// `month` is 1-12; anything else is a programming error and traps.
     static func monthLabel(year: Int, month: Int, showingYear: Bool = false) -> String {
@@ -25,6 +26,15 @@ enum PocketFormat {
         guard showingYear else { return name }
 
         return "\(name) de \(year)"
+    }
+
+    /// The standalone form, which the month pill capitalises (`store.jsx:7-8`).
+    static func monthName(_ ref: RefYearMonth, capitalized: Bool) -> String {
+        let name = monthNames[ref.month - 1].lowercased(with: locale)
+
+        guard capitalized else { return name }
+
+        return name.prefix(1).uppercased(with: locale) + name.dropFirst()
     }
 
     /// Standalone month symbols, which are the ones used on their own rather than inside a

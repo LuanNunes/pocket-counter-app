@@ -11,7 +11,7 @@ final class FakeHTTP: @unchecked Sendable {
 
     private let lock = NSLock()
     private var replies: [Reply]
-    private let routes: [String: Reply]
+    private var routes: [String: Reply]
     private var recorded: [URLRequest] = []
 
     init(_ replies: Reply...) {
@@ -23,6 +23,14 @@ final class FakeHTTP: @unchecked Sendable {
     init(routes: [String: Reply]) {
         replies = []
         self.routes = routes
+    }
+
+    func reply(to path: String, with reply: Reply) {
+        lock.withLock { routes[path] = reply }
+    }
+
+    func count(path: String) -> Int {
+        requests.filter { $0.url?.path == path }.count
     }
 
     static func json(_ body: String, status: Int = 200) -> Reply {

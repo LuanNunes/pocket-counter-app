@@ -23,6 +23,16 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
         self.day = day
     }
 
+    static func first(of ref: RefYearMonth) -> CalendarDay {
+        CalendarDay(unchecked: ref.year, ref.month, 1)
+    }
+
+    private init(unchecked year: Int, _ month: Int, _ day: Int) {
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+
     static func < (lhs: CalendarDay, rhs: CalendarDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }

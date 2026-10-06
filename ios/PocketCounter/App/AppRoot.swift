@@ -4,6 +4,7 @@ import SwiftUI
 /// must break the build rather than fall through to something plausible.
 struct AppRoot: View {
     let session: SessionModel
+    let container: AppContainer
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -31,12 +32,14 @@ struct AppRoot: View {
                 )
 
             case .signedIn(let user):
-                AppShellPlaceholder(
+                AppShell(
+                    container: container,
                     user: user,
-                    signOutFailed: session.state.signOutFailed
-                ) {
-                    Task { await session.signOut() }
-                }
+                    signOutFailed: session.state.signOutFailed,
+                    onSessionExpired: { await session.sessionEnded() },
+                    onSignOut: { Task { await session.signOut() } }
+                )
+                .id(user.id)
             }
         }
         .animation(gateAnimation, value: session.state.gate)
@@ -50,9 +53,7 @@ struct AppRoot: View {
     }
 
     private var gateAnimation: Animation {
-        guard !reduceMotion else { return .easeOut(duration: 0.15) }
-
-        return .timingCurve(0.32, 0.72, 0, 1, duration: 0.42)
+        reduceMotion ? PocketMotion.reduced : PocketMotion.standard
     }
 
     private var login: some View {

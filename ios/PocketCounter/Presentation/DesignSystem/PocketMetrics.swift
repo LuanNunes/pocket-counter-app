@@ -25,6 +25,9 @@ enum PocketMetrics {
     /// `.sec-h { padding: 22px 22px 8px }`
     static let sectionHeaderPadding = EdgeInsets(top: 22, leading: 22, bottom: 8, trailing: 22)
 
+    /// An empty-state note, `screens.css:93`.
+    static let emptyNotePadding = EdgeInsets(top: 40, leading: 20, bottom: 40, trailing: 20)
+
     // MARK: Hero
 
     static let heroRadius: CGFloat = 30
@@ -59,6 +62,12 @@ enum PocketMetrics {
     static let monthPillHeight: CGFloat = 44
     static let monthPillRadius: CGFloat = 22
     static let monthPillButton: CGFloat = 40
+    /// `screens.css:2`
+    static let monthPillInnerPadding: CGFloat = 4
+    static let monthPillTopPadding: CGFloat = 4
+    static let monthPillBottomPadding: CGFloat = 14
+    /// `.mp-l` gap, `screens.css:5`
+    static let monthPillLabelSpacing: CGFloat = 6
 
     /// `.qa-home-b`
     static let quickAddHeight: CGFloat = 52
