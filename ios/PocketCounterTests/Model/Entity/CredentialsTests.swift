@@ -76,6 +76,20 @@ struct RegistrationTests {
         }
     }
 
+    @Test("length counts UTF-16 units like the server: four emoji are eight units and enough")
+    func passwordLengthInUTF16() throws {
+        let emoji = String(repeating: "\u{1F600}", count: 4)
+
+        _ = try Registration(name: "Ana", email: "a@b.com", password: emoji)
+    }
+
+    @Test("seven UTF-16 units are too short even when some are emoji")
+    func sevenUnitsWithEmoji() {
+        #expect(throws: CredentialsError.passwordTooShort(minimum: 8)) {
+            try Registration(name: "Ana", email: "a@b.com", password: "\u{1F600}\u{1F600}abc")
+        }
+    }
+
     @Test("the minimum is 8 and empty fields win over a short password")
     func minimumAndPrecedence() {
         #expect(Registration.minimumPasswordLength == 8)

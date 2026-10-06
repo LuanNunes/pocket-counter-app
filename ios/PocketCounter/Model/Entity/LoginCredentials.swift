@@ -19,7 +19,7 @@ struct LoginCredentials: Hashable, Sendable {
     let email: String
     let password: String
 
-    init(email: String, password: String) throws {
+    init(email: String, password: String) throws(CredentialsError) {
         guard !email.isBlank, !password.isBlank else { throw CredentialsError.emptyFields }
         self.email = email
         self.password = password

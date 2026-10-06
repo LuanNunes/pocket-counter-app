@@ -121,7 +121,7 @@ extension AuthenticationFailure {
         case .status(409, _):
             self = .emailAlreadyRegistered
         case .status(400, let server), .status(422, let server):
-            self = .rejected(server?.message ?? "Não foi possível processar a solicitação")
+            self = .rejected(server?.details.first ?? server?.message ?? "Não foi possível processar a solicitação")
         case .transport, .authenticationUnavailable:
             self = .unreachable
         case .cancelled:

@@ -52,6 +52,15 @@ struct EndpointTests {
         #expect(request.httpBody == nil)
     }
 
+    @Test("every request asks for pt-BR, whatever the device language")
+    func acceptLanguage() throws {
+        let endpoint = Endpoint<EmptyResponse>(method: .get, path: "api/v1/x", authentication: .bearer)
+
+        let request = try endpoint.urlRequest(baseURL: #require(URL(string: "https://h.com/")))
+
+        #expect(request.value(forHTTPHeaderField: "Accept-Language") == "pt-BR")
+    }
+
     @Test("a request with a body sends it as JSON")
     func bodyHeaders() throws {
         let endpoint = Endpoint<EmptyResponse>(method: .post, path: "api/v1/x", authentication: .bearer, body: Body(email: "a@b.co"))

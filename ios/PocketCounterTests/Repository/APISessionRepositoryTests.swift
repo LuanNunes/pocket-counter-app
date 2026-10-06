@@ -58,6 +58,14 @@ struct APISessionRepositoryTests {
 
     private static let envelope = #"{"code":"X","message":"Server says no","details":[],"correlationId":"c","timestamp":"t"}"#
 
+    @Test("a 400 or 422 shows the localized detail when there is one, else the message", arguments: [400, 422])
+    func rejectedPrefersDetails(status: Int) async {
+        let withDetails = #"{"code":"X","message":"Domain exception occurred","details":["A senha precisa ter ao menos 8 caracteres","outro"],"correlationId":"c","timestamp":"t"}"#
+        let fake = FakeHTTP(FakeHTTP.json(withDetails, status: status))
+
+        #expect(await signInFailure(make(fake)) == .rejected("A senha precisa ter ao menos 8 caracteres"))
+    }
+
     @Test("sign-in failures are translated by HTTP status", arguments: [
         (401, AuthenticationFailure.invalidCredentials),
         (409, .emailAlreadyRegistered),

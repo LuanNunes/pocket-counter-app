@@ -59,6 +59,8 @@ struct Endpoint<Response: Decodable & Sendable>: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Without it URLSession sends the device language, and the backend localizes its errors by it.
+        request.setValue("pt-BR", forHTTPHeaderField: "Accept-Language")
         headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
         guard let body else { return request }
 
