@@ -117,6 +117,15 @@ place in Kotlin and in Swift: `Model/{Entity,DTO,Contract,Enum}`, `Service/`, `R
   every repository must translate both. The switch over `APIError` is **exhaustive, with no
   `default:`** — that is what makes a new case a compile error instead of a silent
   "something went wrong".
+* **Mappers** are `enum`s of static throwing functions (`throws(MappingFailure)`), fed real
+  captured JSON in tests. A DTO field the entity cannot do without throws; an optional one maps
+  to `nil`. `MappingFailure` becomes `LoadFailure.server` in the repository.
+* **Enum degradation.** An unknown enum value that affects a sign, an arithmetic result or a
+  count cannot degrade: throw. One that only decorates (a payment method) degrades to `nil`.
+* **Order is part of a repository's contract and must be a total order.** `sorted(by:)` is not
+  stable and `displayOrder` is 0 on most rows, so end every key in `id`.
+* **A repository that caches is built once**, as a stored `let` in `AppContainer`. A computed
+  property builds a fresh instance, and so an empty cache, per access.
 * **A failure to read is not an absence.** A `TokenStoring` read that throws
   `TokenStoreUnavailable` says "cannot tell", not "signed out" — a read before first unlock
   answers `errSecInteractionNotAllowed` with the session perfectly intact. It is never
@@ -158,7 +167,9 @@ place in Kotlin and in Swift: `Model/{Entity,DTO,Contract,Enum}`, `Service/`, `R
 ## Adding an endpoint
 
 1. DTO in `Model/DTO/`
-2. `Endpoint` in `Infrastructure/Remote/Endpoints/`
+2. a `static func` per path on a nested `enum Route` inside the repository, returning an
+   `Endpoint`. It is internal, not private, so a test can assert the path with no HTTP fake:
+   a typo is otherwise a silent 404. Paths carry no leading slash.
 3. declare its `authentication:` — `.bearer`, unless the request carries its own credential
    (a password, a refresh token), which is `.credentials`. It decides whether a 401 triggers
    a refresh: refreshing after a rejected credential both loops and signs out a healthy
