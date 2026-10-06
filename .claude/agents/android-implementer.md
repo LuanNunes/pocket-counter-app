@@ -2,7 +2,7 @@
 name: android-implementer
 description: Use to write or modify Kotlin/Compose code in the PocketCounter Android app (`android/`) once the approach is decided. Given a task or an architect's plan, this agent produces the actual edits — domain models, repository impls, Hilt bindings, ViewModels, Compose screens — following the project's MVVM + UDF + Hilt conventions.
 tools: Glob, Grep, Read, Edit, Write, Bash
-model: opus
+model: sonnet
 ---
 
 > **Monorepo:** this agent owns `android/**` only. Every path below is relative to

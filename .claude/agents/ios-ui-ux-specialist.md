@@ -1,7 +1,7 @@
 ---
 name: "ios-ui-ux-specialist"
 description: "Expert in iOS app UX/UI — Apple Human Interface Guidelines, iOS 26 Liquid Glass, design systems, user flows, accessibility, and developer-ready SwiftUI specifications. Not for the Android app in `android/` — that is `android-ui-ux-specialist`."
-model: opus
+model: fable
 color: blue
 memory: project
 ---
