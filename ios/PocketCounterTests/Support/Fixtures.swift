@@ -25,7 +25,9 @@ extension HistoryItem {
         statusPayment: PaymentStatus = .paid,
         seriesId: String? = nil,
         name: String? = nil,
-        description: String? = nil
+        description: String? = nil,
+        isInvoice: Bool = false,
+        cardId: CardID? = nil
     ) -> HistoryItem {
         HistoryItem(
             id: TransactionID(rawValue: id),
@@ -35,14 +37,20 @@ extension HistoryItem {
             type: type,
             tagIds: tagIds,
             statusPayment: statusPayment,
+            cardId: cardId,
             seriesId: seriesId,
             name: name,
-            description: description
+            description: description,
+            isInvoice: isInvoice
         )
     }
 
     static func expense(_ amount: Decimal, status: PaymentStatus = .paid) -> HistoryItem {
         .fixture(amount: -Swift.abs(amount), type: .expense, statusPayment: status)
+    }
+
+    static func invoice(_ amount: Decimal, status: PaymentStatus = .pending, card: CardID? = nil) -> HistoryItem {
+        .fixture(amount: -Swift.abs(amount), type: .expense, statusPayment: status, isInvoice: true, cardId: card)
     }
 
     static func income(_ amount: Decimal, status: PaymentStatus = .paid) -> HistoryItem {

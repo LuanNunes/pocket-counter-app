@@ -4,7 +4,7 @@ import Foundation
 /// redaction bars have realistic widths.
 extension MonthLedger {
     static func placeholder(for ref: RefYearMonth) -> MonthLedger {
-        MonthLedger(ref: ref, items: placeholderItems(in: ref), lookups: placeholderLookups)
+        MonthLedger(ref: ref, items: placeholderItems(in: ref) + [placeholderInvoice(in: ref)], lookups: placeholderLookups)
     }
 
     private static func placeholderItems(in ref: RefYearMonth) -> [HistoryItem] {
@@ -30,9 +30,29 @@ extension MonthLedger {
         }
     }
 
+    private static func placeholderInvoice(in ref: RefYearMonth) -> HistoryItem {
+        HistoryItem(
+            id: TransactionID(rawValue: "placeholder-invoice"),
+            ref: ref,
+            date: .first(of: ref),
+            amount: Money(Decimal(-324_090) / 100),
+            type: .expense,
+            tagIds: nil,
+            statusPayment: .pending,
+            displayOrder: 4,
+            cardId: placeholderCard.id,
+            name: "Fatura",
+            isInvoice: true
+        )
+    }
+
+    private static let placeholderCard = CreditCard(
+        id: CardID(rawValue: "placeholder-card"), name: "Cartão", brand: nil, closingDay: nil, color: nil
+    )
+
     private static let placeholderLookups = LookupSet(
         categories: [TagContext(id: ContextID(rawValue: "placeholder-context"), name: "Casa", color: nil)],
         tags: [Tag(id: TagID(rawValue: "placeholder-tag"), name: "Mercado", kind: .expense)],
-        cards: [CreditCard(id: CardID(rawValue: "placeholder-card"), name: "Cartão", brand: nil, closingDay: nil, color: nil)]
+        cards: [placeholderCard]
     )
 }
