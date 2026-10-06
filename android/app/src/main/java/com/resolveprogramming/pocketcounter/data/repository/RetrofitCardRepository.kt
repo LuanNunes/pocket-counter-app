@@ -1,0 +1,260 @@
+package com.resolveprogramming.pocketcounter.data.repository
+
+import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
+import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toDomain
+import com.resolveprogramming.pocketcounter.data.remote.api.CreditCardApi
+import com.resolveprogramming.pocketcounter.data.remote.api.InvoiceItemApi
+import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
+import com.resolveprogramming.pocketcounter.data.remote.dto.CreditCardDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
+import com.resolveprogramming.pocketcounter.domain.billing.BillingCycle
+import com.resolveprogramming.pocketcounter.domain.model.CreditCard
+import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
+import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
+import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.ClassificationRule
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.time.LocalDate
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Cartões data is DERIVED. A credit card's open fatura is its current-month invoice
+ * TransactionDto (isInvoice=true): the invoice total is the server-maintained amount and its
+ * line items come from the items sub-resource. When no invoice tx exists, or it carries no
+ * items, we fall back to grouping the card's plain (non-isInvoice) credit expenses.
+ */
+@Singleton
+class RetrofitCardRepository @Inject constructor(
+    private val creditCardApi: CreditCardApi,
+    private val transactionApi: TransactionApi,
+    private val classificationRuleRepository: ClassificationRuleRepository,
+    private val invoiceItemApi: InvoiceItemApi,
+) : CardRepository {
+
+    // Cards are read fresh every time (like getOpenInvoices): the list is small and rarely fetched, and
+    // a process-lifetime cache went stale whenever a card was added/edited outside the app — leaving the
+    // add-transaction picker showing fewer cards than the Cartões screen.
+    override suspend fun getCards(): Result<List<CreditCard>> = runCatching {
+        creditCards()
+    }
+
+    override suspend fun getOpenInvoices(refYearMonth: Int): Result<List<OpenInvoice>> = runCatching {
+        coroutineScope {
+            val ref = refYearMonth
+            // The cards list and the month's expenses don't depend on each other — fetch them together.
+            val cardsDeferred = async { creditCards() }
+            val expensesDeferred = async { transactionApi.getExpenses(ref) }
+            val cards = cardsDeferred.await()
+            val expenses = expensesDeferred.await()
+
+            // The fatura on screen is the data month's (ref) statement. Anchor its closing/due label
+            // to that month so the card reads the SAME month as the values shown. Using LocalDate.now()
+            // rolled the closing into the next month once today passed billDay (June data → "jul"
+            // vencimento). Anchoring to the first of the ref month keeps closesInDays and dueLabel
+            // consistent with each other and with the month being displayed.
+            val statementAnchor = LocalDate.of(ref / 100, ref % 100, 1)
+
+            // Each card's items sub-resource is an independent round-trip — fan them out instead of
+            // walking the cards serially (the old N+1 that made the fatura tile the slow tile).
+            cards.map { card -> async { buildOpenInvoice(card, expenses, statementAnchor) } }.awaitAll()
+        }
+    }
+
+    private suspend fun buildOpenInvoice(
+        card: CreditCard,
+        expenses: List<TransactionDto>,
+        statementAnchor: LocalDate,
+    ): OpenInvoice {
+        val cardExpenses = expenses.filter { it.cardId == card.id }
+        val invoiceTx = cardExpenses.firstOrNull { it.isInvoice && it.id != null }
+
+        val (items, total) = run {
+            if (invoiceTx != null) {
+                val invoiceId = invoiceTx.id!!
+                // Items have no own date field; the purchase date is embedded in the name.
+                // Fall back to the invoice's date (not today) when the name carries none.
+                val invoiceDate = RemoteMappers.parseDate(invoiceTx.datePaid)
+                    ?: RemoteMappers.parseDate(invoiceTx.dateDue)
+                    ?: LocalDate.now()
+                val builtItems = invoiceItemApi.getItems(invoiceId)
+                    .map { it.toInvoiceItem(invoiceId, invoiceDate) }
+                // The invoice header is the source of truth for the total — honor its amount even
+                // when it has no line items yet (a manual/projected fatura, e.g. a future month).
+                return@run builtItems to (invoiceTx.amount ?: BigDecimal.ZERO).abs()
+            }
+            val fallback = fallbackItems(cardExpenses)
+            fallback to fallback.fold(BigDecimal.ZERO) { acc, item -> acc + item.amount }
+        }
+
+        val usage = run {
+            if (card.limit > BigDecimal.ZERO) {
+                return@run total.divide(card.limit, 4, RoundingMode.HALF_UP).toFloat().coerceAtMost(1f)
+            }
+            0f
+        }
+        return OpenInvoice(
+            card = card,
+            total = total,
+            usage = usage,
+            closesInDays = BillingCycle.closesInDays(card.billDay, statementAnchor),
+            dueLabel = BillingCycle.dueLabel(card.billDay, statementAnchor),
+            items = items.sortedByDescending { it.date },
+        )
+    }
+
+    override suspend fun classifyPurchase(
+        invoiceId: String,
+        itemId: String,
+        tags: List<Tag>,
+        learnRule: Boolean,
+    ): Result<PurchaseClassifyOutcome> = runCatching {
+        // Fetch the item so the tags-only edit round-trips its name/amount unchanged. If the
+        // fetch fails or the item is gone, fail the call — never PUT empty name/zero amount,
+        // which would clobber the server's item (the parent invoice total is autoTotal'd from it).
+        val existing = invoiceItemApi.getItems(invoiceId).firstOrNull { it.id == itemId }
+            ?: error("Invoice item $itemId not found on invoice $invoiceId")
+
+        // datePurchase is deliberately left out. It defaults to null and the Json is configured with
+        // encodeDefaults off, so the key is omitted from the body entirely — which the backend reads
+        // as "keep the stored value". Omitting it must never be used to try to clear the field.
+        val body = TransactionItemDto(
+            id = itemId,
+            idTransaction = invoiceId,
+            name = existing.name,
+            amount = existing.amount,
+            tagIds = tags.map { it.id },
+        )
+        invoiceItemApi.updateItem(invoiceId, itemId, body)
+
+        if (!learnRule) return@runCatching PurchaseClassifyOutcome.TagsOnly
+
+        // `tags` arrives in selection order and a rule holds one tag: the first expense tag wins.
+        val tag = tags.firstOrNull { it.kind == TransactionType.EXPENSE }
+            ?: return@runCatching PurchaseClassifyOutcome.RuleFailed
+
+        // Key on the merchant, not the date-stamped item name — a pattern like
+        // "<merchant> · 2026-05-28" would never CONTAINS-match a future purchase.
+        val (cleanName, _) = splitTrailingDate(existing.name)
+        // A bare gateway marker ("Ifd*") as an item name would mint a rule matching every merchant
+        // behind that acquirer, and being the oldest match it would win every classification.
+        val pattern = TeachPatternSanitizer.clean(cleanName.takeIf { it.isNotBlank() } ?: existing.name)
+            ?: return@runCatching PurchaseClassifyOutcome.RuleFailed
+
+        val written = classificationRuleRepository.create(ClassificationRule.suggest(pattern, tag.id))
+        when (written.getOrNull()) {
+            RuleWriteOutcome.Saved -> PurchaseClassifyOutcome.RuleCreated
+            RuleWriteOutcome.Duplicate -> PurchaseClassifyOutcome.RuleAlreadyExisted
+            is RuleWriteOutcome.Rejected, null -> PurchaseClassifyOutcome.RuleFailed
+        }
+    }
+
+    override suspend fun addCard(
+        name: String,
+        brand: String?,
+        closingDay: Int?,
+        color: String?,
+    ): Result<CreditCard> = runCatching {
+        val id = creditCardApi.create(
+            CreditCardDto(name = name, brand = brand, closingDay = closingDay, color = color),
+        )
+        val created = creditCardApi.getCards().firstOrNull { it.id == id }
+            ?: CreditCardDto(id = id, name = name, brand = brand, closingDay = closingDay, color = color)
+        created.toCreditCard()
+    }
+
+    private fun TransactionItemDto.toInvoiceItem(invoiceId: String, fallbackDate: LocalDate): InvoiceItem {
+        val (cleanName, stampedDate) = splitTrailingDate(name)
+        return InvoiceItem(
+            transactionId = invoiceId,
+            invoiceId = invoiceId,
+            itemId = id,
+            name = cleanName.takeIf { it.isNotBlank() } ?: "Compra",
+            // datePurchase is the real field; the name stamp is only a fallback for items stored
+            // before the backend carried a date (see splitTrailingDate).
+            date = RemoteMappers.parseDate(datePurchase) ?: stampedDate ?: fallbackDate,
+            amount = amount.abs(),
+            tags = tags.orEmpty().map { it.toDomain() },
+            installmentLabel = null,
+        )
+    }
+
+    /**
+     * LEGACY. Invoice item names used to arrive as "<merchant> · YYYY-MM-DD" because the DTO had no
+     * date field, so the stamp was the only place the per-item purchase date was carried. The
+     * backend now sends [TransactionItemDto.datePurchase] and no longer stamps the name.
+     *
+     * This stays for two reasons. Items already stored with a stamped name keep the suffix in their
+     * persisted `name`, so dropping this would surface "Padaria · 2026-06-03" as the merchant — it
+     * still strips the suffix for display even when [TransactionItemDto.datePurchase] supplies the
+     * date. And [classifyPurchase] derives its classification-rule pattern from the stored name: a
+     * rule keyed on "Padaria · 2026-06-03" would never CONTAINS-match a future purchase. That second
+     * use outlives the last legacy stamped name.
+     *
+     * Returns the name unchanged + null when no trailing date is present.
+     */
+    private fun splitTrailingDate(raw: String): Pair<String, LocalDate?> {
+        val match = TRAILING_ISO_DATE.find(raw) ?: return raw to null
+        val date = runCatching { LocalDate.parse(match.groupValues[1]) }.getOrNull() ?: return raw to null
+        val name = raw.removeRange(match.range).trim().trimEnd('·', '-', ' ').trim()
+        return name to date
+    }
+
+    private fun fallbackItems(cardExpenses: List<TransactionDto>): List<InvoiceItem> =
+        cardExpenses
+            .filter { !it.isInvoice }
+            .mapNotNull { tx ->
+                val txId = tx.id ?: return@mapNotNull null
+                val rawName = tx.name?.takeIf { it.isNotBlank() }
+                    ?: tx.description?.takeIf { it.isNotBlank() }
+                    ?: "Compra"
+                val (cleanName, stampedDate) = splitTrailingDate(rawName)
+                InvoiceItem(
+                    transactionId = txId,
+                    invoiceId = txId,
+                    itemId = null,
+                    name = cleanName.takeIf { it.isNotBlank() } ?: rawName,
+                    // An invoice line shows when the purchase happened, so datePurchase leads here
+                    // too — otherwise the same purchase would date differently on this path and on
+                    // the sub-resource one above.
+                    date = RemoteMappers.parseDate(tx.datePurchase)
+                        ?: stampedDate
+                        ?: RemoteMappers.parseDate(tx.datePaid)
+                        ?: RemoteMappers.parseDate(tx.dateDue)
+                        ?: LocalDate.now(),
+                    amount = (tx.amount ?: BigDecimal.ZERO).abs(),
+                    tags = tx.tags.orEmpty().map { it.toDomain() },
+                    installmentLabel = null,
+                )
+            }
+
+    private suspend fun creditCards(): List<CreditCard> =
+        creditCardApi.getCards().map { it.toCreditCard() }
+
+    private fun CreditCardDto.toCreditCard(): CreditCard {
+        val key = id ?: name
+        val (start, end) = RemoteMappers.cardGradient(key)
+        return CreditCard(
+            id = key,
+            name = name,
+            brand = brand ?: "",
+            last4 = "",
+            gradientStart = start,
+            gradientEnd = end,
+            limit = BigDecimal.ZERO,
+            billDay = closingDay ?: 1,
+        )
+    }
+
+    private companion object {
+        // Trailing " · 2026-05-28" (separator optional) at the end of an invoice item name.
+        val TRAILING_ISO_DATE = Regex("""[\s·-]*(\d{4}-\d{2}-\d{2})\s*$""")
+    }
+}

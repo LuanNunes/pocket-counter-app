@@ -1,0 +1,6 @@
+#include "Base.xcconfig"
+
+API_BASE_URL = https:$(SLASH)$(SLASH)api.pocket-counter.com$(SLASH)
+APP_ENVIRONMENT = prod
+PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter
+APP_DISPLAY_NAME = PocketCounter

@@ -1,0 +1,21 @@
+// Settings every target needs. Included by Base.xcconfig (app) and Tests.xcconfig.
+//
+// `//` starts a comment in xcconfig, so a literal "https://" would be truncated to
+// "https:". SLASH is the standard workaround — see Dev.xcconfig.
+SLASH = /
+
+IPHONEOS_DEPLOYMENT_TARGET = 26.0
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES
+
+TARGETED_DEVICE_FAMILY = 1
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+
+// .gitkeep keeps the empty layer folders visible in a fresh clone. Without this the
+// synchronized group copies each one as a bundle resource and they collide.
+EXCLUDED_SOURCE_FILE_NAMES = .gitkeep
+
+// Per-machine DEVELOPMENT_TEAM, gitignored. `#include?` does not fail when absent —
+// copy Local.private.xcconfig.example to Local.private.xcconfig to set yours.
+#include? "Local.private.xcconfig"

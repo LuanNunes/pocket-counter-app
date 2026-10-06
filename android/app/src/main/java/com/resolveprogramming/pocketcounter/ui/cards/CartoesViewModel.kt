@@ -1,0 +1,231 @@
+package com.resolveprogramming.pocketcounter.ui.cards
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.resolveprogramming.pocketcounter.data.local.CardPrefsStore
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
+import com.resolveprogramming.pocketcounter.data.repository.CardLast4Repository
+import com.resolveprogramming.pocketcounter.data.repository.CardRepository
+import com.resolveprogramming.pocketcounter.data.repository.PurchaseClassifyOutcome
+import com.resolveprogramming.pocketcounter.data.repository.TagRepository
+import com.resolveprogramming.pocketcounter.domain.model.InvoiceItem
+import com.resolveprogramming.pocketcounter.domain.model.OpenInvoice
+import com.resolveprogramming.pocketcounter.domain.model.SummaryGroup
+import com.resolveprogramming.pocketcounter.domain.model.Tag
+import com.resolveprogramming.pocketcounter.domain.model.TagContext
+import com.resolveprogramming.pocketcounter.domain.model.TransactionType
+import com.resolveprogramming.pocketcounter.domain.model.buildFaturaBreakdown
+import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternSanitizer
+import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.math.BigDecimal
+import java.time.YearMonth
+import javax.inject.Inject
+import kotlin.math.roundToInt
+
+data class CartoesUiState(
+    val monthKey: String = YearMonth.now().toString(),
+    val monthLabel: String = "",
+    val grandTotal: BigDecimal = BigDecimal.ZERO,
+    val invoices: List<OpenInvoice> = emptyList(),
+    val allTags: List<Tag> = emptyList(),
+    val allContexts: List<TagContext> = emptyList(),
+    val categoriesByCardId: Map<String, List<SummaryGroup>> = emptyMap(),
+    val categoryA11yByCardId: Map<String, String> = emptyMap(),
+    val isLoading: Boolean = true,
+    val showAddCard: Boolean = false,
+    val isSavingCard: Boolean = false,
+    val toastMessage: String? = null,
+    /** Persisted: whether the gradient fatura card tile is collapsed to a slim line. */
+    val cardCollapsed: Boolean = false,
+)
+
+@HiltViewModel
+class CartoesViewModel @Inject constructor(
+    private val cardRepository: CardRepository,
+    private val tagRepository: TagRepository,
+    private val viewedMonth: ViewedMonthStore,
+    private val cardPrefs: CardPrefsStore,
+    private val cardLast4Repository: CardLast4Repository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(
+        CartoesUiState(
+            monthKey = viewedMonth.month.value,
+            monthLabel = monthLabelPtBr(YearMonth.parse(viewedMonth.month.value)),
+        ),
+    )
+    val state: StateFlow<CartoesUiState> = _state.asStateFlow()
+
+    init {
+        loadTags()
+        // Follow the app-wide viewed month: reload whenever it changes (incl. the initial value).
+        viewModelScope.launch {
+            viewedMonth.month.collect { key ->
+                _state.update {
+                    it.copy(monthKey = key, monthLabel = monthLabelPtBr(YearMonth.parse(key)), isLoading = true)
+                }
+                loadData()
+            }
+        }
+        // Restore the persisted card-tile collapsed preference and keep it in sync.
+        viewModelScope.launch {
+            cardPrefs.tileCollapsed.collect { collapsed ->
+                _state.update { it.copy(cardCollapsed = collapsed) }
+            }
+        }
+    }
+
+    /** Persist the card-tile collapsed preference; the collector above reflects it into state. */
+    fun setCardCollapsed(collapsed: Boolean) {
+        viewModelScope.launch { cardPrefs.setTileCollapsed(collapsed) }
+    }
+
+    fun loadData() {
+        val key = _state.value.monthKey
+        viewModelScope.launch {
+            cardRepository.getOpenInvoices(refOf(key))
+                .onSuccess { invoices ->
+                    val grand = invoices.fold(BigDecimal.ZERO) { acc, inv -> acc + inv.total }
+                    _state.update {
+                        // A newer month step supersedes this result.
+                        if (it.monthKey != key) return@update it
+                        it.copy(grandTotal = grand, invoices = invoices, isLoading = false).withCategories()
+                    }
+                }
+                .onFailure {
+                    _state.update { if (it.monthKey != key) it else it.copy(isLoading = false) }
+                }
+        }
+    }
+
+    fun stepMonth(delta: Int) = viewedMonth.step(delta)
+
+    private fun refOf(monthKey: String): Int =
+        YearMonth.parse(monthKey).let { it.year * 100 + it.monthValue }
+
+    // Tags and contexts land in a single emission: a state with tags but no contexts yet buckets
+    // every tag under "Sem categoria".
+    private fun loadTags() {
+        viewModelScope.launch {
+            val tagsDeferred = async { tagRepository.getAllTags() }
+            val contextsDeferred = async { tagRepository.getAllContexts() }
+            // Invoice items (and the rules learned from them) are expense-only; never offer
+            // income categories in the fatura classify sheet.
+            val tagsResult = tagsDeferred.await()
+            val contextsResult = contextsDeferred.await()
+            val tags = tagsResult.getOrNull()?.filter { it.kind == TransactionType.EXPENSE }
+            val contexts = contextsResult.getOrNull()
+            // Without this the picker's empty state claims the user has no tags at all.
+            val loadError = "Não foi possível carregar as tags"
+                .takeIf { tagsResult.isFailure || contextsResult.isFailure }
+            _state.update {
+                it.copy(
+                    allTags = tags ?: it.allTags,
+                    allContexts = contexts ?: it.allContexts,
+                    toastMessage = loadError ?: it.toastMessage,
+                ).withCategories()
+            }
+        }
+    }
+
+    private fun CartoesUiState.withCategories(): CartoesUiState {
+        val tagToContext = allTags.associate { it.id to it.idContext }
+        val contextById = allContexts.associateBy { it.id }
+        val byCard = invoices.associate { invoice ->
+            invoice.card.id to buildFaturaBreakdown(invoice.items, invoice.total, tagToContext, contextById)
+        }
+        val a11y = byCard.mapValues { (_, groups) -> categoriesA11y(groups) }
+        return copy(categoriesByCardId = byCard, categoryA11yByCardId = a11y)
+    }
+
+    // Mirror the chart/list: announce only positive shares, never an over-itemized fatura's negative remainder.
+    private fun categoriesA11y(groups: List<SummaryGroup>): String =
+        groups.filter { it.pct > 0f }.joinToString(", ") { "${it.name} ${(it.pct * 100).roundToInt()}%" }
+
+    fun classifyPurchase(
+        item: InvoiceItem,
+        selectedTags: List<Tag>,
+        learnRule: Boolean,
+    ) {
+        val itemId = item.itemId
+        if (itemId == null) {
+            // Fallback items are plain credit expenses, not invoice line items — they have no
+            // item sub-resource to PUT against, so item-level classification is not available.
+            _state.update { it.copy(toastMessage = "Esta compra não pode ser classificada na fatura") }
+            return
+        }
+        viewModelScope.launch {
+            cardRepository.classifyPurchase(item.invoiceId, itemId, selectedTags, learnRule)
+                .onSuccess { outcome ->
+                    _state.update { it.copy(toastMessage = outcome.toastMessage()) }
+                    loadData()
+                }
+                .onFailure {
+                    _state.update { it.copy(toastMessage = "Não foi possível classificar") }
+                }
+        }
+    }
+
+    fun openAddCard() = _state.update { it.copy(showAddCard = true) }
+
+    fun dismissAddCard() = _state.update { it.copy(showAddCard = false) }
+
+    /**
+     * Creates a new credit card. When [last4] is a non-blank 4-digit string it is stored in the
+     * local last-4 map so subsequent "final NNNN" notifications can be prefilled automatically.
+     *
+     * The [last4] param is local-only — it never reaches [CardRepository] or the backend.
+     */
+    fun addCard(name: String, brand: String?, closingDay: Int?, color: String?, last4: String? = null) {
+        viewModelScope.launch {
+            _state.update { it.copy(isSavingCard = true) }
+            cardRepository.addCard(name, brand, closingDay, color)
+                .onSuccess { card ->
+                    if (!last4.isNullOrBlank() && last4.length == 4) {
+                        cardLast4Repository.associate(card.id, last4)
+                    }
+                    _state.update {
+                        it.copy(isSavingCard = false, showAddCard = false, toastMessage = "Cartão adicionado ✓")
+                    }
+                    loadData()
+                }
+                .onFailure {
+                    _state.update {
+                        it.copy(isSavingCard = false, toastMessage = "Não foi possível adicionar o cartão")
+                    }
+                }
+        }
+    }
+
+    fun consumeToast() {
+        _state.update { it.copy(toastMessage = null) }
+    }
+}
+
+internal fun PurchaseClassifyOutcome.toastMessage(): String = when (this) {
+    PurchaseClassifyOutcome.TagsOnly -> "Compra classificada ✓"
+    PurchaseClassifyOutcome.RuleCreated -> "Classificada ✓ + regra criada"
+    PurchaseClassifyOutcome.RuleAlreadyExisted -> "Classificada ✓ · regra já existia"
+    PurchaseClassifyOutcome.RuleFailed -> "Classificada ✓ (regra falhou)"
+}
+
+/** What "Aprender este padrão" promises on a Cartões purchase: the rule is card-agnostic. */
+internal fun learnRuleHint(itemName: String, selectedTags: List<Tag>): String {
+    val tag = selectedTags.firstOrNull { it.kind == TransactionType.EXPENSE }
+        ?: return "Escolha uma tag de despesa para aprender o padrão."
+    // The rule is keyed on the sanitized name, so promise that pattern — or no rule at all when the
+    // name sanitizes away, which is what classifyPurchase will report as RuleFailed.
+    val pattern = TeachPatternSanitizer.clean(itemName)
+        ?: return "Não é possível aprender um padrão a partir de \"$itemName\"."
+    if (selectedTags.size == 1) {
+        return "Próximas compras contendo \"$pattern\" recebem a tag ${tag.name} automaticamente, em qualquer cartão."
+    }
+    return "Próximas compras contendo \"$pattern\" recebem a tag ${tag.name}. As outras valem só para esta compra."
+}

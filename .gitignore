@@ -1,19 +1,42 @@
-*.iml
-.gradle
-/local.properties
-/.idea
-/.vscode
+# ---------- comum ----------
 .DS_Store
-/build
-/captures
+*.iml
+.idea/
+.vscode/
+
+# ---------- android/ ----------
+.gradle
+.kotlin/
+local.properties
+/android/build
+/android/app/build
+/android/captures
 .externalNativeBuild
 .cxx
-local.properties
-/app/build
+# detekt-rules/ traz o .gitignore proprio para o seu build/
+
+# ---------- ios/ ----------
+# Nunca ignorar *.xcodeproj nem project.pbxproj — eles SAO o projeto.
+/ios/build/
+/ios/.build/
+/ios/DerivedData/
+**/xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+/ios/.swiftpm/
+# Gancho de DEVELOPMENT_TEAM por maquina (ha um .example versionado)
+/ios/Config/Local.private.xcconfig
+
+# ---------- design handoff ----------
+# Copiado localmente, nunca versionado. Ausente num clone novo.
 /handoff
-# Local Claude agent working memory
-.claude/agent-memory/
-# Release signing — never commit the upload keystore or its credentials
-/keystore.properties
+
+# ---------- Claude ----------
+# Com barra no meio, o padrão ancora na raiz: sem o `**/`, não casa com ios/.claude/
+**/.claude/agent-memory/
+
+# ---------- assinatura de release ----------
+# Nunca commitar o upload keystore nem suas credenciais
+/android/keystore.properties
 *.jks
 *.keystore

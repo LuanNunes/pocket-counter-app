@@ -1,0 +1,10 @@
+// Unit test bundle. Shares the compiler settings with the app so both are held to the
+// same language rules, but keeps its own identity and host.
+#include "Shared.xcconfig"
+
+PRODUCT_NAME = $(TARGET_NAME)
+PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.tests
+GENERATE_INFOPLIST_FILE = YES
+
+TEST_HOST = $(BUILT_PRODUCTS_DIR)/PocketCounter.app/PocketCounter
+BUNDLE_LOADER = $(TEST_HOST)

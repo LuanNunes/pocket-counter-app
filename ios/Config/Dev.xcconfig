@@ -1,0 +1,6 @@
+#include "Base.xcconfig"
+
+API_BASE_URL = https:$(SLASH)$(SLASH)api-dev.pocket-counter.com$(SLASH)
+APP_ENVIRONMENT = dev
+PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.dev
+APP_DISPLAY_NAME = PC Dev

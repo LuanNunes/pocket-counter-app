@@ -1,159 +1,54 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code when working in this repository.
-
-# Commands
-
-Use the Gradle wrapper for all tasks.
-
-The app has three product flavors — `local`, `dev`, `prod` — so most task names are
-flavor-qualified. `assembleDebug` and `installDebug` exist but run all three flavors; name the one
-you want.
-
-* Build: `./gradlew :app:assembleLocalDebug`
-* Install: `./gradlew :app:installLocalDebug`
-* Test: `./gradlew test`
-* Single test: `./gradlew :app:testLocalDebugUnitTest --tests "com.package.ClassName"`
-* Lint: `./gradlew :app:lintLocalDebug`
-* Detekt: `./gradlew :app:detekt` (custom rules in `detekt-rules/`; fails on `main` too, so compare counts rather than expecting zero)
-* Clean: `./gradlew clean`
-
-There is no `testDebugUnitTest` or `lintDebug` task — those names do not resolve with the flavors.
-
-Java 17 is required.
-
-Backends per flavor: `local` → `http://10.0.2.2:8080/` (Android emulator → host),
-`dev` → `https://api-dev.pocket-counter.com`.
-
-To install on a physical phone over Wireless Debugging, use `./run-on-phone.sh` (defaults to the
-`dev` flavor; override with `VARIANT=installLocalDebug`).
-
-# Architecture
-
-Stack:
-
-* Kotlin
-* Jetpack Compose
-* MVVM + UDF
-* Hilt
-* Room
-* DataStore
-* Retrofit
-* KSP
-
-Dependencies must always point inward:
+PocketCounter mobile monorepo — two **independent native apps** for the same backend.
 
 ```
-UI
- ↓
-ViewModel
- ↓
-Domain
- ↑
-Data
+android/   Kotlin · Jetpack Compose · Hilt · Retrofit     → android/CLAUDE.md
+ios/       Swift · SwiftUI · URLSession                   → ios/CLAUDE.md
+docs/      ios26/ = iOS design spec; compliance/ = store & privacy
 ```
 
-* Domain contains business rules.
-* UI renders state only.
-* ViewModels orchestrate the flow.
-* Data implements repositories.
-* DTOs never leave the data layer.
+## Routing
 
-# Engineering Principles
+Working under `android/**`, read `android/CLAUDE.md`. Under `ios/**`, read
+`ios/CLAUDE.md`. **Never mix the two sets of conventions** — they are different stacks with
+different idioms. Each app's Gradle/Xcode root is its own directory, so build commands run
+from there, not from here.
 
-## DDD
+## No shared code
 
-* Rich domain models.
-* Business rules belong inside the domain.
-* Avoid anemic models.
-* Domain must not depend on Android, Retrofit or Room.
+There is no code shared between the platforms, and there must not be. The only shared
+contract is the backend's REST API. Domain rules are written twice, in Kotlin and in Swift,
+**on purpose** — that is the accepted cost of going native on both sides. Do not propose
+Kotlin Multiplatform, a shared module, or generated clients without asking first.
 
-## Immutability
+The backend is the arbiter of business rules that matter. Clients replicate input
+validation, not authority.
 
-* Prefer `val` over `var`.
-* State changes should return new instances.
-* Prefer immutable collections.
+## Write scope
 
-## SOLID & DI
+Edits happen **only inside this repository**. The sibling repos
+`../pocket-counter` (backend) and `../pocket-counter-web` (web) are **read-only** — read
+them to check the REST contract or a convention, never to change them. If something there
+needs to change, say so instead of editing it.
 
-* Follow SOLID principles.
-* Depend on interfaces, not implementations.
-* Never instantiate repositories manually.
-* Use Hilt for dependency injection.
+## Backend
 
-## Keep It Simple
+Kotlin/Spring, in the sibling repo `../pocket-counter` (modules `pocket-counter-api`,
+`pocket-counter-core`, `pocket-counter-mcp`). The product's CI/CD lives there; **this repo
+has no CI**, so verification here is local.
 
-* DRY: avoid duplicated logic.
-* KISS: prefer simple solutions.
-* YAGNI: don't build for hypothetical requirements.
-* Favor composition over inheritance.
+* Endpoints are under `api/v1/`; auth is JWT Bearer with refresh.
+* The OpenAPI spec is served at `/v3/api-docs`, but `OpenApiConfig` is `@Profile("dev")` —
+  it only exists when the backend runs with the `dev` profile.
+* Backends per environment: Android emulator → `http://10.0.2.2:8080/`; iOS simulator →
+  `http://localhost:8080/` (the simulator shares the Mac's network stack); dev →
+  `https://api-dev.pocket-counter.com/`; prod → `https://api.pocket-counter.com/`.
 
-## Code Style
+## Common ground
 
-* Prefer early returns over `else`.
-* Keep functions small and focused.
-* Use meaningful names.
-* Minimize nesting.
-* Prefer expressions over mutable code.
-* Use Kotlin idioms (`let`, `run`, `apply`, `map`, `fold`, etc.) when they improve readability.
-
-## Error Handling
-
-* Fail fast.
-* Never swallow exceptions.
-* Validate inside the domain.
-* Surface meaningful errors.
-
-## Testing
-
-Test business rules first.
-
-Prioritize:
-
-* Domain
-* Use cases
-* Validation
-* Mappers
-
-UI tests should verify rendering and interactions only.
-
-# Wizard
-
-The wizard is the application's main workflow.
-
-Flow:
-
-Type → Amount/Date → Payment Source → Source → Tags → Success
-
-Rules:
-
-* Changing the payment source invalidates the selected source.
-* Token roles are mutually exclusive.
-* Validation belongs inside `WizardDraft`.
-
-# Backend
-
-When integrating new endpoints:
-
-1. Create Retrofit API.
-2. Create DTOs.
-3. Implement the repository.
-4. Replace the in-memory binding in `DataModule`.
-
-Do not change repository interfaces unless absolutely necessary.
-
-# Design
-
-`handoff/design_handoff_android_final/` is the source of truth for the UI — start at its `README.md`.
-It covers the whole app and supersedes the older `design_handoff_android_completo/` and
-`design_handoff_android_changes/` bundles. Inside it, `specs/` holds the per-screen specs,
-`prototype/` the reference JSX, and `screens/` the renders.
-
-Two later bundles layer deltas on top of it, scoped to Home and Transações:
-`handoff/design_handoff_home_redesign/` and `handoff/design_handoff_home_transacoes/`. For those two
-screens the deltas win; everything else comes from the final bundle.
-
-`handoff/` is gitignored, so it is not in a fresh clone — it has to be copied in locally. If it is
-absent, say so rather than guessing at the design.
-
-When implementation and specification differ, follow the specification unless there is a documented reason not to.
+Both apps share the product domain, the pt-BR user-facing copy, and these engineering
+principles, expressed in each language's idiom: rich domain models with the rules inside
+them; the domain free of framework dependencies; immutability by default; dependency
+inversion through interfaces; early returns over `else`; fail fast and never swallow
+errors; and tests that cover domain, use cases, validation and mappers before UI.

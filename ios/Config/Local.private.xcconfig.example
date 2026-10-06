@@ -1,0 +1,3 @@
+// Copy to Local.private.xcconfig (gitignored) and set your Apple Developer team.
+// Only needed to run on a physical device; the simulator does not require signing.
+DEVELOPMENT_TEAM = XXXXXXXXXX

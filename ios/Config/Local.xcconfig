@@ -1,0 +1,8 @@
+#include "Base.xcconfig"
+
+// The iOS simulator shares the Mac's network stack, so the host is localhost.
+// (Android uses 10.0.2.2 because its emulator does not.)
+API_BASE_URL = http:$(SLASH)$(SLASH)localhost:8080$(SLASH)
+APP_ENVIRONMENT = local
+PRODUCT_BUNDLE_IDENTIFIER = com.resolveprogramming.pocketcounter.local
+APP_DISPLAY_NAME = PC Local
