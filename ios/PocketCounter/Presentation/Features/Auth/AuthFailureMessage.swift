@@ -12,9 +12,6 @@ enum AuthFailureMessage {
 
     private static let generic = "Não foi possível concluir. Revise os dados e tente novamente"
     private static let google = "Não foi possível entrar com o Google"
-    private static let sentinels: Set<String> = [
-        "Domain exception occurred", "Validation failed", "An unexpected error occurred", "Invalid request parameter",
-    ]
 
     /// `nil` renders nothing.
     static func text(for failure: AuthenticationFailure, path: AuthPath) -> AuthMessage? {
@@ -42,23 +39,11 @@ enum AuthFailureMessage {
             // A short legacy password makes /auth/login answer 400, whose text ("A senha precisa
             // ter ao menos 8 caracteres") reads oddly on a sign-in screen. Showing the server's
             // text anyway is the deliberate choice — no special case maps it to "incorretos".
-            return AuthMessage(kind: .error, text: presentable(payload))
+            return AuthMessage(kind: .error, text: ServerText.presentable(payload) ?? generic)
         case .server:
             return AuthMessage(kind: .error, text: "Erro inesperado")
         case .abandoned, .unreachable:
             return nil
         }
-    }
-
-    /// No language detection: guessing a one-line string's language would suppress legitimate
-    /// pt-BR server copy. What survives the gate is shown verbatim.
-    private static func presentable(_ payload: String) -> String {
-        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !looksLikeBundleKey(trimmed), !sentinels.contains(trimmed) else { return generic }
-        return trimmed
-    }
-
-    private static func looksLikeBundleKey(_ text: String) -> Bool {
-        text.contains(".") && !text.contains(" ") && text.count > 8
     }
 }

@@ -3,6 +3,9 @@ import Observation
 /// What must be forgotten when a session ends, so the next account never reads this one's data.
 typealias SessionEndAction = @Sendable () async -> Void
 
+/// What a screen does when a request finds the session gone.
+typealias SessionExpiredAction = @MainActor () async -> Void
+
 @MainActor
 @Observable
 final class SessionModel {

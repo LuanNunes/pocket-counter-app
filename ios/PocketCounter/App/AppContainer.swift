@@ -51,6 +51,11 @@ struct AppContainer {
         LoadLedger(transactions: transactionRepository, tags: tagRepository, cards: creditCardRepository)
     }
 
+    var loadMonth: LoadMonthAction {
+        let ledger = loadLedger // read outside the closure: the property is MainActor-isolated, and rebuilt per access
+        return { ref throws(LoadFailure) in try await ledger.month(ref) }
+    }
+
     /// Hands the session model the verb it needs, not the repositories.
     var endSession: SessionEndAction {
         let caches: [any LookupCaching] = [tagRepository, creditCardRepository]

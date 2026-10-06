@@ -14,6 +14,7 @@ struct PocketInlineMessage: View {
     enum Kind {
         case error
         case offline
+        case warning
         case info
     }
 
@@ -41,7 +42,7 @@ struct PocketInlineMessage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: symbol)
+                Image(systemName: kind.symbol)
                     .font(PocketFont.body.font)
                     .accessibilityHidden(true)
 
@@ -88,14 +89,6 @@ struct PocketInlineMessage: View {
         return "\(text). \(secondary)"
     }
 
-    private var symbol: String {
-        switch kind {
-        case .error: "exclamationmark.triangle.fill"
-        case .offline: "wifi.slash"
-        case .info: "info.circle"
-        }
-    }
-
     private var primaryInk: Color {
         switch surface {
         case .onHero: PocketColor.onHero
@@ -106,7 +99,7 @@ struct PocketInlineMessage: View {
     private var cellInk: Color {
         switch kind {
         case .error: PocketColor.destructiveInk
-        case .offline: PocketColor.warningInk
+        case .offline, .warning: PocketColor.warningInk
         case .info: PocketColor.labelSecondary
         }
     }
@@ -122,6 +115,17 @@ struct PocketInlineMessage: View {
         guard !reduceMotion else { return .opacity }
 
         return .opacity.combined(with: .move(edge: .top))
+    }
+}
+
+extension PocketInlineMessage.Kind {
+    var symbol: String {
+        switch self {
+        case .error: "exclamationmark.triangle.fill"
+        case .offline: "wifi.slash"
+        case .warning: "exclamationmark.triangle"
+        case .info: "info.circle"
+        }
     }
 }
 
@@ -184,6 +188,7 @@ private struct InlineMessagePreview<Content: View>: View {
         PocketInlineMessage(kind: .error, text: "Não foi possível encerrar a sessão agora",
                             surface: .onCell)
         PocketInlineMessage(kind: .offline, text: "Sem conexão com o servidor", surface: .onCell)
+        PocketInlineMessage(kind: .warning, text: "As tags não carregaram", surface: .onCell)
         PocketInlineMessage(kind: .info, text: "Seus dados continuam salvos.", surface: .onCell)
     }
     .padding(PocketMetrics.screenMargin)
