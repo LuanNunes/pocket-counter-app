@@ -23,7 +23,7 @@ struct PocketCounterApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AppRoot(session: session)
+            AppRoot(session: session, container: container)
         }
     }
 }
