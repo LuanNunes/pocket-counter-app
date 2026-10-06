@@ -42,6 +42,11 @@ enum PocketMetrics {
     static let tileRadius: CGFloat = 24
     static let tilePadding: CGFloat = 14
     static let tileSpacing: CGFloat = 12
+    static let tilesMarginV: CGFloat = 12
+    static let tileIconBottomSpacing: CGFloat = 10
+    static let tileTextSpacing: CGFloat = 2
+    static let iconTileSize: CGFloat = 30
+    static let iconTileRadius: CGFloat = 8
 
     // MARK: Controls
 
@@ -72,6 +77,12 @@ enum PocketMetrics {
     /// `.qa-home-b`
     static let quickAddHeight: CGFloat = 52
     static let quickAddRadius: CGFloat = 26
+    static let quickAddIconSize: CGFloat = 36
+    static let quickAddRing: CGFloat = 1.5
+    static let quickAddSpacing: CGFloat = 8
+    static let quickAddInnerPadding: CGFloat = 8
+    static let quickAddIconSpacing: CGFloat = 10
+    static let quickAddBottomPadding: CGFloat = 14
 
     /// `.btn` — the full-width primary button. Equal to `quickAdd*` by coincidence, not by
     /// derivation, so the two are not aliased.

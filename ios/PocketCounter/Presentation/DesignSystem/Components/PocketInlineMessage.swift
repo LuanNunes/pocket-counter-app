@@ -35,6 +35,7 @@ struct PocketInlineMessage: View {
     var text: String
     var secondary: String?
     var action: Action?
+    var isBusy = false
     var surface: Surface = .onHero
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -63,7 +64,10 @@ struct PocketInlineMessage: View {
             .foregroundStyle(primaryInk)
             .accessibilityElement(children: .combine)
 
-            if let action {
+            if isBusy {
+                ProgressView()
+                    .padding(.vertical, 12)
+            } else if let action {
                 Button(action.title, action: action.perform)
                     .pocketFont(PocketFont.link)
                     .foregroundStyle(primaryInk)

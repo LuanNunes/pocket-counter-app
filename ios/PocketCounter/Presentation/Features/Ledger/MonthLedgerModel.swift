@@ -39,8 +39,8 @@ final class MonthLedgerModel {
     private var latestRequest: [RefYearMonth: Int] = [:]
     private var inFlight: (ref: RefYearMonth, task: Task<Void, Never>)?
 
-    /// Does not load: the view's `.task(id: state.month)` does. A screen showing `MonthPill`
-    /// without that task leaves the new month in `.firstLoad`.
+    /// Does not load: `AppShell`'s `.task(id: state.month)` does. Only that one task may drive
+    /// it: a per-screen task is cancelled by a tab switch, and cancelling aborts the load.
     /// Clamps rather than guards: a month outside the window is the nearest edge, not a no-op.
     func select(_ month: RefYearMonth) {
         let month = state.window.clamped(month)
@@ -62,6 +62,8 @@ final class MonthLedgerModel {
         guard state.load.value == nil, !state.load.isLoading else { return }
         await request()
     }
+
+    var refreshAction: @Sendable () async -> Void { { [self] in await refresh() } }
 
     /// Always asks; the retry button and pull-to-refresh both land here.
     func refresh() async {

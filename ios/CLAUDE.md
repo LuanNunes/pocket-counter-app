@@ -216,3 +216,8 @@ documented reason not to.
   the Mac's network stack.
 * The Início "N lançamentos para revisar" banner is **not implementable**: it is fed by
   Android's `NotificationListenerService`, which has no iOS equivalent.
+* The dark `tint` is deliberately off-spec: `glass.css:16` is `oklch(0.72 0.16 285)` and we ship
+  ≈L 0.64 (`#847AE8`), because white on the spec value is 2.61:1, below the 3:1 floor for icons
+  and large text. App-wide in dark mode; a "re-derive the tokens" pass must not revert it.
+* Início orders `MonthPill` → quick-add → hero, where `home.jsx:21-22` puts quick-add first: the
+  pill is shared chrome owned by `MonthScreen`.

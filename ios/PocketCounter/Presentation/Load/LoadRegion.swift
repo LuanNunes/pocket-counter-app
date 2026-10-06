@@ -24,7 +24,7 @@ struct LoadRegion<Value: Equatable, Content: View>: View {
             case .stale(let value, let failure):
                 VStack(alignment: .leading, spacing: 0) {
                     if let notice = LoadFailureMessage.notice(for: failure) {
-                        PocketNoticeCard(notice: notice, action: retryAction)
+                        PocketNoticeCard(notice: notice, action: retryAction, isBusy: isRetrying)
                             .padding(.bottom, PocketMetrics.tileSpacing)
                     }
 
@@ -46,9 +46,8 @@ struct LoadRegion<Value: Equatable, Content: View>: View {
         phase == .firstLoad
     }
 
-    private var retryAction: PocketInlineMessage.Action? {
-        guard !isRetrying else { return nil }
-        return .init(title: "Tentar novamente", perform: onRetry)
+    private var retryAction: PocketInlineMessage.Action {
+        .init(title: "Tentar novamente", perform: onRetry)
     }
 
     private var skeleton: some View {
