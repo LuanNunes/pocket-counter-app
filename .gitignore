@@ -32,7 +32,8 @@ local.properties
 /handoff
 
 # ---------- Claude ----------
-.claude/agent-memory/
+# Com barra no meio, o padrão ancora na raiz: sem o `**/`, não casa com ios/.claude/
+**/.claude/agent-memory/
 
 # ---------- assinatura de release ----------
 # Nunca commitar o upload keystore nem suas credenciais
