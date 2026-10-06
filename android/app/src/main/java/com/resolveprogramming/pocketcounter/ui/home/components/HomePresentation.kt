@@ -9,10 +9,16 @@ internal fun figureOrDash(value: String, hasLoaded: Boolean): String = value.tak
 /** The greeting and the avatar initial read from this one string, so a blank name never shows "?". */
 internal fun homeGreeting(userName: String): String = userName.trim().ifBlank { "Bem-vindo" }
 
-/** TalkBack contentDescription for the hero's headline, while [hasLoaded] is still false. */
+/** TalkBack contentDescription for the hero's PENDING headline, "carregando" while [hasLoaded] is false. */
 internal fun heroPendingDescription(monthLabel: String, formattedPending: String, hasLoaded: Boolean): String {
     if (!hasLoaded) return "Pendente de $monthLabel, carregando"
     return "Pendente de $monthLabel, $formattedPending"
+}
+
+/** The [HighlightData.BALANCE] counterpart of [heroPendingDescription]. */
+internal fun heroBalanceDescription(monthLabel: String, formattedBalance: String, hasLoaded: Boolean): String {
+    if (!hasLoaded) return "Saldo de $monthLabel, carregando"
+    return "Saldo de $monthLabel, $formattedBalance"
 }
 
 /** TalkBack contentDescription for one Despesas/Receitas/Saldo row in the hero's KPI stack. */

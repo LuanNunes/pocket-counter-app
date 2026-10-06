@@ -192,6 +192,7 @@ fun HomeContent(
                             monthLabel = state.monthLabel,
                             kpis = state.kpis,
                             balance = state.balance,
+                            highlightData = state.highlightData,
                             hasLoadedMonth = figuresKnown,
                         )
                     }

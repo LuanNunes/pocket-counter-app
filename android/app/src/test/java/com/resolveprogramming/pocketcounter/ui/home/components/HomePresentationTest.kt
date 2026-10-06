@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.ui.home.components
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
+import java.time.YearMonth
 
 class HomePresentationTest {
 
@@ -51,6 +52,49 @@ class HomePresentationTest {
         )
 
         assertEquals("Pendente de Agosto 2026, R$ 100,00", description)
+    }
+
+    // -- heroBalanceDescription --
+
+    @Test
+    fun `heroBalanceDescription reads carregando while loading`() {
+        val description = heroBalanceDescription(
+            monthLabel = "Agosto 2026",
+            formattedBalance = "R$ 100,00",
+            hasLoaded = false,
+        )
+
+        assertEquals("Saldo de Agosto 2026, carregando", description)
+    }
+
+    @Test
+    fun `heroBalanceDescription reads the value once loaded`() {
+        val description = heroBalanceDescription(
+            monthLabel = "Agosto 2026",
+            formattedBalance = "-R$ 100,00",
+            hasLoaded = true,
+        )
+
+        assertEquals("Saldo de Agosto 2026, -R$ 100,00", description)
+    }
+
+    // -- highlightDataFor --
+
+    private val today = YearMonth.of(2026, 10)
+
+    @Test
+    fun `highlightDataFor leads with the balance for a closed month`() {
+        assertEquals(HighlightData.BALANCE, highlightDataFor(today.minusMonths(1), today))
+    }
+
+    @Test
+    fun `highlightDataFor leads with pending for the current month`() {
+        assertEquals(HighlightData.PENDING, highlightDataFor(today, today))
+    }
+
+    @Test
+    fun `highlightDataFor leads with pending for a future month`() {
+        assertEquals(HighlightData.PENDING, highlightDataFor(today.plusMonths(1), today))
     }
 
     // -- kpiRowDescription --

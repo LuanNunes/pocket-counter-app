@@ -38,6 +38,8 @@ import com.resolveprogramming.pocketcounter.domain.notification.matchInvoicePaym
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.contextos.CuratedPalette
 import com.resolveprogramming.pocketcounter.ui.format.monthLabelPtBr
+import com.resolveprogramming.pocketcounter.ui.home.components.HighlightData
+import com.resolveprogramming.pocketcounter.ui.home.components.highlightDataFor
 import com.resolveprogramming.pocketcounter.ui.transacoes.FormMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -95,6 +97,8 @@ data class HomeUiState(
     val isRefreshing: Boolean = false,
     /** True once the ledger COMMITTED a result for [month] — success OR failure. Never derived from emptiness. */
     val hasLoadedMonth: Boolean = false,
+    /** Follows [month] the instant it changes, not the ledger commit — see [highlightDataFor]. */
+    val highlightData: HighlightData = HighlightData.PENDING,
     /** True while every commit for [month] has failed, so the figures below are unknown rather than zero. */
     val monthLoadFailed: Boolean = false,
 )
@@ -151,6 +155,7 @@ class HomeViewModel @Inject constructor(
             HomeUiState(
                 month = ym,
                 monthLabel = monthLabelPtBr(ym),
+                highlightData = highlightDataFor(ym, YearMonth.now()),
                 isCurrentMonth = ym == YearMonth.now(),
             )
         },
@@ -170,6 +175,7 @@ class HomeViewModel @Inject constructor(
                     it.copy(
                         month = ym,
                         monthLabel = monthLabelPtBr(ym),
+                        highlightData = highlightDataFor(ym, YearMonth.now()),
                         openBillsTotal = BigDecimal.ZERO,
                         openBillsCount = 0,
                         openBillsLoading = true,
@@ -257,6 +263,9 @@ class HomeViewModel @Inject constructor(
                         monthItems = items
                         s.copy(
                             isCurrentMonth = current,
+                            // Recomputed here too: a session left open across midnight on the last day
+                            // of a month would otherwise keep a now-closed month on the PENDENTE headline.
+                            highlightData = highlightDataFor(month, YearMonth.now()),
                             hasLoadedMonth = true,
                             monthLoadFailed = false,
                             // On the current month the classify pass is the sole writer of these — its
