@@ -27,9 +27,13 @@ struct PocketFormatTests {
         #expect(PocketFormat.currency(Decimal(42)).contains("42,00"))
     }
 
-    @Test("a negative amount keeps its sign")
+    @Test("a negative amount uses the true minus sign, attached to the symbol")
     func currencyKeepsNegativeSign() {
-        #expect(PocketFormat.currency(Decimal(string: "-12.30")!).contains("-"))
+        let formatted = PocketFormat.currency(Decimal(string: "-12.30")!)
+
+        #expect(formatted.contains("\u{2212}"))
+        #expect(formatted.contains("-") == false)
+        #expect(formatted.hasPrefix("\u{2212}R$") || formatted.hasPrefix("R$\u{2212}"))
     }
 
     @Test("an amount can be rendered without its sign, for a column that labels it instead")
@@ -37,6 +41,7 @@ struct PocketFormatTests {
         let formatted = PocketFormat.currency(Decimal(string: "-12.30")!, signed: false)
 
         #expect(formatted.contains("-") == false)
+        #expect(formatted.contains("\u{2212}") == false)
         #expect(formatted.contains("12,30"))
     }
 

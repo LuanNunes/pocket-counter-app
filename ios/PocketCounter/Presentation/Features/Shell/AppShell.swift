@@ -3,18 +3,12 @@ import SwiftUI
 /// The signed-in app. The ledger model is built here, never in `PocketCounterApp`, so it dies
 /// with the session instead of holding the previous user's months.
 struct AppShell: View {
-    private enum Destination: Hashable {
-        case report, categories, shortcuts
-        #if DEBUG
-        case gallery
-        #endif
-    }
-
     let user: AuthenticatedUser
     let signOutFailed: Bool
     let onSignOut: () -> Void
 
     @State private var ledger: MonthLedgerModel
+    @State private var tab: TabRoute = .inicio
 
     init(
         container: AppContainer,
@@ -31,37 +25,44 @@ struct AppShell: View {
     }
 
     var body: some View {
-        TabView {
-            Tab("Início", systemImage: "house.fill") {
-                stack {
-                    monthScreen("Início", summary: summaryRows)
+        TabView(selection: $tab) {
+            Tab("Início", systemImage: "house.fill", value: TabRoute.inicio) {
+                NavigationStack {
+                    HomeScreen(ledger: ledger, onSelectTab: { tab = $0 })
+                        .navigationDestination(for: HomeRoute.self) { homeDestination($0) }
                 }
             }
-            Tab("Transações", systemImage: "list.bullet") {
-                stack { monthScreen("Transações", summary: countRow) }
+            Tab("Transações", systemImage: "list.bullet", value: TabRoute.transacoes) {
+                NavigationStack { transactions }
             }
-            Tab("Cartões", systemImage: "creditcard") {
-                stack { notBuilt("Cartões") }
+            Tab("Cartões", systemImage: "creditcard", value: TabRoute.cartoes) {
+                NavigationStack { notBuilt("Cartões") }
             }
-            Tab("Mais", systemImage: "ellipsis.circle") {
-                stack { more }
+            Tab("Mais", systemImage: "ellipsis.circle", value: TabRoute.mais) {
+                NavigationStack {
+                    more.navigationDestination(for: MoreRoute.self) { moreDestination($0) }
+                }
             }
         }
         .tint(PocketColor.tint)
-    }
-
-    private func stack(@ViewBuilder _ root: () -> some View) -> some View {
-        NavigationStack {
-            root()
-                .navigationDestination(for: Destination.self) { destination($0) }
-        }
+        .task(id: ledger.state.month) { await ledger.load() }
     }
 
     @ViewBuilder
-    private func destination(_ destination: Destination) -> some View {
+    private func homeDestination(_ route: HomeRoute) -> some View {
         Group {
-            switch destination {
-            case .report: notBuilt("Relatório")
+            switch route {
+            case .report: reportScreen()
+            }
+        }
+        .toolbar(.hidden, for: .tabBar)
+    }
+
+    @ViewBuilder
+    private func moreDestination(_ route: MoreRoute) -> some View {
+        Group {
+            switch route {
+            case .report: reportScreen()
             case .categories: notBuilt("Categorias & Tags")
             case .shortcuts: notBuilt("Atalhos")
             #if DEBUG
@@ -72,6 +73,9 @@ struct AppShell: View {
         .toolbar(.hidden, for: .tabBar)
     }
 
+    @ViewBuilder
+    private func reportScreen() -> some View { notBuilt("Relatório") }
+
     private func notBuilt(_ title: String) -> some View {
         Screen(title: title) {
             ContentUnavailableView(
@@ -79,50 +83,14 @@ struct AppShell: View {
         }
     }
 
-    // MARK: Início and Transações — throwaway bodies, replaced in Fase 3
-
-    private func monthScreen(
-        _ title: String,
-        summary: @escaping (MonthLedger) -> some View
-    ) -> some View {
-        let state = ledger.state
-        return Screen(title: title, onRefresh: { await ledger.refresh() }) {
-            MonthPill(
-                month: state.month, isCurrent: state.month == .current,
-                canGoBack: state.canSelectPrevious, canGoForward: state.canSelectNext,
-                onPrevious: { ledger.selectPrevious() }, onNext: { ledger.selectNext() }
-            )
-            LoadRegion(
-                phase: state.load.phase, placeholder: { .placeholder(for: state.month) },
-                isRetrying: state.load.isLoading, onRetry: { Task { await ledger.refresh() } }
-            ) { value in
-                VStack(alignment: .leading, spacing: PocketMetrics.tileSpacing) {
-                    if let degraded = LoadFailureMessage.degraded(value.lookups.failed) {
-                        PocketNoticeCard(notice: degraded)
-                    }
-                    PocketListSection(header: "Resumo do mês") { summary(value) }
+    private var transactions: some View {
+        MonthScreen(title: "Transações", ledger: ledger) { value in
+            PocketListSection {
+                PocketRow(title: "Lançamentos") {
+                    Text(value.items.count, format: .number.locale(PocketFormat.locale)).pocketFont(PocketFont.body)
                 }
             }
         }
-        .task(id: state.month) { await ledger.load() }
-    }
-
-    private func summaryRows(_ value: MonthLedger) -> some View {
-        let kpis = value.kpis
-        let balance = kpis.totals.balance.amount
-        return VStack(spacing: 0) {
-            PocketRow(title: "Saldo") { PocketAmount(value: balance, kind: balance > 0 ? .income : .expense) }
-            PocketRowSeparator()
-            countRow(value)
-            PocketRowSeparator()
-            PocketRow(title: "Pendente", subtitle: "\(kpis.pendingCount) a pagar") {
-                PocketAmount(value: kpis.pendingTotal.amount, kind: .pending)
-            }
-        }
-    }
-
-    private func countRow(_ value: MonthLedger) -> some View {
-        PocketRow(title: "Lançamentos") { Text(value.items.count, format: .number.locale(PocketFormat.locale)).pocketFont(PocketFont.body) }
     }
 
     // MARK: Mais
@@ -168,7 +136,7 @@ struct AppShell: View {
         }
     }
 
-    private func link(_ title: String, to destination: Destination) -> some View {
+    private func link(_ title: String, to destination: MoreRoute) -> some View {
         NavigationLink(value: destination) {
             PocketRow(title: title) {
                 Image(systemName: "chevron.right")

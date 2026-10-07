@@ -42,4 +42,13 @@ struct PlaceholderLedgerTests {
         let ledger = try ledger()
         #expect(ledger.items.allSatisfy { $0.ref == ledger.ref })
     }
+
+    @Test("it has an invoice, so the Faturas tile redacts a real-width figure")
+    func invoice() throws {
+        let openInvoices = try ledger().openInvoices
+
+        let total = try #require(openInvoices.total)
+        #expect(total > .zero)
+        #expect(openInvoices.cardCount != nil)
+    }
 }

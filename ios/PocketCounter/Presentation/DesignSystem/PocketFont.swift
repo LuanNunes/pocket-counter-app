@@ -36,6 +36,9 @@ enum PocketFont {
     /// `.hero-kpis b` — 16/600
     static let heroKpiValue = PocketTextStyle(.system(.callout, weight: .semibold))
 
+    /// The transaction count under a hero KPI value.
+    static let heroKpiCaption = PocketTextStyle(.system(.caption))
+
     /// `.sec-h` — 20/700, -0.02em
     static let sectionTitle = PocketTextStyle(.system(.title3, weight: .bold), tracking: -0.4)
 

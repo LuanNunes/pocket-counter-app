@@ -4,12 +4,13 @@ import SwiftUI
 struct PocketNoticeCard: View {
     let notice: PocketNotice
     var action: PocketInlineMessage.Action?
+    var isBusy = false
 
     var body: some View {
         PocketListSection {
             PocketInlineMessage(
                 kind: notice.kind, text: notice.title, secondary: notice.detail,
-                action: action, surface: .onCell
+                action: action, isBusy: isBusy, surface: .onCell
             )
             .padding(.horizontal, PocketMetrics.rowPaddingH)
             .padding(.vertical, PocketMetrics.rowPaddingV)

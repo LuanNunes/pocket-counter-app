@@ -68,7 +68,7 @@ enum PocketColor {
 
     static let heroShadow = Color("heroShadow")
 
-    /// Content on a tint-filled control.
+    /// Content on a tint-filled control. White on the dark tint is 3.53:1: icons and large text only.
     static let onTint = Color.white
 
     /// The hero is a dark purple field in both appearances, so content over it is fixed.

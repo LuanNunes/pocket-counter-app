@@ -6,4 +6,5 @@ struct MonthLedger: Hashable, Sendable {
     let lookups: LookupSet
 
     var kpis: HomeKpis { .from(items) }
+    var openInvoices: OpenInvoices { .from(items, lookups: lookups) }
 }

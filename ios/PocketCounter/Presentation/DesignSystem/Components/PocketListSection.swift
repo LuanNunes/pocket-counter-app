@@ -135,6 +135,7 @@ struct PocketAmount: View {
         Text(PocketFormat.currency(value))
             .pocketFont(PocketFont.body, tabularFigures: true)
             .foregroundStyle(color)
+            .accessibilityValue(PocketFormat.spokenCurrency(value))
     }
 
     private var color: Color {

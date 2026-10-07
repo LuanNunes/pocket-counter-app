@@ -9,11 +9,21 @@ enum PocketFormat {
 
     static let locale = Locale(identifier: "pt_BR")
 
+    /// U+2212, which is what the design draws; Foundation emits a hyphen-minus.
+    static let minusSign = "\u{2212}"
+
     /// Formats an amount as BRL. Pass `signed: false` where the column already says whether
     /// it is money in or money out, so the minus sign would be noise.
     static func currency(_ amount: Decimal, signed: Bool = true) -> String {
         let value = signed ? amount : abs(amount)
-        return value.formatted(.currency(code: "BRL").locale(locale))
+        let text = value.formatted(.currency(code: "BRL").locale(locale))
+        return text.replacingOccurrences(of: "-", with: minusSign)
+    }
+
+    /// For VoiceOver, which cannot be trusted to read U+2212.
+    static func spokenCurrency(_ amount: Decimal) -> String {
+        guard amount < 0 else { return currency(amount) }
+        return "menos " + currency(amount, signed: false)
     }
 
     /// The lower-case in-sentence form: day labels and the month pill's VoiceOver value.

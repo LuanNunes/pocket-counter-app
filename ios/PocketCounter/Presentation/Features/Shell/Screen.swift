@@ -3,6 +3,8 @@ import SwiftUI
 /// The scroll, background and large title every tab root and pushed screen shares.
 ///
 /// Owns no padding (components carry their own margins), no `NavigationStack` and no load state.
+/// Eager on purpose: a lazy stack defers children, which breaks the skeleton crossfade. A long
+/// list makes its own rows lazy.
 /// The tab bar is hidden by the destination, never here: Cartões is a tab and uses this too.
 struct Screen<Content: View, Bar: ToolbarContent>: View {
     let title: String
@@ -13,7 +15,7 @@ struct Screen<Content: View, Bar: ToolbarContent>: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)

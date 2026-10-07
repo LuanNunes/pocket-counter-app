@@ -103,63 +103,7 @@ struct DesignSystemGallery: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Saldo de \(PocketFormat.monthLabel(year: 2026, month: 10))")
-                .pocketFont(PocketFont.heroLabel)
-                .opacity(0.75)
-
-            Text(PocketFormat.currency(PreviewMoney.balance))
-                .heroValueFont()
-                .padding(.top, 2)
-                .padding(.bottom, 12)
-
-            ForEach(kpis) { kpi in
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(kpi.color)
-                        .frame(width: PocketMetrics.heroKpiDot, height: PocketMetrics.heroKpiDot)
-
-                    Text(kpi.label)
-                        .pocketFont(PocketFont.heroKpi)
-
-                    Spacer(minLength: 8)
-
-                    Text(PocketFormat.currency(kpi.value, signed: false))
-                        .pocketFont(PocketFont.heroKpiValue, tabularFigures: true)
-                }
-                .padding(.vertical, PocketMetrics.heroKpiPaddingV)
-                .accessibilityElement(children: .combine)
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(PocketColor.onHero.opacity(0.16))
-                        .frame(height: PocketMetrics.hairline)
-                }
-            }
-        }
-        .padding(PocketMetrics.heroPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .foregroundStyle(PocketColor.onHero)
-        .background {
-            PocketColor.heroSurface
-                .clipShape(.rect(cornerRadius: PocketMetrics.heroRadius))
-                .shadow(color: PocketColor.heroShadow, radius: 20, x: 0, y: 18)
-        }
-        .padding(.horizontal, PocketMetrics.screenMargin)
-    }
-
-    private struct Kpi: Identifiable {
-        let id: String
-        let label: String
-        let value: Decimal
-        let color: Color
-    }
-
-    private var kpis: [Kpi] {
-        [
-            Kpi(id: "expenses", label: "Despesas", value: PreviewMoney.expenses, color: PocketColor.onHeroExpense),
-            Kpi(id: "incomes", label: "Receitas", value: PreviewMoney.incomes, color: PocketColor.onHeroIncome),
-            Kpi(id: "pending", label: "Pendente", value: PreviewMoney.pending, color: PocketColor.onHeroWarning),
-        ]
+        HomeHeroCard(summary: .from(.placeholder(for: .current)))
     }
 }
 
