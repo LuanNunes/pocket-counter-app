@@ -15,7 +15,7 @@ struct TransactionsScreen: View {
                 board: .from(value, filter: state.filter, mode: state.mode),
                 lookups: value.lookups, state: state,
                 reorderNotice: ReorderNotice.message(
-                    for: ledger.state.writes.failedReorder, month: ledger.state.month, kind: state.kind),
+                    for: ledger.state.writes.reorderFailure(in: ledger.state.month, kind: state.kind)),
                 writes: ledger.state.writes,
                 onAction: perform, onCommand: perform
             )
@@ -64,9 +64,7 @@ struct TransactionsScreen: View {
     }
 
     private func announceCompleted(from old: [TransactionID: PaymentStatusWrite], to new: [TransactionID: PaymentStatusWrite]) {
-        let items = ledger.state.load.value?.items ?? []
-        let statuses = Dictionary(items.map { ($0.id, $0.statusPayment) }, uniquingKeysWith: { first, _ in first })
-        LedgerWrites.completed(from: old, to: new, statusOf: { statuses[$0] }).forEach {
+        LedgerWrites.completed(from: old, to: new).forEach {
             AccessibilityNotification.Announcement(TransactionsCopy.statusMarked($0)).post()
         }
     }

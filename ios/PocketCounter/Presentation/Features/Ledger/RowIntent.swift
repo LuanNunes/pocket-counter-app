@@ -1,11 +1,11 @@
 import Foundation
 
 extension RowWrite where Target == RowIntent {
-    var verb: RowIntent? { target ?? attempted }
+    var verb: RowIntent? { projection ?? attempted }
 }
 
-/// A status write projects into the committed ledger. An intent projects only into the control
-/// that started it: the ledger consequence of a fixo toggle is the server's to say.
+/// A status write projects over the server's answer. An intent projects only into the control
+/// that started it, except a settled deletion, which hides its row.
 typealias PaymentStatusWrite = RowWrite<PaymentStatus>
 typealias RowIntentWrite = RowWrite<RowIntent>
 

@@ -4,6 +4,7 @@ import Foundation
 struct RowWrite<Target: Equatable & Sendable>: Equatable, Sendable {
     enum Phase: Equatable, Sendable {
         case inFlight(Target)
+        case settled(Target)
         case failed(WriteFailure)
     }
 
@@ -18,8 +19,19 @@ struct RowWrite<Target: Equatable & Sendable>: Equatable, Sendable {
         self.attempted = attempted
     }
 
+    /// In flight only: the one-door rule and `isWriting` read this.
     var target: Target? {
         guard case .inFlight(let target) = phase else { return nil }
         return target
     }
+
+    /// What the write asks the screen to show: in flight or landed.
+    var projection: Target? {
+        switch phase {
+        case .inFlight(let target), .settled(let target): target
+        case .failed: nil
+        }
+    }
+
+    var isInFlight: Bool { target != nil }
 }

@@ -13,6 +13,11 @@ struct WriteIndicatorTests {
         #expect(WriteIndicator.of(write(.inFlight(.paid)), subject: .saving) == .init(isBusy: true, notice: nil, remedy: nil))
     }
 
+    @Test("a landed write shows no spinner and no notice")
+    func settled() {
+        #expect(WriteIndicator.of(write(.settled(.paid)), subject: .saving) == .none)
+    }
+
     @Test("a vanished row offers Atualizar")
     func vanished() {
         let row = WriteIndicator.of(write(.failed(.vanished)), subject: .saving)
