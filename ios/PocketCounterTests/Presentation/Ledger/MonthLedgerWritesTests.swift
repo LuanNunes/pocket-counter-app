@@ -65,11 +65,11 @@ struct MonthLedgerStateWritesTests {
     func overlay() async {
         var state = await loadedModel().state
 
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         #expect(status(of: rent, in: state) == .paid)
         #expect(state.months[october]?.value?.items.first { $0.id == rent.id } == rent)
-        #expect(state.writes[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
+        #expect(state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
     }
 
     @Test("Início's pending figure moves with the overlay by exactly the row's magnitude")
@@ -77,7 +77,7 @@ struct MonthLedgerStateWritesTests {
         var state = await loadedModel().state
         let before = try #require(state.load.value).kpis
 
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         let after = try #require(state.load.value).kpis
         #expect(after.pendingTotal == Money(20))
@@ -88,11 +88,11 @@ struct MonthLedgerStateWritesTests {
     @Test("completing promotes the target into the ledger and clears the overlay in one step")
     func complete() async {
         var state = await loadedModel().state
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         state.completeWrite(rent.id, ref: october, target: .paid)
 
-        #expect(state.writes.isEmpty)
+        #expect(state.writes.statuses.isEmpty)
         #expect(state.months[october]?.value?.items.first { $0.id == rent.id }?.statusPayment == .paid)
     }
 
@@ -107,7 +107,7 @@ struct MonthLedgerStateWritesTests {
         let refresh = Task { await model.refresh() }
         await hold.untilArrivals(1)
         var state = model.state
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         state.completeWrite(rent.id, ref: october, target: .paid)
 
@@ -120,40 +120,40 @@ struct MonthLedgerStateWritesTests {
     @Test("a failure snaps the row back and records itself")
     func fail() async {
         var state = await loadedModel().state
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
-        state.failWrite(rent.id, ref: october, .server)
+        state.failStatus(rent.id, ref: october, .server)
 
         #expect(status(of: rent, in: state) == .pending)
-        #expect(state.writes[rent.id] == PaymentStatusWrite(ref: october, phase: .failed(.server)))
-        #expect(!state.isWriting(rent.id))
+        #expect(state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .failed(.server)))
+        #expect(!state.writes.isWriting(rent.id))
     }
 
     @Test("a new attempt replaces the failure")
     func beginOverFailure() async {
         var state = await loadedModel().state
-        state.beginWrite(rent.id, ref: october, target: .paid)
-        state.failWrite(rent.id, ref: october, .server)
+        state.beginStatus(rent.id, ref: october, target: .paid)
+        state.failStatus(rent.id, ref: october, .server)
 
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
-        #expect(state.writes[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
-        #expect(state.isWriting(rent.id))
+        #expect(state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
+        #expect(state.writes.isWriting(rent.id))
     }
 
     @Test("a fresh answer for a month keeps in-flight writes and drops only that month's failures")
     func commitLifecycle() async {
         var state = await loadedModel().state
         let other = TransactionID(rawValue: "nov")
-        state.beginWrite(rent.id, ref: october, target: .paid)
-        state.beginWrite(gym.id, ref: october, target: .paid)
-        state.failWrite(gym.id, ref: october, .server)
-        state.beginWrite(other, ref: november, target: .paid)
-        state.failWrite(other, ref: november, .server)
+        state.beginStatus(rent.id, ref: october, target: .paid)
+        state.beginStatus(gym.id, ref: october, target: .paid)
+        state.failStatus(gym.id, ref: october, .server)
+        state.beginStatus(other, ref: november, target: .paid)
+        state.failStatus(other, ref: november, .server)
 
         state.commit(ledger(october, rent, gym, salary), for: october)
 
-        #expect(state.writes == [
+        #expect(state.writes.statuses == [
             rent.id: PaymentStatusWrite(ref: october, phase: .inFlight(.paid)),
             other: PaymentStatusWrite(ref: november, phase: .failed(.server)),
         ])
@@ -166,7 +166,7 @@ struct MonthLedgerStateWritesTests {
         await model.load()
         model.select(october)
         var state = model.state
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         state.month = november
 
@@ -177,7 +177,7 @@ struct MonthLedgerStateWritesTests {
     func commitMidFlight() async {
         var state = await loadedModel().state
         let extra = HistoryItem.fixture(id: "extra", amount: -5, statusPayment: .pending)
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         state.commit(ledger(october, rent, extra), for: october)
 
@@ -231,7 +231,7 @@ struct MonthLedgerToggleTests {
         await model.togglePaymentStatus(of: item)
 
         #expect(repository.writes.calls == [.init(id: item.id, status: expected)])
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
         #expect(status(of: item, in: model.state) == expected)
     }
 
@@ -258,7 +258,7 @@ struct MonthLedgerToggleTests {
         await model.togglePaymentStatus(of: rent)
 
         #expect(repository.writes.calls.isEmpty)
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
     }
 
     @Test("a tap on a row the committed ledger does not hold sends nothing")
@@ -269,7 +269,7 @@ struct MonthLedgerToggleTests {
         await model.togglePaymentStatus(of: .fixture(id: "placeholder-1", statusPayment: .pending))
 
         #expect(repository.writes.calls.isEmpty)
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
     }
 
     @Test("two rows overlap and both land")
@@ -288,7 +288,7 @@ struct MonthLedgerToggleTests {
         #expect(repository.writes.calls.count == 2)
         #expect(status(of: rent, in: model.state) == .paid)
         #expect(status(of: gym, in: model.state) == .paid)
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
     }
 
     @Test("an expired session signals once, records no row failure and leaves the ledger alone")
@@ -301,7 +301,7 @@ struct MonthLedgerToggleTests {
         await model.togglePaymentStatus(of: rent)
 
         #expect(expiry.count == 1)
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
         #expect(model.state.load == before)
     }
 
@@ -313,7 +313,7 @@ struct MonthLedgerToggleTests {
 
         await model.togglePaymentStatus(of: rent)
 
-        #expect(model.state.writes[rent.id] == PaymentStatusWrite(ref: october, phase: .failed(.unreachable)))
+        #expect(model.state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .failed(.unreachable)))
         #expect(status(of: rent, in: model.state) == .pending)
         #expect(expiry.count == 0)
     }
@@ -332,7 +332,7 @@ struct MonthLedgerToggleTests {
         model.select(october)
 
         #expect(status(of: rent, in: model.state) == .paid)
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
     }
 
     @Test("a refresh landing mid-flight yields the promoted value over the refreshed ledger")
@@ -350,7 +350,7 @@ struct MonthLedgerToggleTests {
         await write.value
 
         #expect(model.state.load.value == ledger(october, rent.settingPaymentStatus(.paid), gym, salary, extra))
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
     }
 
     @Test("a failure over a stale month keeps the stale notice and the loading flag")
@@ -370,7 +370,7 @@ struct MonthLedgerToggleTests {
 
         #expect(model.state.load.failure == .unreachable)
         #expect(model.state.load.isLoading)
-        #expect(model.state.writes[rent.id]?.phase == .failed(.server))
+        #expect(model.state.writes.statuses[rent.id]?.phase == .failed(.server))
         await reload.release()
         await refresh.value
     }
@@ -389,7 +389,7 @@ struct MonthLedgerToggleTests {
 
         model.select(november)
 
-        #expect(model.state.writes[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
+        #expect(model.state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
         await reload.release()
         await refresh.value
         await hold.release()
@@ -410,7 +410,7 @@ struct MonthLedgerToggleTests {
 
         model.cancel()
 
-        #expect(model.state.writes[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
+        #expect(model.state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
         await reload.release()
         await refresh.value
         await hold.release()

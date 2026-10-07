@@ -60,7 +60,7 @@ enum TransactionsCopy {
         status == .paid ? "Marcada como paga" : "Marcada como pendente"
     }
 
-    static func remedyTitle(_ remedy: TransactionRowWrite.Remedy) -> String {
+    static func remedyTitle(_ remedy: WriteIndicator.Remedy) -> String {
         switch remedy {
         case .retry: "Tentar novamente"
         case .refresh: "Atualizar"

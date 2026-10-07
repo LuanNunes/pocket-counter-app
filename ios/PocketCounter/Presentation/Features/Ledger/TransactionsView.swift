@@ -7,14 +7,9 @@ struct TransactionsView: View {
     let lookups: LookupSet
     let state: TransactionsViewState
     let reorderNotice: PocketNotice?
-    let writes: [TransactionID: PaymentStatusWrite]
-    let intents: [TransactionID: RowIntentWrite]
+    let writes: LedgerWrites
     let onAction: (TransactionsAction) -> Void
-    let onToggleStatus: (HistoryItem) -> Void
-    let onToggleFixo: (HistoryItem) -> Void
-    let onDelete: (HistoryItem) -> Void
-    let onRefresh: () -> Void
-    let onMove: ([TransactionID]) -> Void
+    let onCommand: (LedgerCommand) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -88,18 +83,18 @@ struct TransactionsView: View {
                 .onMove { source, destination in
                     var ids = ids
                     ids.move(fromOffsets: source, toOffset: destination)
-                    onMove(ids)
+                    onCommand(.move(ids))
                 }
             }
         }
     }
 
     private func row(_ item: HistoryItem, at index: Int, in order: GroupOrder) -> some View {
-        let status = TransactionRowWrite.of(writes[item.id], subject: .saving)
-        let intent = TransactionRowWrite.of(intents[item.id])
+        let status = WriteIndicator.of(writes.statuses[item.id], subject: .saving)
+        let intent = WriteIndicator.of(writes.intents[item.id])
         let shown = status.notice == nil ? intent : status
-        let retry = status.notice == nil ? retryIntent(intents[item.id]?.verb) : onToggleStatus
-        let isDeleting = intents[item.id]?.verb == .deletion
+        let retry = status.notice == nil ? retryIntent(writes.intents[item.id]?.verb) : toggleStatus
+        let isDeleting = writes.intents[item.id]?.verb == .deletion
         return TransactionRow(
             content: .of(item, lookups: lookups), isBusy: status.isBusy || intent.isBusy,
             busyLabel: isDeleting ? TransactionsCopy.statusDeleting : TransactionsCopy.statusSaving,
@@ -108,12 +103,12 @@ struct TransactionsView: View {
                 .init(title: TransactionsCopy.remedyTitle(remedy)) {
                     switch remedy {
                     case .retry: retry(item)
-                    case .refresh: onRefresh()
+                    case .refresh: onCommand(.refresh)
                     }
                 }
             },
             reordering: state.isReordering ? reordering(item, at: index, in: order) : nil,
-            onToggleStatus: { onToggleStatus(item) },
+            onToggleStatus: { toggleStatus(item) },
             onOpen: { onAction(.openDetail(DetailTarget(id: item.id, ref: item.ref))) }
         )
     }
@@ -121,13 +116,17 @@ struct TransactionsView: View {
     private func reordering(_ item: HistoryItem, at index: Int, in order: GroupOrder) -> TransactionRow.Reordering {
         .init(
             position: TransactionsCopy.position(index + 1, of: order.ids.count),
-            moveUp: order.movingUp(item.id).map { ids in { onMove(ids) } },
-            moveDown: order.movingDown(item.id).map { ids in { onMove(ids) } }
+            moveUp: order.movingUp(item.id).map { ids in { onCommand(.move(ids)) } },
+            moveDown: order.movingDown(item.id).map { ids in { onCommand(.move(ids)) } }
         )
     }
 
     private func retryIntent(_ verb: RowIntent?) -> (HistoryItem) -> Void {
-        verb == .deletion ? onDelete : onToggleFixo
+        verb == .deletion ? { onCommand(.delete($0)) } : { onCommand(.toggleFixo($0)) }
+    }
+
+    private func toggleStatus(_ item: HistoryItem) {
+        onCommand(.toggleStatus(item))
     }
 
     @ViewBuilder
@@ -200,10 +199,16 @@ enum TransactionsPreview {
         MonthLedger(ref: ref, items: items, lookups: lookups(failed: failed))
     }
 
+    static func writes(_ build: (inout LedgerWrites) -> Void) -> LedgerWrites {
+        var writes = LedgerWrites()
+        build(&writes)
+        return writes
+    }
+
     @MainActor static func screen(
         _ phase: LoadPhase<MonthLedger>, kind: TransactionType = .expense, mode: LedgerGroupMode = .lista,
         query: String = "", collapsed: Set<LedgerGroupIdentity> = [],
-        writes: [TransactionID: PaymentStatusWrite] = [:], intents: [TransactionID: RowIntentWrite] = [:],
+        writes: LedgerWrites = LedgerWrites(),
         isReordering: Bool = false, reorderNotice: PocketNotice? = nil
     ) -> some View {
         var state = TransactionsViewState(kind: kind, mode: mode, query: query)
@@ -215,8 +220,7 @@ enum TransactionsPreview {
                     TransactionsView(
                         board: .from(value, filter: state.filter, mode: mode),
                         lookups: value.lookups, state: state, reorderNotice: reorderNotice, writes: writes,
-                        intents: intents, onAction: { _ in }, onToggleStatus: { _ in }, onToggleFixo: { _ in },
-                        onDelete: { _ in }, onRefresh: {}, onMove: { _ in })
+                        onAction: { _ in }, onCommand: { _ in })
                 }
             }
             .listStyle(.plain)
@@ -253,13 +257,13 @@ enum TransactionsPreview {
 #Preview("Gravando") {
     TransactionsPreview.screen(
         .loaded(TransactionsPreview.ledger()),
-        writes: [.init(rawValue: "a"): .init(ref: TransactionsPreview.ref, phase: .inFlight(.paid))])
+        writes: TransactionsPreview.writes { $0.beginStatus(.init(rawValue: "a"), ref: TransactionsPreview.ref, target: .paid) })
 }
 
 #Preview("Falha ao gravar") {
     TransactionsPreview.screen(
         .loaded(TransactionsPreview.ledger()),
-        writes: [.init(rawValue: "a"): .init(ref: TransactionsPreview.ref, phase: .failed(.unreachable))])
+        writes: TransactionsPreview.writes { $0.failStatus(.init(rawValue: "a"), ref: TransactionsPreview.ref, .unreachable) })
 }
 
 #Preview("Reordenando") {

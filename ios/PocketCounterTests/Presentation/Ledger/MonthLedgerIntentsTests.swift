@@ -62,7 +62,7 @@ struct MonthLedgerDeleteTests {
 
         #expect(harness.delete.calls == [rent.id])
         #expect(model.state.load.value == ledger(october, gym, salary))
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
     }
 
     @Test("a delete makes no reload: the answer is the removal")
@@ -99,10 +99,10 @@ struct MonthLedgerDeleteTests {
 
         await model.delete(rent)
 
-        #expect(model.state.intents[rent.id] == RowIntentWrite(ref: october, phase: .failed(failure), attempted: .deletion))
+        #expect(model.state.writes.intents[rent.id] == RowIntentWrite(ref: october, phase: .failed(failure), attempted: .deletion))
         #expect(model.state.load == before)
         #expect(model.state.load.phase == .loaded(ledger(october, rent, gym, salary)))
-        #expect(!model.state.isWriting(rent.id))
+        #expect(!model.state.writes.isWriting(rent.id))
         #expect(harness.expiry.count == 0)
     }
 
@@ -123,11 +123,11 @@ struct MonthLedgerDeleteTests {
         let harness = Harness(status: .init(.failure(.server)))
         let model = await harness.model()
         await model.togglePaymentStatus(of: rent)
-        #expect(model.state.writes[rent.id]?.phase == .failed(.server))
+        #expect(model.state.writes.statuses[rent.id]?.phase == .failed(.server))
 
         await model.delete(rent)
 
-        #expect(model.state.writes.isEmpty)
+        #expect(model.state.writes.statuses.isEmpty)
     }
 
     @Test("a delete that lands after the month changed still removes the row from its own month")
@@ -146,7 +146,7 @@ struct MonthLedgerDeleteTests {
 
         #expect(model.state.months[october]?.value == ledger(october, gym, salary))
         #expect(model.state.months[november] == novemberBefore)
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
     }
 
     @Test("a second delete while the first is in flight sends nothing")
@@ -174,8 +174,8 @@ struct MonthLedgerDeleteTests {
         await unloaded.delete(rent)
 
         #expect(harness.delete.calls.isEmpty)
-        #expect(model.state.intents.isEmpty)
-        #expect(unloaded.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
+        #expect(unloaded.state.writes.intents.isEmpty)
     }
 
     @Test("two rows delete side by side and both leave")
@@ -192,7 +192,7 @@ struct MonthLedgerDeleteTests {
         await second.value
 
         #expect(model.state.load.value == ledger(october, salary))
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
     }
 }
 
@@ -221,7 +221,7 @@ struct MonthLedgerFixoTests {
         let task = Task { await model.toggleFixo(of: item) }
         await hold.untilArrivals(1)
 
-        #expect(model.state.intents[item.id] == RowIntentWrite(ref: october, phase: .inFlight(.fixo(expected))))
+        #expect(model.state.writes.intents[item.id] == RowIntentWrite(ref: october, phase: .inFlight(.fixo(expected))))
         #expect(model.state.load.value == ledger(october, item, gym, salary))
 
         await hold.release()
@@ -240,7 +240,7 @@ struct MonthLedgerFixoTests {
 
         #expect(harness.source.calls == [october, october])
         #expect(model.state.load.value == ledger(october, retagged, gym, salary))
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
         #expect(!model.state.load.isLoading)
     }
 
@@ -259,7 +259,7 @@ struct MonthLedgerFixoTests {
         await task.value
 
         #expect(harness.source.calls == [october, november])
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
         #expect(model.state.months[november] == novemberBefore)
         #expect(!model.state.load.isLoading)
     }
@@ -273,7 +273,7 @@ struct MonthLedgerFixoTests {
         await model.toggleFixo(of: rent)
 
         #expect(model.state.load.phase == .stale(ledger(october, rent, gym, salary), .unreachable))
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
     }
 
     @Test("a failure records the intent, reloads nothing and does not make the month stale", arguments: [
@@ -285,7 +285,7 @@ struct MonthLedgerFixoTests {
 
         await model.toggleFixo(of: rent)
 
-        #expect(model.state.intents[rent.id] == RowIntentWrite(ref: october, phase: .failed(failure), attempted: .fixo(true)))
+        #expect(model.state.writes.intents[rent.id] == RowIntentWrite(ref: october, phase: .failed(failure), attempted: .fixo(true)))
         #expect(harness.source.calls == [october])
         #expect(model.state.load.phase == .loaded(ledger(october, rent, gym, salary)))
         #expect(harness.expiry.count == 0)
@@ -317,7 +317,7 @@ struct MonthLedgerFixoTests {
         await first.value
         await second.value
 
-        #expect(model.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
         #expect(!model.state.load.isLoading)
         #expect(model.state.load.phase == .loaded(ledger(october, rent, gym, salary)))
     }
@@ -332,8 +332,8 @@ struct MonthLedgerFixoTests {
         await unloaded.toggleFixo(of: rent)
 
         #expect(harness.fixo.calls.isEmpty)
-        #expect(model.state.intents.isEmpty)
-        #expect(unloaded.state.intents.isEmpty)
+        #expect(model.state.writes.intents.isEmpty)
+        #expect(unloaded.state.writes.intents.isEmpty)
     }
 }
 
