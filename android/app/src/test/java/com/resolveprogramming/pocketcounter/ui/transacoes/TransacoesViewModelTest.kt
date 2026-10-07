@@ -2,6 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 
 import app.cash.turbine.test
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
+import com.resolveprogramming.pocketcounter.data.local.ManualEntryRelay
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.repository.FakePaymentMethodPrefsRepository
@@ -135,6 +136,7 @@ class TransacoesViewModelTest {
     private fun makeViewModel(
         ledgerRefresh: LedgerRefreshSignal = LedgerRefreshSignal(),
         paymentMethodPrefsRepository: FakePaymentMethodPrefsRepository = FakePaymentMethodPrefsRepository(),
+        manualEntryRelay: ManualEntryRelay = ManualEntryRelay(),
     ): TransacoesViewModel = TransacoesViewModel(
         transactionRepository = transactionRepository,
         cardRepository = cardRepository,
@@ -143,6 +145,7 @@ class TransacoesViewModelTest {
         viewedMonth = ViewedMonthStore(),
         ledgerRefresh = ledgerRefresh,
         paymentMethodPrefsRepository = paymentMethodPrefsRepository,
+        manualEntryRelay = manualEntryRelay,
     )
 
     // -------------------------------------------------------------------------
@@ -882,6 +885,45 @@ class TransacoesViewModelTest {
         val mode = vm.state.value.formMode as? FormMode.Add
         assertNotNull(mode)
         assertNull(mode!!.initialType)
+    }
+
+    // =========================================================================
+    // The sentence quick-add could not read
+    // =========================================================================
+
+    @Test
+    fun `a pending sentence opens the Add form seeded with it`() = runTest {
+        val relay = ManualEntryRelay()
+        relay.seed("paguei 250 numa consulta do cachorro")
+
+        val vm = makeViewModel(manualEntryRelay = relay)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val mode = vm.state.value.formMode as? FormMode.Add
+        assertNotNull(mode)
+        assertEquals("paguei 250 numa consulta do cachorro", mode!!.defaultName)
+        assertNull(relay.pending.value)
+    }
+
+    @Test
+    fun `a sentence that arrives while the screen is open still opens the form`() = runTest {
+        val relay = ManualEntryRelay()
+        val vm = makeViewModel(manualEntryRelay = relay)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNull(vm.state.value.formMode)
+
+        relay.seed("recebi 125 de dividendos")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals("recebi 125 de dividendos", (vm.state.value.formMode as FormMode.Add).defaultName)
+    }
+
+    @Test
+    fun `no pending sentence leaves the form closed`() = runTest {
+        val vm = makeViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.formMode)
     }
 
     // =========================================================================

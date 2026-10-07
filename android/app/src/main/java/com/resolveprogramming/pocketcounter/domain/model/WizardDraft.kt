@@ -63,6 +63,17 @@ data class WizardDraft(
         return withMethod.copy(cardId = cardId)
     }
 
+    /**
+     * Drops tag ids absent from [tags]. A read can suggest a tag the user no longer has, and the write
+     * rejects the whole row for it while the preview already renders "sem categoria".
+     */
+    fun withTagsKnownIn(tags: List<Tag>): WizardDraft {
+        val known = tags.mapTo(HashSet()) { it.id }
+        val kept = tagIds.filter { it in known }
+        if (kept.size == tagIds.size) return this
+        return copy(tagIds = kept)
+    }
+
     fun withoutCard(): WizardDraft = copy(cardId = null)
 
     fun withTagToggled(tagId: String): WizardDraft {
@@ -96,6 +107,24 @@ data class WizardDraft(
     }
 
     companion object {
+        fun fromIntent(intent: TransactionIntent): WizardDraft {
+            val seeded = WizardDraft(
+                type = intent.reading.type,
+                amount = intent.reading.amount?.abs(),
+                date = intent.reading.date,
+                // statusPayment stays at the default: a sentence carries no reading of it, and the
+                // Situação row's choice is what reaches the wire.
+                tagIds = listOfNotNull(intent.idTag),
+                name = intent.reading.name,
+                merchant = intent.reading.name,
+            )
+            val cardId = intent.resolvedCard?.id
+            if (intent.reading.paymentMethod == PaymentMethod.CREDIT && cardId != null) {
+                return seeded.withCard(cardId)
+            }
+            return seeded.withPaymentMethod(intent.reading.paymentMethod)
+        }
+
         fun fromNotification(
             notification: NotificationItem,
         ): WizardDraft {
@@ -117,4 +146,15 @@ data class WizardDraft(
             )
         }
     }
+}
+
+/**
+ * Whether [draft] now holds what the server reported missing, i.e. the ask can move on. CARD is
+ * always satisfied: that ask is skippable, so it never holds the queue.
+ */
+fun MissingField.isSatisfiedBy(draft: WizardDraft): Boolean = when (this) {
+    MissingField.AMOUNT -> draft.amount != null && draft.amount > BigDecimal.ZERO
+    MissingField.DESCRIPTION -> draft.hasUsableName()
+    MissingField.TYPE -> draft.type != null
+    MissingField.CARD -> true
 }

@@ -3,6 +3,7 @@ package com.resolveprogramming.pocketcounter.ui.transacoes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.resolveprogramming.pocketcounter.data.local.LedgerRefreshSignal
+import com.resolveprogramming.pocketcounter.data.local.ManualEntryRelay
 import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.repository.CardRepository
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
@@ -66,7 +67,11 @@ enum class LedgerFilter { TODOS, FIXOS }
 
 /** Whether the transaction form sheet is adding a new row or editing an existing one. */
 sealed interface FormMode {
-    data class Add(val initialType: TransactionType? = null) : FormMode
+    /** [defaultName] seeds Descrição — the sentence quick-add handed over when it could not read it. */
+    data class Add(
+        val initialType: TransactionType? = null,
+        val defaultName: String? = null,
+    ) : FormMode
     data class Edit(val itemId: String) : FormMode
 }
 
@@ -114,6 +119,7 @@ class TransacoesViewModel @Inject constructor(
     private val viewedMonth: ViewedMonthStore,
     private val ledgerRefresh: LedgerRefreshSignal,
     private val paymentMethodPrefsRepository: PaymentMethodPrefsRepository,
+    private val manualEntryRelay: ManualEntryRelay,
 ) : ViewModel() {
 
     private val ptBr = Locale("pt", "BR")
@@ -143,6 +149,14 @@ class TransacoesViewModel @Inject constructor(
         viewModelScope.launch {
             paymentMethodPrefsRepository.enabledMethods.collect { enabled ->
                 _state.update { it.copy(enabledMethods = enabled) }
+            }
+        }
+        // A sentence quick-add could not read: open the manual form on it, however this screen got here.
+        viewModelScope.launch {
+            manualEntryRelay.pending.collect { text ->
+                if (text == null) return@collect
+                manualEntryRelay.consume()
+                openAdd(defaultName = text)
             }
         }
     }
@@ -364,8 +378,8 @@ class TransacoesViewModel @Inject constructor(
         }
     }
 
-    fun openAdd(type: TransactionType? = null) {
-        _state.update { it.copy(formMode = FormMode.Add(type)) }
+    fun openAdd(type: TransactionType? = null, defaultName: String? = null) {
+        _state.update { it.copy(formMode = FormMode.Add(type, defaultName)) }
         refreshCards()
     }
 

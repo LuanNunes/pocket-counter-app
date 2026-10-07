@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.CarryForwardRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategorizeRecurringSeriesRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.CreateRecurringSeriesRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.RenameRecurringSeriesRequest
+import com.resolveprogramming.pocketcounter.data.session.SessionScopedStore
 import com.resolveprogramming.pocketcounter.domain.model.CarryForwardResult
 import com.resolveprogramming.pocketcounter.domain.model.Series
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
@@ -16,9 +17,11 @@ import javax.inject.Singleton
 @Singleton
 class RetrofitSeriesRepository @Inject constructor(
     private val api: SeriesApi,
-) : SeriesRepository {
+) : SeriesRepository, SessionScopedStore {
 
     private val seriesCache = SuspendCache<List<Series>>()
+
+    override fun clearForSession() = seriesCache.invalidate()
 
     override suspend fun getAll(): Result<List<Series>> = runCatching {
         seriesCache.get { api.getAll().map { it.toDomain() } }

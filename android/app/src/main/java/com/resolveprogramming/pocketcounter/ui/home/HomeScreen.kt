@@ -65,6 +65,8 @@ import com.resolveprogramming.pocketcounter.ui.home.components.NotificationAcces
 import com.resolveprogramming.pocketcounter.ui.home.components.RevisarBanner
 import com.resolveprogramming.pocketcounter.ui.home.components.SwipeCue
 import com.resolveprogramming.pocketcounter.ui.home.components.homeGreeting
+import com.resolveprogramming.pocketcounter.ui.quickadd.QuickAddField
+import com.resolveprogramming.pocketcounter.ui.quickadd.QuickAddSheet
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
@@ -99,6 +101,7 @@ fun HomeContent(
     }
     // Play prominent-disclosure gate: show what capture reads/sends and get consent BEFORE the
     // system notification-access settings intent fires (see NotificationAccessDisclosureDialog).
+    var showQuickAdd by rememberSaveable { mutableStateOf(false) }
     var showAccessDisclosure by remember { mutableStateOf(false) }
     if (showAccessDisclosure) {
         NotificationAccessDisclosureDialog(
@@ -165,6 +168,8 @@ fun HomeContent(
                         onRefresh = viewModel::onManualRefresh,
                     )
                 }
+
+                item { QuickAddField(onClick = { showQuickAdd = true }) }
 
                 item {
                     MonthNavBar(
@@ -263,6 +268,17 @@ fun HomeContent(
 
                 item { Spacer(Modifier.height(20.dp)) }
             }
+        }
+
+        if (showQuickAdd) {
+            QuickAddSheet(
+                onDismiss = { showQuickAdd = false },
+                onFlash = viewModel::flash,
+                onManualEntry = {
+                    showQuickAdd = false
+                    onOpenTransacoes()
+                },
+            )
         }
 
         state.invoicePicker?.let { picker ->

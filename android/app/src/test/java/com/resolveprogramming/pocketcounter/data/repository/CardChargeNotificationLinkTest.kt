@@ -24,7 +24,7 @@ import java.time.LocalDate
 class CardChargeNotificationLinkTest {
 
     private val api = mockk<TransactionApi>()
-    private val repo = RetrofitTransactionRepository(api)
+    private val repo = RetrofitTransactionRepository(api, Json { ignoreUnknownKeys = true })
 
     /** Mirrors NetworkModule's instance: the wire format is part of the contract. */
     private val json = Json {

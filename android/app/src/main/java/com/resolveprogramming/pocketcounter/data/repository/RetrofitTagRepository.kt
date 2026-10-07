@@ -7,6 +7,7 @@ import com.resolveprogramming.pocketcounter.data.remote.api.CategoryApi
 import com.resolveprogramming.pocketcounter.data.remote.api.TagApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.CategoryDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
+import com.resolveprogramming.pocketcounter.data.session.SessionScopedStore
 import com.resolveprogramming.pocketcounter.domain.model.Tag
 import com.resolveprogramming.pocketcounter.domain.model.TagContext
 import javax.inject.Inject
@@ -16,7 +17,7 @@ import javax.inject.Singleton
 class RetrofitTagRepository @Inject constructor(
     private val tagApi: TagApi,
     private val categoryApi: CategoryApi,
-) : TagRepository {
+) : TagRepository, SessionScopedStore {
 
     // Lookups rarely change and are read on nearly every screen, so they're cached — but a category/tag
     // added on the web must eventually surface without a process restart. The TTL self-heals stale reads;
@@ -82,6 +83,8 @@ class RetrofitTagRepository @Inject constructor(
 
     /** Drops both lookup caches so the next read refetches — wired to the user-driven pull-to-refresh. */
     override fun refreshLookups() = invalidateLookups()
+
+    override fun clearForSession() = invalidateLookups()
 
     /** A context delete can cascade to its tags on the backend, so both caches drop together. */
     private fun invalidateLookups() {

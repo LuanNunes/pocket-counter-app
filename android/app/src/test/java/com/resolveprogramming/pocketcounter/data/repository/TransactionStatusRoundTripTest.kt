@@ -15,12 +15,13 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 import java.math.BigDecimal
 import java.time.LocalDate
+import kotlinx.serialization.json.Json
 
 /** Payment status must survive the write→read round trip — the edit sheet seeds from what comes back. */
 class TransactionStatusRoundTripTest {
 
     private val api = mockk<TransactionApi>()
-    private val repo = RetrofitTransactionRepository(api)
+    private val repo = RetrofitTransactionRepository(api, Json { ignoreUnknownKeys = true })
 
     private val date = LocalDate.of(2026, 8, 20)
     private val ref = 202608

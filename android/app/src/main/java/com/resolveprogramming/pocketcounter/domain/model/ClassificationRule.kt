@@ -5,6 +5,7 @@ enum class RuleAction { SUGGEST, IGNORE }
 
 /** Why a rule cannot be written; each maps to a 422 the backend would answer. */
 enum class RuleWriteBlocker {
+    PATTERN_TOO_SHORT,
     PATTERN_TOO_LONG,
     PATTERN_WITHOUT_SIGNAL,
     SUGGEST_REQUIRES_TAG,
@@ -31,6 +32,7 @@ data class ClassificationRule(
      */
     fun writeBlocker(tagKind: TransactionType?): RuleWriteBlocker? {
         val trimmed = pattern.trim()
+        if (trimmed.length < MIN_PATTERN_LENGTH) return RuleWriteBlocker.PATTERN_TOO_SHORT
         if (trimmed.length > MAX_PATTERN_LENGTH) return RuleWriteBlocker.PATTERN_TOO_LONG
         if (trimmed.none(Char::isLetterOrDigit)) return RuleWriteBlocker.PATTERN_WITHOUT_SIGNAL
         if (action == RuleAction.SUGGEST && idTag == null) return RuleWriteBlocker.SUGGEST_REQUIRES_TAG
@@ -40,6 +42,9 @@ data class ClassificationRule(
     }
 
     companion object {
+        /** The server's minimum: matching is substring, so one character would claim every purchase. */
+        const val MIN_PATTERN_LENGTH = 2
+
         /** The server's `MAX_PATTERN_LENGTH`, which is also the column width. */
         const val MAX_PATTERN_LENGTH = 500
 

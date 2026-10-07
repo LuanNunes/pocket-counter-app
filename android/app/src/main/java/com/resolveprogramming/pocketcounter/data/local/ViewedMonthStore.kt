@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.data.local
 
+import com.resolveprogramming.pocketcounter.data.session.SessionScopedStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,10 +15,12 @@ import javax.inject.Singleton
  * current month on each cold start.
  */
 @Singleton
-class ViewedMonthStore @Inject constructor() {
+class ViewedMonthStore @Inject constructor() : SessionScopedStore {
 
     private val _month = MutableStateFlow(YearMonth.now().toString())
     val month: StateFlow<String> = _month.asStateFlow()
+
+    override fun clearForSession() = set(YearMonth.now().toString())
 
     fun step(delta: Int) {
         _month.update { YearMonth.parse(it).plusMonths(delta.toLong()).toString() }

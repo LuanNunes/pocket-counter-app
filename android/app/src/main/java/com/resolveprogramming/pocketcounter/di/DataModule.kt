@@ -1,5 +1,6 @@
 package com.resolveprogramming.pocketcounter.di
 
+import com.resolveprogramming.pocketcounter.data.local.AppMessageRelay
 import com.resolveprogramming.pocketcounter.data.local.BlockedSourceStore
 import com.resolveprogramming.pocketcounter.data.local.DataStoreBlockedSourceStore
 import com.resolveprogramming.pocketcounter.data.local.DataStoreIssuerCardStore
@@ -7,9 +8,11 @@ import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodDic
 import com.resolveprogramming.pocketcounter.data.local.DataStorePaymentMethodPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.DataStoreProductiveSourceStore
 import com.resolveprogramming.pocketcounter.data.local.IssuerCardStore
+import com.resolveprogramming.pocketcounter.data.local.ManualEntryRelay
 import com.resolveprogramming.pocketcounter.data.local.PaymentMethodDictionaryStore
 import com.resolveprogramming.pocketcounter.data.local.PaymentMethodPrefsStore
 import com.resolveprogramming.pocketcounter.data.local.ProductiveSourceStore
+import com.resolveprogramming.pocketcounter.data.local.ViewedMonthStore
 import com.resolveprogramming.pocketcounter.data.remote.CredentialManagerGoogleSignIn
 import com.resolveprogramming.pocketcounter.data.remote.GoogleSignInClient
 import com.resolveprogramming.pocketcounter.data.repository.AnalyticsRepository
@@ -34,16 +37,20 @@ import com.resolveprogramming.pocketcounter.data.repository.RetrofitClassificati
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitNotificationRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTagRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitSeriesRepository
+import com.resolveprogramming.pocketcounter.data.repository.RetrofitTransactionIntentRepository
 import com.resolveprogramming.pocketcounter.data.repository.RetrofitTransactionRepository
 import com.resolveprogramming.pocketcounter.data.repository.SeriesRepository
 import com.resolveprogramming.pocketcounter.data.repository.TagRepository
+import com.resolveprogramming.pocketcounter.data.repository.TransactionIntentRepository
 import com.resolveprogramming.pocketcounter.data.repository.TransactionRepository
+import com.resolveprogramming.pocketcounter.data.session.SessionScopedStore
 import com.resolveprogramming.pocketcounter.platform.biometric.AndroidBiometricAuthenticator
 import com.resolveprogramming.pocketcounter.platform.biometric.BiometricAuthenticator
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoSet
 
 /**
  * Binds repository interfaces to their Retrofit-backed implementations. All data now
@@ -67,6 +74,11 @@ abstract class DataModule {
     abstract fun bindTransactionRepository(
         impl: RetrofitTransactionRepository,
     ): TransactionRepository
+
+    @Binds
+    abstract fun bindTransactionIntentRepository(
+        impl: RetrofitTransactionIntentRepository,
+    ): TransactionIntentRepository
 
     @Binds
     abstract fun bindCardRepository(
@@ -152,4 +164,37 @@ abstract class DataModule {
     abstract fun bindProductiveSourceRepository(
         impl: LocalProductiveSourceRepository,
     ): ProductiveSourceRepository
+
+    // Every @Singleton holding user-scoped in-memory state belongs in this set; AuthRepository clears
+    // it on login, logout and account deletion. AppLockState is deliberately absent: logout drives it.
+
+    @Binds
+    @IntoSet
+    abstract fun bindTagLookupsAsSessionScoped(
+        impl: RetrofitTagRepository,
+    ): SessionScopedStore
+
+    @Binds
+    @IntoSet
+    abstract fun bindSeriesCacheAsSessionScoped(
+        impl: RetrofitSeriesRepository,
+    ): SessionScopedStore
+
+    @Binds
+    @IntoSet
+    abstract fun bindManualEntryRelayAsSessionScoped(
+        impl: ManualEntryRelay,
+    ): SessionScopedStore
+
+    @Binds
+    @IntoSet
+    abstract fun bindViewedMonthStoreAsSessionScoped(
+        impl: ViewedMonthStore,
+    ): SessionScopedStore
+
+    @Binds
+    @IntoSet
+    abstract fun bindAppMessageRelayAsSessionScoped(
+        impl: AppMessageRelay,
+    ): SessionScopedStore
 }

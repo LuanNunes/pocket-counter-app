@@ -26,6 +26,13 @@ object TeachPatternSanitizer {
             .firstOrNull { notificationText.contains(it, ignoreCase = true) }
 
     /**
+     * The first candidate that survives [clean], with no containment filter: a text draft has no
+     * notification text for the pattern to be a substring of.
+     */
+    fun cleanFirst(candidates: List<String?>): String? =
+        candidates.filterNotNull().firstNotNullOfOrNull { clean(it) }
+
+    /**
      * Gateway prefixes are rejected, never shortened: stripping the '*' off "Ifd*" yields "Ifd", which
      * is broader still.
      *

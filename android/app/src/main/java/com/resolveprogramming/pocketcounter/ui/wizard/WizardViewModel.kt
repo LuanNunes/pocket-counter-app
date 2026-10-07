@@ -32,6 +32,7 @@ import com.resolveprogramming.pocketcounter.domain.model.Token
 import com.resolveprogramming.pocketcounter.domain.model.TokenRole
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import com.resolveprogramming.pocketcounter.domain.model.canCreateTag
 import com.resolveprogramming.pocketcounter.domain.notification.BrNotificationParser
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationEvidence
 import com.resolveprogramming.pocketcounter.domain.notification.NotificationTokenizer
@@ -42,6 +43,7 @@ import com.resolveprogramming.pocketcounter.domain.rules.IgnoreOptions
 import com.resolveprogramming.pocketcounter.domain.rules.TeachPatternResolver
 import com.resolveprogramming.pocketcounter.domain.usecase.ConfirmClassifiedNotificationUseCase
 import com.resolveprogramming.pocketcounter.ui.contextos.TagFormMode
+import com.resolveprogramming.pocketcounter.ui.rules.teachRuleNote
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,20 +113,20 @@ data class WizardUiState(
     val effectiveTagType: TransactionType
         get() = draft.type ?: TransactionType.EXPENSE
 
+    val canCreateTag: Boolean get() = canCreateTag(draft.type, contexts)
+
     /**
-     * Creating a tag under a merely guessed kind is irreversible and would strand it out of the
-     * other kind's universe; and the expense form cannot be saved with no context to pick.
+     * The pattern a teach would store. Derived here so the toggle and the write are gated on one
+     * expression: a text-sourced draft has no notification, which used to show the toggle and
+     * write nothing.
      */
-    val canCreateTag: Boolean
-        get() {
-            draft.type ?: return false
-            if (effectiveTagType == TransactionType.EXPENSE) return contexts.isNotEmpty()
-            return true
-        }
+    val teachPattern: String?
+        get() = notification?.let { TeachPatternResolver.resolve(draft, it, forIgnoreRule = false) }
+            ?: TeachPatternResolver.resolveFromDraft(draft)
 
     /** The teach toggle is disabled, not failing, when no selected tag could carry a rule. */
     val canTeachRule: Boolean
-        get() = draft.teachableTag(allTags) != null
+        get() = draft.teachableTag(allTags) != null && teachPattern != null
 
     val selectionRange: IntRange?
         get() = if (selectionAnchor != null && selectionFocus != null) {
@@ -599,13 +601,14 @@ class WizardViewModel @Inject constructor(
                     // source month — the backend has no series defaultAmount (handoff §3.3 divergence).
                     linkSeries(draft, transactionId)
                     // Persist a learned rule so future matching notifications pre-fill these tags.
-                    learnRuleIfRequested(draft)
+                    val ruleNote = learnRuleIfRequested(draft)
                     // Persist a learned payment-method word if the user marked one.
                     learnPaymentMethodIfMarked(draft)
                     recordProductiveSource()
                     // Process the review queue in place: load the next pending item, or return to
-                    // the app when none remain.
-                    advanceToNext(onDone)
+                    // the app when none remain. The rule note rides the same toast path, which
+                    // survives this screen being popped.
+                    advanceToNext(onDone, farewell = ruleNote)
                 }
                 .onFailure { e ->
                     _state.update { it.copy(isSaving = false, toastMessage = failureMessage(e)) }
@@ -743,17 +746,17 @@ class WizardViewModel @Inject constructor(
     /**
      * Teaches a SUGGEST rule when the user enabled "Aprender este padrão". A rule carries exactly one
      * tag, so the first tag the user picked — [WizardDraft.tagIds] is append-ordered — is the one
-     * taught; the others apply to this transaction only. A DUPLICATE means the rule is already there.
-     * Best-effort — failures are swallowed.
+     * taught; the others apply to this transaction only. Best-effort — a failed write never fails the
+     * save — but it returns what the user should be told, e.g. that the rule cap is full.
      */
-    private suspend fun learnRuleIfRequested(draft: WizardDraft) {
-        if (!draft.learnRule) return
-        val notification = _state.value.notification ?: return
-        val pattern = TeachPatternResolver.resolve(draft, notification, forIgnoreRule = false) ?: return
-        val tag = draft.teachableTag(_state.value.allTags) ?: return
+    private suspend fun learnRuleIfRequested(draft: WizardDraft): String? {
+        if (!draft.learnRule) return null
+        val pattern = _state.value.teachPattern ?: return null
+        val tag = draft.teachableTag(_state.value.allTags) ?: return null
         val rule = ClassificationRule.suggest(pattern, tag.id)
-        if (rule.writeBlocker(tag.kind) != null) return
-        classificationRuleRepository.create(rule)
+        if (rule.writeBlocker(tag.kind) != null) return null
+        val outcome = classificationRuleRepository.create(rule).getOrNull() ?: return null
+        return teachRuleNote(outcome)
     }
 
     /**

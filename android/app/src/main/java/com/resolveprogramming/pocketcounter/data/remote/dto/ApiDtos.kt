@@ -28,6 +28,8 @@ data class TransactionDto(
      * never be set afterwards. An id the backend cannot resolve is ignored, not an error.
      */
     val idNotification: String? = null,       // UUID of the source notification
+    /** Create-only: lets a row through the backend's duplicate check. Omitted from the wire when false. */
+    val allowDuplicate: Boolean = false,
     val dateDue: String? = null,              // ISO yyyy-MM-dd
     // The date the purchase was made, ISO yyyy-MM-dd. The backend picks which card invoice a credit
     // purchase nests into from this; dateDue is only accepted as a deprecated fallback for it.

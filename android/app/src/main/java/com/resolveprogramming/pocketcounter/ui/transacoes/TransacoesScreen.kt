@@ -296,6 +296,7 @@ fun TransacoesContent(
                 state.items.firstOrNull { it.id == edit.itemId }
             },
             initialType = (state.formMode as? FormMode.Add)?.initialType,
+            defaultName = (state.formMode as? FormMode.Add)?.defaultName,
             cards = state.cards,
             tags = state.tags.values.toList(),
             contexts = state.contexts,

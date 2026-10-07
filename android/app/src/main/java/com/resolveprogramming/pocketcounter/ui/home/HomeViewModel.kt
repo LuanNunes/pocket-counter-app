@@ -793,6 +793,10 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Points the user at a row another surface just created — quick-add's sheet sits over Home. */
+    fun flash(transactionId: String) =
+        _state.update { it.copy(flashId = transactionId, flashNonce = it.flashNonce + 1) }
+
     fun consumeToast() = _state.update { it.copy(toastMessage = null) }
 
     fun consumeFlash() = _state.update { it.copy(flashId = null) }
