@@ -61,11 +61,24 @@ struct AppContainer {
         return { id, status throws(WriteFailure) in try await transactions.setPaymentStatus(status, on: id) }
     }
 
+    var toggleFixo: ToggleFixoAction {
+        let toggle = ToggleFixo(series: recurringSeriesRepository)
+        return { item throws(WriteFailure) in try await toggle.toggle(item) }
+    }
+
+    var deleteTransaction: DeleteTransactionAction {
+        let transactions = transactionRepository
+        return { id throws(WriteFailure) in try await transactions.delete(id) }
+    }
+
     /// Hands the session model the verb it needs, not the repositories.
     var endSession: SessionEndAction {
         let caches: [any LookupCaching] = [tagRepository, creditCardRepository]
         return { for cache in caches { await cache.invalidateLookups() } }
     }
+
+    // Computed: it holds no cache, so the built-once rule does not apply.
+    private var recurringSeriesRepository: any RecurringSeriesRepository { APIRecurringSeriesRepository(client: authenticatedClient) }
 
     var sessionRepository: any SessionRepository { APISessionRepository(client: client, tokens: tokens) }
 }

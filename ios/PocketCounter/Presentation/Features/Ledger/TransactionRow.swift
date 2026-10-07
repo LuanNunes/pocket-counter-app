@@ -4,9 +4,11 @@ import SwiftUI
 struct TransactionRow: View {
     let content: TransactionRowContent
     var isBusy = false
+    var busyLabel = TransactionsCopy.statusSaving
     var notice: PocketNotice? = nil
     var noticeAction: PocketInlineMessage.Action? = nil
     let onToggleStatus: () -> Void
+    let onOpen: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -38,18 +40,24 @@ struct TransactionRow: View {
             if dynamicTypeSize.isAccessibilitySize {
                 HStack(alignment: .top, spacing: PocketMetrics.txRowSpacing) {
                     statusPill
-                    VStack(alignment: .leading, spacing: PocketMetrics.rowMetaSpacing) {
-                        details
-                        trailing(alignment: .leading)
+                    openButton {
+                        VStack(alignment: .leading, spacing: PocketMetrics.rowMetaSpacing) {
+                            details
+                            trailing(alignment: .leading)
+                        }
+                        .padding(.vertical, PocketMetrics.rowPaddingV)
                     }
-                    .padding(.vertical, PocketMetrics.rowPaddingV)
                 }
             } else {
                 HStack(spacing: PocketMetrics.txRowSpacing) {
                     statusPill
-                    details
-                    Spacer(minLength: 8)
-                    trailing(alignment: .trailing)
+                    openButton {
+                        HStack(spacing: PocketMetrics.txRowSpacing) {
+                            details
+                            Spacer(minLength: 8)
+                            trailing(alignment: .trailing)
+                        }
+                    }
                 }
             }
         }
@@ -58,12 +66,22 @@ struct TransactionRow: View {
         .animation(PocketMotion.quick, value: content.isPaid)
         .graced(isActive: isBusy, elapsed: $showsSpinner)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(isBusy ? TransactionsCopy.statusSaving : "")
+        .accessibilityValue(isBusy ? busyLabel : "")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, onOpen)
         .accessibilityActions {
             if !isBusy {
                 Button(TransactionsCopy.statusToggleLabel(isPaid: content.isPaid), action: onToggleStatus)
             }
         }
+    }
+
+    private func openButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        Button(action: onOpen) {
+            content()
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 
     private var statusPill: some View {

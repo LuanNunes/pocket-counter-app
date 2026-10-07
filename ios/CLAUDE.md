@@ -219,5 +219,17 @@ documented reason not to.
 * The dark `tint` is deliberately off-spec: `glass.css:16` is `oklch(0.72 0.16 285)` and we ship
   ≈L 0.64 (`#847AE8`), because white on the spec value is 2.61:1, below the 3:1 floor for icons
   and large text. App-wide in dark mode; a "re-derive the tokens" pass must not revert it.
+* The destructive button's ink is deliberately off-spec. `glass.css:123` is
+  `.btn.dst{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}` — plain
+  `--red` on its own 14% tint, which measures **2.66:1**. There is no `--red-ink` twin in the
+  spec the way `--green-ink` and `--orange-ink` exist, so one was derived: `destructiveSoftInk`,
+  5.12:1 light and 5.67:1 dark on that tint. `destructiveInk` was tried first and is 4.03:1
+  there — it is 5.00:1 on `cell`, but the tinted fill is a different backdrop. Same rule as the
+  dark `tint`: a "re-derive the tokens" pass must not revert it.
+* The transaction detail sheet keeps `PocketColor.background` behind its content, where
+  `glass.css:107` has a blurred material. `PocketListSection` fills with `cell`
+  (`secondarySystemGroupedBackground`, white in light mode), which would not separate from a
+  light sheet material. Not rendered here: if a device shows the cells separating, drop the
+  `.background` in `TransactionDetailView`.
 * Início orders `MonthPill` → quick-add → hero, where `home.jsx:21-22` puts quick-add first: the
   pill is shared chrome owned by `MonthScreen`.

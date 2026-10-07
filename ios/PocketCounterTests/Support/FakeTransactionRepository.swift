@@ -7,6 +7,7 @@ struct FakeTransactionRepository: TransactionRepository {
     var rangeResult: Result<[HistoryItem], LoadFailure> = .success([])
     var invoiceItemsResult: Result<[InvoiceItem], LoadFailure> = .success([])
     var writeResult: Result<Void, WriteFailure> = .success(())
+    var deleteResult: Result<Void, WriteFailure> = .success(())
     var writes = StatusWriteLog()
     var rendezvous: Rendezvous?
     var writeRendezvous: Rendezvous?
@@ -29,6 +30,10 @@ struct FakeTransactionRepository: TransactionRepository {
         writes.record(id, status)
         await writeRendezvous?.arrive()
         try writeResult.get()
+    }
+
+    func delete(_ id: TransactionID) async throws(WriteFailure) {
+        try deleteResult.get()
     }
 }
 

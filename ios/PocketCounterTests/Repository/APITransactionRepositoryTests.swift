@@ -206,4 +206,23 @@ struct APITransactionRepositoryTests {
             try await repository(http).setPaymentStatus(.paid, on: TransactionID(rawValue: "t1"))
         }
     }
+
+    @Test("deleting issues a bearer DELETE with no body")
+    func delete() async throws {
+        let http = FakeHTTP(FakeHTTP.empty(200))
+
+        try await repository(http).delete(TransactionID(rawValue: "t1"))
+
+        #expect(http.requests.map(\.httpMethod) == ["DELETE"])
+        #expect(http.requests.compactMap { $0.url?.path } == ["/api/v1/transactions/t1"])
+        #expect(http.requests.first?.httpBody == nil)
+        #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer access")
+    }
+
+    @Test("a 404 on a delete is a vanished row")
+    func deleteVanished() async {
+        await #expect(throws: WriteFailure.vanished) {
+            try await repository(FakeHTTP(FakeHTTP.empty(404))).delete(TransactionID(rawValue: "t1"))
+        }
+    }
 }

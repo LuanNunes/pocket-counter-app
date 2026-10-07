@@ -27,4 +27,10 @@ extension WriteFailure {
             self = .server
         }
     }
+
+    /// Never logs the failure's payload: it can hold user text.
+    init(_ failure: MappingFailure) {
+        Self.logger.error("Mapping a write's response failed")
+        self = .server
+    }
 }

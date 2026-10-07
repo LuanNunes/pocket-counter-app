@@ -40,7 +40,7 @@ extension HistoryItem {
             statusPayment: statusPayment,
             displayOrder: displayOrder,
             cardId: cardId,
-            seriesId: seriesId,
+            seriesId: seriesId.map { SeriesID(rawValue: $0) },
             name: name,
             description: description,
             isInvoice: isInvoice

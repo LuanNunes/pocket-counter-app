@@ -14,7 +14,7 @@ struct HistoryItem: Hashable, Sendable {
     let displayOrder: Int
     let paymentMethod: PaymentMethod?
     let cardId: CardID?
-    let seriesId: String?
+    let seriesId: SeriesID?
     let name: String?
     let description: String?
     let isInvoice: Bool
@@ -32,7 +32,7 @@ struct HistoryItem: Hashable, Sendable {
         displayOrder: Int = 0,
         paymentMethod: PaymentMethod? = nil,
         cardId: CardID? = nil,
-        seriesId: String? = nil,
+        seriesId: SeriesID? = nil,
         name: String? = nil,
         description: String? = nil,
         isInvoice: Bool = false
@@ -65,10 +65,13 @@ struct HistoryItem: Hashable, Sendable {
         )
     }
 
-    func displayTitle() -> String {
+    var hasTitle: Bool { title != nil }
+
+    func displayTitle() -> String { title ?? "—" }
+
+    private var title: String? {
         [name, description]
             .compactMap { $0 }
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            ?? "—"
     }
 }

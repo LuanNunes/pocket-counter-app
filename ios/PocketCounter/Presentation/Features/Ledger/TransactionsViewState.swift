@@ -1,3 +1,8 @@
+struct DetailTarget: Equatable, Sendable {
+    let id: TransactionID
+    let ref: RefYearMonth
+}
+
 /// What the Transações screen remembers between renders. Collapse is keyed by group identity and
 /// outlives nothing: a different kind, mode or month is a different set of groups.
 struct TransactionsViewState: Equatable {
@@ -6,6 +11,7 @@ struct TransactionsViewState: Equatable {
     private(set) var query = ""
     private(set) var onlyFixos = false
     private(set) var collapsed: Set<LedgerGroupIdentity> = []
+    private(set) var detail: DetailTarget?
 
     init(
         kind: TransactionType = .expense, mode: LedgerGroupMode = .lista, query: String = "", onlyFixos: Bool = false
@@ -42,6 +48,15 @@ struct TransactionsViewState: Equatable {
 
     mutating func monthChanged() {
         collapsed = []
+        detail = nil
+    }
+
+    mutating func openDetail(_ target: DetailTarget) {
+        detail = target
+    }
+
+    mutating func closeDetail() {
+        detail = nil
     }
 
     mutating func toggle(_ identity: LedgerGroupIdentity) {
@@ -56,4 +71,6 @@ enum TransactionsAction: Equatable {
     case setQuery(String)
     case toggleOnlyFixos
     case toggleGroup(LedgerGroupIdentity)
+    case openDetail(DetailTarget)
+    case closeDetail
 }

@@ -128,6 +128,36 @@ struct AppContainerTests {
         #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
     }
 
+    @Test("the delete action issues one authenticated DELETE to the transaction")
+    func deleteAction() async throws {
+        let http = FakeHTTP(FakeHTTP.empty(200))
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+
+        try await container.deleteTransaction(TransactionID(rawValue: "t1"))
+
+        #expect(http.requests.map(\.httpMethod) == ["DELETE"])
+        #expect(http.requests.first?.url?.path == "/api/v1/transactions/t1")
+        #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
+    }
+
+    @Test("the fixo action on a plain row creates a series, then links the row to it")
+    func toggleFixoAction() async throws {
+        let http = FakeHTTP(routes: [
+            "/api/v1/recurring-series": FakeHTTP.json(WireFixtures.series(id: "s9")),
+            "/api/v1/recurring-series/s9/transactions/t1": FakeHTTP.empty(200),
+        ])
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+
+        try await container.toggleFixo(.fixture(id: "t1", name: "Aluguel"))
+
+        #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } == [
+            "POST /api/v1/recurring-series",
+            "POST /api/v1/recurring-series/s9/transactions/t1",
+        ])
+    }
+
     @Test("a retry after a degraded lookup re-requests only that lookup and the transactions")
     func degradedRetry() async throws {
         let http = FakeHTTP(routes: [

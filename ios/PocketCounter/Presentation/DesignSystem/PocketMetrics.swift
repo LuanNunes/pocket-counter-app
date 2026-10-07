@@ -25,6 +25,12 @@ enum PocketMetrics {
     /// `.sec-h { padding: 22px 22px 8px }`
     static let sectionHeaderPadding = EdgeInsets(top: 22, leading: 22, bottom: 8, trailing: 22)
 
+    /// `screens.css:51`, `.qa-dnm { margin-top: 2px }`.
+    static let detailTitleSpacing: CGFloat = 2
+
+    /// `tx.jsx:103`, the gap above the delete button.
+    static let detailDeleteGap: CGFloat = 14
+
     /// An empty-state note, `screens.css:93`.
     static let emptyNotePadding = EdgeInsets(top: 40, leading: 20, bottom: 40, trailing: 20)
 

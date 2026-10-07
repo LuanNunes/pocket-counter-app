@@ -13,8 +13,11 @@ struct TransactionsScreen: View {
         } content: { value in
             TransactionsView(
                 board: .from(value, filter: state.filter, mode: state.mode),
-                lookups: value.lookups, state: state, writes: ledger.state.writes, onAction: perform,
+                lookups: value.lookups, state: state, writes: ledger.state.writes,
+                intents: ledger.state.intents, onAction: perform,
                 onToggleStatus: { item in Task { await ledger.togglePaymentStatus(of: item) } },
+                onToggleFixo: { item in Task { await ledger.toggleFixo(of: item) } },
+                onDelete: { item in Task { await ledger.delete(item) } },
                 onRefresh: { Task { await ledger.refresh() } }
             )
         }
@@ -22,8 +25,35 @@ struct TransactionsScreen: View {
             text: Binding(get: { state.query }, set: { perform(.setQuery($0)) }),
             prompt: TransactionsCopy.searchPrompt
         )
+        .sheet(isPresented: Binding(
+            get: { isShowingDetail },
+            set: { if !$0 { perform(.closeDetail) } }
+        )) { detailSheet }
         .onChange(of: ledger.state.month) { state.monthChanged() }
         .onChange(of: ledger.state.writes) { old, new in announceCompleted(from: old, to: new) }
+    }
+
+    private var detailProjection: TransactionDetailProjection? {
+        state.detail.map { .of($0, in: ledger.state) }
+    }
+
+    private var isShowingDetail: Bool {
+        guard case .showing = detailProjection else { return false }
+        return true
+    }
+
+    @ViewBuilder
+    private var detailSheet: some View {
+        if case .showing(let detail) = detailProjection {
+            TransactionDetailView(
+                detail: detail,
+                onToggleStatus: { Task { await ledger.togglePaymentStatus(of: detail.item) } },
+                onToggleFixo: { Task { await ledger.toggleFixo(of: detail.item) } },
+                onDelete: { Task { await ledger.delete(detail.item) } },
+                onRefresh: { Task { await ledger.refresh() } },
+                onClose: { perform(.closeDetail) }
+            )
+        }
     }
 
     private func announceCompleted(from old: [TransactionID: PaymentStatusWrite], to new: [TransactionID: PaymentStatusWrite]) {
@@ -42,6 +72,8 @@ struct TransactionsScreen: View {
             case .setQuery(let query): state.set(query: query)
             case .toggleOnlyFixos: state.toggleOnlyFixos()
             case .toggleGroup(let identity): state.toggle(identity)
+            case .openDetail(let target): state.openDetail(target)
+            case .closeDetail: state.closeDetail()
             }
         }
     }

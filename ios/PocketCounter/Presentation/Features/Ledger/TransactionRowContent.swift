@@ -30,12 +30,12 @@ struct TransactionRowContent: Equatable {
         )
     }
 
-    private static func chip(for id: TagID, lookups: LookupSet) -> TagChip {
+    static func chip(for id: TagID, lookups: LookupSet) -> TagChip {
         guard let tag = lookups.tagsById[id] else { return TagChip(name: TransactionsCopy.unresolvedGroup, argb: nil) }
         return TagChip(name: tag.name, argb: tag.color)
     }
 
-    private static func payLabel(_ item: HistoryItem, lookups: LookupSet) -> String? {
+    static func payLabel(_ item: HistoryItem, lookups: LookupSet) -> String? {
         guard let method = item.paymentMethod else { return nil }
         guard method == .credit else { return TransactionsCopy.methodName(method) }
         guard let name = item.cardId.flatMap({ lookups.cardsById[$0]?.name }) else {

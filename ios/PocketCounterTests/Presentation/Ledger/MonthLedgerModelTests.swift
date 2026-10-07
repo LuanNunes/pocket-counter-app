@@ -65,9 +65,9 @@ struct MonthLedgerModelTests {
     private func model(at month: RefYearMonth? = nil, outcomes: [Result<MonthLedger, LoadFailure>] = []) throws -> MonthLedgerModel {
         recorder.outcomes = outcomes
         let october = try ref(2026, 10)
-        return MonthLedgerModel(
+        return LedgerModelFixture.model(
             window: .around(october), month: month ?? october,
-            loadMonth: recorder.action, setPaymentStatus: { _, _ in }, onSessionExpired: expiry.action
+            loadMonth: recorder.action, onSessionExpired: expiry.action
         )
     }
 

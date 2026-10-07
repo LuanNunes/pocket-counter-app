@@ -68,4 +68,41 @@ struct TransactionsViewStateTests {
         let ledger = MonthLedger(ref: ref, items: [.fixture(name: "Luz")], lookups: LookupSet(categories: [], tags: [], cards: [], failed: []))
         #expect(LedgerBoard.from(ledger, filter: state.filter, mode: state.mode).emptiness == .filteredOut)
     }
+
+    private let target = DetailTarget(id: TransactionID(rawValue: "t"), ref: .current)
+
+    @Test("opening a detail remembers the row and closing forgets it")
+    func detail() {
+        var state = TransactionsViewState()
+        #expect(state.detail == nil)
+
+        state.openDetail(target)
+        #expect(state.detail == target)
+
+        state.closeDetail()
+        #expect(state.detail == nil)
+    }
+
+    @Test("a different month closes the detail")
+    func monthClosesDetail() {
+        var state = TransactionsViewState()
+        state.openDetail(target)
+
+        state.monthChanged()
+
+        #expect(state.detail == nil)
+    }
+
+    @Test("a kind, mode or query change keeps the detail: a filter is a lens, the row is still in the month")
+    func filtersKeepDetail() {
+        var state = TransactionsViewState()
+        state.openDetail(target)
+
+        state.select(kind: .income)
+        state.select(mode: .categoria)
+        state.set(query: "luz")
+        state.toggleOnlyFixos()
+
+        #expect(state.detail == target)
+    }
 }

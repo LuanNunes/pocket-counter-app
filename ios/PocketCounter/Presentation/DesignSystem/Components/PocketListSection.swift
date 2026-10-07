@@ -128,7 +128,7 @@ struct PocketRowSeparator: View {
 /// what it is — `.inc` is the income ink, `.wrn` the warning ink, `.exp` the default label.
 struct PocketAmount: View {
     enum Kind { case income, expense, pending }
-    enum Style { case body, rowAmount, summaryValue }
+    enum Style { case body, rowAmount, summaryValue, detailAmount }
 
     var value: Decimal
     var kind: Kind
@@ -162,6 +162,7 @@ struct PocketAmount: View {
         case .body: PocketFont.body
         case .rowAmount: PocketFont.rowAmount
         case .summaryValue: PocketFont.summaryValue
+        case .detailAmount: PocketFont.detailAmount
         }
     }
 

@@ -25,6 +25,10 @@ struct APITransactionRepository: TransactionRepository {
         try await client.write(Route.paymentStatus(status, of: id))
     }
 
+    func delete(_ id: TransactionID) async throws(WriteFailure) {
+        try await client.write(Route.delete(id))
+    }
+
     /// `async let` erases a typed throw to `any Error`, so the failure travels as a `Result`.
     private func outcome(_ endpoint: Endpoint<[TransactionDTO]>) async -> Result<[TransactionDTO], LoadFailure> {
         do {
@@ -62,6 +66,10 @@ struct APITransactionRepository: TransactionRepository {
             Endpoint(
                 method: .put, path: "api/v1/transactions/\(id.rawValue)/\(segment(status))", authentication: .bearer
             )
+        }
+
+        static func delete(_ id: TransactionID) -> Endpoint<EmptyResponse> {
+            Endpoint(method: .delete, path: "api/v1/transactions/\(id.rawValue)", authentication: .bearer)
         }
 
         /// Not derived from the wire value: a renamed path or a new case must fail to compile.

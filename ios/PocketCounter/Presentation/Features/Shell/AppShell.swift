@@ -22,6 +22,7 @@ struct AppShell: View {
         self.onSignOut = onSignOut
         _ledger = State(wrappedValue: MonthLedgerModel(
             loadMonth: container.loadMonth, setPaymentStatus: container.setPaymentStatus,
+            toggleFixo: container.toggleFixo, deleteTransaction: container.deleteTransaction,
             onSessionExpired: onSessionExpired))
     }
 
