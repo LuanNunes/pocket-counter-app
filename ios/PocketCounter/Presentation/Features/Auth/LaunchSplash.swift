@@ -61,7 +61,7 @@ struct LaunchSplash: View {
                 .foregroundStyle(PocketColor.onHero)
                 .multilineTextAlignment(.center)
 
-            Text("Isso costuma ser temporário. Seus dados continuam salvos.")
+            Text(TransientFailureCopy.reassurance)
                 .pocketFont(PocketFont.subtitle)
                 .foregroundStyle(PocketColor.onHero.opacity(0.75))
                 .multilineTextAlignment(.center)

@@ -5,4 +5,7 @@ protocol TransactionRepository: Sendable {
     func month(_ ref: RefYearMonth) async throws(LoadFailure) -> [HistoryItem]
     func range(_ span: RefYearMonthRange) async throws(LoadFailure) -> [HistoryItem]
     func invoiceItems(_ id: TransactionID) async throws(LoadFailure) -> [InvoiceItem]
+
+    /// Sets rather than toggles, so a retry cannot flip the row back.
+    func setPaymentStatus(_ status: PaymentStatus, on id: TransactionID) async throws(WriteFailure)
 }

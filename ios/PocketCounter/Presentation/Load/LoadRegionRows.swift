@@ -28,7 +28,7 @@ struct LoadRegionRows<Value: Equatable, Content: View>: View {
                 content(value)
             }
         }
-        .placeholderGrace(isFirstLoad: phase == .firstLoad, elapsed: $showsPlaceholder)
+        .graced(isActive: phase == .firstLoad, elapsed: $showsPlaceholder)
     }
 
     @ViewBuilder
@@ -43,6 +43,7 @@ struct LoadRegionRows<Value: Equatable, Content: View>: View {
             content(placeholder())
                 .redacted(reason: .placeholder)
                 .accessibilityHidden(true)
+                .allowsHitTesting(false)
         }
     }
 }

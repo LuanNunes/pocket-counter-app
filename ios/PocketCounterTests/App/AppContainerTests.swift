@@ -114,6 +114,20 @@ struct AppContainerTests {
         #expect(http.callCount == 2 + 3 + 2)
     }
 
+    @Test("the status action issues one authenticated PUT to the status path")
+    func setPaymentStatusAction() async throws {
+        let http = FakeHTTP(FakeHTTP.json(#""t1""#))
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+
+        try await container.setPaymentStatus(TransactionID(rawValue: "t1"), .pending)
+
+        #expect(http.callCount == 1)
+        #expect(http.requests.first?.httpMethod == "PUT")
+        #expect(http.requests.first?.url?.path == "/api/v1/transactions/t1/pending")
+        #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
+    }
+
     @Test("a retry after a degraded lookup re-requests only that lookup and the transactions")
     func degradedRetry() async throws {
         let http = FakeHTTP(routes: [

@@ -52,5 +52,22 @@ enum TransactionsCopy {
         status == .paid ? "paga" : "pendente"
     }
 
+    static func statusToggleLabel(isPaid: Bool) -> String {
+        isPaid ? "Paga — marcar como pendente" : "Pendente — marcar como paga"
+    }
+
+    static func statusMarked(_ status: PaymentStatus) -> String {
+        status == .paid ? "Marcada como paga" : "Marcada como pendente"
+    }
+
+    static func remedyTitle(_ remedy: TransactionRowWrite.Remedy) -> String {
+        switch remedy {
+        case .retry: "Tentar novamente"
+        case .refresh: "Atualizar"
+        }
+    }
+
+    static let statusSaving = "Salvando"
+
     static func extraTags(_ count: Int) -> String { "+\(count)" }
 }

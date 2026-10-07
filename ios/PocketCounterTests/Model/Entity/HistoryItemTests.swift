@@ -71,4 +71,19 @@ struct CatalogEntityTests {
         #expect(card.closingDay == nil)
         #expect(card.color == nil)
     }
+
+    @Test("setting the payment status changes that field and nothing else")
+    func settingPaymentStatus() {
+        let item = HistoryItem.fixture(
+            id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .paid, displayOrder: 3,
+            seriesId: "s1", name: "Aluguel", isInvoice: true
+        )
+
+        let pending = item.settingPaymentStatus(.pending)
+
+        #expect(pending == HistoryItem.fixture(
+            id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .pending, displayOrder: 3,
+            seriesId: "s1", name: "Aluguel", isInvoice: true
+        ))
+    }
 }

@@ -2,15 +2,25 @@ import Observation
 
 typealias LoadMonthAction = @Sendable (RefYearMonth) async throws(LoadFailure) -> MonthLedger
 
+typealias SetPaymentStatusAction = @Sendable (TransactionID, PaymentStatus) async throws(WriteFailure) -> Void
+
 @MainActor
 @Observable
 final class MonthLedgerModel {
     struct State: Equatable {
         let window: MonthWindow
         var month: RefYearMonth
-        fileprivate var months: [RefYearMonth: LoadState<MonthLedger>] = [:]
+        fileprivate(set) var months: [RefYearMonth: LoadState<MonthLedger>] = [:]
+        /// What the user asked for, by row. Never written into `months`: that stays the server's answer.
+        fileprivate(set) var writes: [TransactionID: PaymentStatusWrite] = [:]
 
-        var load: LoadState<MonthLedger> { months[month] ?? LoadState() }
+        var load: LoadState<MonthLedger> {
+            var load = months[month] ?? LoadState()
+            let targets = writes.compactMapValues(\.target)
+            load.amend { $0.applying(targets) }
+            return load
+        }
+
         var canSelectPrevious: Bool { window.contains(month.previous()) }
         var canSelectNext: Bool { window.contains(month.next()) }
 
@@ -18,20 +28,55 @@ final class MonthLedgerModel {
             self.window = window
             self.month = month
         }
+
+        func isWriting(_ id: TransactionID) -> Bool {
+            writes[id]?.target != nil
+        }
+
+        func holdsCommittedItem(_ id: TransactionID, in ref: RefYearMonth) -> Bool {
+            months[ref]?.value?.items.contains { $0.id == id } ?? false
+        }
+
+        mutating func beginWrite(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
+            writes[id] = PaymentStatusWrite(ref: ref, phase: .inFlight(target))
+        }
+
+        /// Promotes and clears in one mutation, so no render sees the overlay gone and the ledger not yet updated.
+        mutating func completeWrite(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
+            months[ref]?.amend { $0.applying([id: target]) }
+            writes[id] = nil
+        }
+
+        mutating func failWrite(_ id: TransactionID, ref: RefYearMonth, _ failure: WriteFailure) {
+            writes[id] = PaymentStatusWrite(ref: ref, phase: .failed(failure))
+        }
+
+        mutating func dropWrite(_ id: TransactionID) {
+            writes[id] = nil
+        }
+
+        /// The server just answered for `ref`, so its failed writes are stale. In-flight ones still stand.
+        mutating func commit(_ ledger: MonthLedger, for ref: RefYearMonth) {
+            months[ref, default: LoadState()].commit(ledger)
+            writes = writes.filter { $0.value.ref != ref || $0.value.target != nil }
+        }
     }
 
     private(set) var state: State
     private let loadMonth: LoadMonthAction
+    private let setPaymentStatus: SetPaymentStatusAction
     private let onSessionExpired: SessionExpiredAction
 
     init(
         window: MonthWindow = .around(.current),
         month: RefYearMonth = .current,
         loadMonth: @escaping LoadMonthAction,
+        setPaymentStatus: @escaping SetPaymentStatusAction,
         onSessionExpired: @escaping SessionExpiredAction
     ) {
         state = State(window: window, month: window.clamped(month))
         self.loadMonth = loadMonth
+        self.setPaymentStatus = setPaymentStatus
         self.onSessionExpired = onSessionExpired
     }
 
@@ -74,6 +119,28 @@ final class MonthLedgerModel {
         stopInFlight()
     }
 
+    /// Takes the row as displayed, so the target is the opposite of what the user sees.
+    /// Async and spawning no `Task`: the view wraps it.
+    func togglePaymentStatus(of item: HistoryItem) async {
+        // A redacted placeholder row carries the real handler; this stops its tap.
+        guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
+        guard !state.isWriting(item.id) else { return }
+        let target: PaymentStatus = item.statusPayment == .paid ? .pending : .paid
+        state.beginWrite(item.id, ref: item.ref, target: target)
+        do {
+            try await setPaymentStatus(item.id, target)
+            state.completeWrite(item.id, ref: item.ref, target: target)
+        } catch {
+            switch error {
+            case .sessionExpired:
+                state.dropWrite(item.id)
+                await onSessionExpired()
+            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
+                state.failWrite(item.id, ref: item.ref, error)
+            }
+        }
+    }
+
     private func request() async {
         let ref = state.month
         stopInFlight()
@@ -106,7 +173,7 @@ final class MonthLedgerModel {
                 state.months[ref, default: LoadState()].fail(.server)
                 return
             }
-            state.months[ref, default: LoadState()].commit(ledger)
+            state.commit(ledger, for: ref)
         } catch {
             let isLatest = latestRequest[ref] == request
             switch error {

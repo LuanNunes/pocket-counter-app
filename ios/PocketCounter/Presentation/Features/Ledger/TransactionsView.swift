@@ -6,7 +6,10 @@ struct TransactionsView: View {
     let board: LedgerBoard
     let lookups: LookupSet
     let state: TransactionsViewState
+    let writes: [TransactionID: PaymentStatusWrite]
     let onAction: (TransactionsAction) -> Void
+    let onToggleStatus: (HistoryItem) -> Void
+    let onRefresh: () -> Void
 
     var body: some View {
         TransactionsSummary(
@@ -44,11 +47,27 @@ struct TransactionsView: View {
 
             if !isCollapsed {
                 ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                    TransactionRow(content: .of(item, lookups: lookups))
+                    row(item)
                         .pocketCard(.of(index: index, count: group.items.count))
                 }
             }
         }
+    }
+
+    private func row(_ item: HistoryItem) -> some View {
+        let write = TransactionRowWrite.of(writes[item.id])
+        return TransactionRow(
+            content: .of(item, lookups: lookups), isBusy: write.isBusy, notice: write.notice,
+            noticeAction: write.remedy.map { remedy in
+                .init(title: TransactionsCopy.remedyTitle(remedy)) {
+                    switch remedy {
+                    case .retry: onToggleStatus(item)
+                    case .refresh: onRefresh()
+                    }
+                }
+            },
+            onToggleStatus: { onToggleStatus(item) }
+        )
     }
 
     @ViewBuilder
@@ -123,7 +142,8 @@ enum TransactionsPreview {
 
     @MainActor static func screen(
         _ phase: LoadPhase<MonthLedger>, kind: TransactionType = .expense, mode: LedgerGroupMode = .lista,
-        query: String = "", collapsed: Set<LedgerGroupIdentity> = []
+        query: String = "", collapsed: Set<LedgerGroupIdentity> = [],
+        writes: [TransactionID: PaymentStatusWrite] = [:]
     ) -> some View {
         var state = TransactionsViewState(kind: kind, mode: mode, query: query)
         collapsed.forEach { state.toggle($0) }
@@ -132,7 +152,8 @@ enum TransactionsPreview {
                 LoadRegionRows(phase: phase, placeholder: { .placeholder(for: ref) }, onRetry: {}) { value in
                     TransactionsView(
                         board: .from(value, filter: state.filter, mode: mode),
-                        lookups: value.lookups, state: state, onAction: { _ in })
+                        lookups: value.lookups, state: state, writes: writes, onAction: { _ in },
+                        onToggleStatus: { _ in }, onRefresh: {})
                 }
             }
             .listStyle(.plain)
@@ -164,6 +185,18 @@ enum TransactionsPreview {
 
 #Preview("Nenhum resultado") {
     TransactionsPreview.screen(.loaded(TransactionsPreview.ledger()), query: "zzz")
+}
+
+#Preview("Gravando") {
+    TransactionsPreview.screen(
+        .loaded(TransactionsPreview.ledger()),
+        writes: [.init(rawValue: "a"): .init(ref: TransactionsPreview.ref, phase: .inFlight(.paid))])
+}
+
+#Preview("Falha ao gravar") {
+    TransactionsPreview.screen(
+        .loaded(TransactionsPreview.ledger()),
+        writes: [.init(rawValue: "a"): .init(ref: TransactionsPreview.ref, phase: .failed(.unreachable))])
 }
 
 #Preview("Carregando") { TransactionsPreview.screen(.firstLoad) }

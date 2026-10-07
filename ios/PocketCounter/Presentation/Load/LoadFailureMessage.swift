@@ -18,10 +18,9 @@ enum LoadFailureMessage {
                 kind: .error, title: "Algo deu errado",
                 detail: "O servidor não conseguiu responder. Tente de novo em instantes.")
         case .authenticationUnavailable:
-            // Same situation and words as `LaunchSplash`.
             return PocketNotice(
                 kind: .info, title: "Não conseguimos confirmar sua sessão",
-                detail: "Isso costuma ser temporário. Seus dados continuam salvos.")
+                detail: TransientFailureCopy.reassurance)
         case .notFound:
             return PocketNotice(kind: .error, title: "Não encontramos esses dados", detail: "Eles podem ter sido removidos.")
         case .rejected(let text):

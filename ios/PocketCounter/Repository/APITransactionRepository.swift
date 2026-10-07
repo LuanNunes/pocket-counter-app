@@ -21,6 +21,10 @@ struct APITransactionRepository: TransactionRepository {
         try await client.load(Route.items(id)).mappedOrFailing(InvoiceItemMapper.map)
     }
 
+    func setPaymentStatus(_ status: PaymentStatus, on id: TransactionID) async throws(WriteFailure) {
+        try await client.write(Route.paymentStatus(status, of: id))
+    }
+
     /// `async let` erases a typed throw to `any Error`, so the failure travels as a `Result`.
     private func outcome(_ endpoint: Endpoint<[TransactionDTO]>) async -> Result<[TransactionDTO], LoadFailure> {
         do {
@@ -52,6 +56,20 @@ struct APITransactionRepository: TransactionRepository {
 
         static func items(_ id: TransactionID) -> Endpoint<[TransactionItemDTO]> {
             Endpoint(method: .get, path: "api/v1/transactions/\(id.rawValue)/items", authentication: .bearer)
+        }
+
+        static func paymentStatus(_ status: PaymentStatus, of id: TransactionID) -> Endpoint<EmptyResponse> {
+            Endpoint(
+                method: .put, path: "api/v1/transactions/\(id.rawValue)/\(segment(status))", authentication: .bearer
+            )
+        }
+
+        /// Not derived from the wire value: a renamed path or a new case must fail to compile.
+        private static func segment(_ status: PaymentStatus) -> String {
+            switch status {
+            case .paid: "paid"
+            case .pending: "pending"
+            }
         }
     }
 }

@@ -69,6 +69,7 @@ struct PocketInlineMessage: View {
                     .padding(.vertical, 12)
             } else if let action {
                 Button(action.title, action: action.perform)
+                    .buttonStyle(.plain)
                     .pocketFont(PocketFont.link)
                     .foregroundStyle(primaryInk)
                     .padding(.vertical, 12)
