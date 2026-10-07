@@ -26,6 +26,16 @@ enum PocketFormat {
         return "menos " + currency(amount, signed: false)
     }
 
+    /// `+ R$ 10,00` or `− R$ 10,00`, the spec's row amount.
+    /// `tx.jsx:38` draws the sign from the kind, not from the amount, so a zero keeps its direction.
+    static func movement(_ amount: Decimal, isIncome: Bool) -> String {
+        (isIncome ? "+" : minusSign) + " " + currency(amount, signed: false)
+    }
+
+    static func spokenMovement(_ amount: Decimal, isIncome: Bool) -> String {
+        (isIncome ? "mais " : "menos ") + currency(amount, signed: false)
+    }
+
     /// The lower-case in-sentence form: day labels and the month pill's VoiceOver value.
     /// `monthName` is the standalone form.
     ///
@@ -36,6 +46,11 @@ enum PocketFormat {
         guard showingYear else { return name }
 
         return "\(name) de \(year)"
+    }
+
+    /// "19 de maio".
+    static func dayLabel(_ day: CalendarDay) -> String {
+        "\(day.day) de \(monthLabel(year: day.year, month: day.month))"
     }
 
     /// The standalone form, which the month pill capitalises (`store.jsx:7-8`).

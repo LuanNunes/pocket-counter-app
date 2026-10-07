@@ -36,7 +36,7 @@ struct APITagRepository: TagRepository {
         let client = client
         return try await categoryCache.value { () async throws(LoadFailure) -> [TagContext] in
             let categories = try await client.load(Route.categories)
-            return try ReadingOrder.categories(categories).mappedOrFailing(TagMapper.context)
+            return try Self.sortedCategories(categories).mappedOrFailing(TagMapper.context)
         }
     }
 
@@ -48,5 +48,22 @@ struct APITagRepository: TagRepository {
     private static func tags(_ endpoint: Endpoint<[TagDTO]>, _ client: AuthenticatedAPIClient) async throws(LoadFailure) -> [Tag] {
         let tags = try await client.load(endpoint).mappedOrFailing(TagMapper.tag)
         return ReadingOrder.byName(tags, name: \.name, id: \.id.rawValue)
+    }
+
+    /// The server sorts on a nullable column with no tie-break: nulls go last, then name, then `id`.
+    private static func sortedCategories(_ categories: [CategoryDTO]) -> [CategoryDTO] {
+        categories.sorted { lhs, rhs in
+            switch (lhs.displayOrder, rhs.displayOrder) {
+            case (let left?, let right?) where left != right: return left < right
+            case (nil, .some): return false
+            case (.some, nil): return true
+            case (.some, .some), (nil, nil): break
+            }
+            switch ReadingOrder.compare(lhs.name, rhs.name, locale: ReadingOrder.locale) {
+            case .orderedAscending: return true
+            case .orderedDescending: return false
+            case .orderedSame: return lhs.id < rhs.id
+            }
+        }
     }
 }

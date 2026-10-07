@@ -28,6 +28,37 @@ enum PocketMetrics {
     /// An empty-state note, `screens.css:93`.
     static let emptyNotePadding = EdgeInsets(top: 40, leading: 20, bottom: 40, trailing: 20)
 
+    // MARK: Transactions
+
+    /// `.txr` — a minimum, never fixed: the row grows with Dynamic Type.
+    static let txRowMinHeight: CGFloat = 64
+    static let txRowPadding = EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 12)
+    static let txRowSpacing: CGFloat = 10
+    /// `.txr{--in:54px}`
+    static let txHairlineInset: CGFloat = 54
+    /// `.st`, inside a `controlSize` hit target.
+    static let statusPillSize: CGFloat = 34
+    /// `.mtag`
+    static let tagChipHeight: CGFloat = 20
+    static let tagChipPaddingH: CGFloat = 8
+    static let tagChipSpacing: CGFloat = 5
+    static let tagDot: CGFloat = 6
+    static let rowMetaSpacing: CGFloat = 6
+    /// `.txg-h`
+    static let groupHeaderPadding = EdgeInsets(top: 18, leading: 22, bottom: 7, trailing: 22)
+    static let groupHeaderSpacing: CGFloat = 7
+    static let groupDot: CGFloat = 8
+    static let groupCountPadding = EdgeInsets(top: 1, leading: 7, bottom: 1, trailing: 7)
+    static let groupCountRadius: CGFloat = 9
+    /// `.txsum`
+    static let summaryPadding = EdgeInsets(top: 16, leading: 20, bottom: 2, trailing: 20)
+    /// `.txfoot`
+    static let footerPadding = EdgeInsets(top: 14, leading: 22, bottom: 0, trailing: 22)
+    /// `.chip`
+    static let modeChipHeight: CGFloat = 30
+    static let modeChipPaddingH: CGFloat = 12
+    static let modeChipSpacing: CGFloat = 6
+
     // MARK: Hero
 
     static let heroRadius: CGFloat = 30

@@ -53,6 +53,10 @@ struct HistoryItem: Hashable, Sendable {
         self.isInvoice = isInvoice
     }
 
+    func effectiveTagIds(inheriting inherited: [TagID]) -> [TagID] {
+        tagIds ?? inherited
+    }
+
     func displayTitle() -> String {
         [name, description]
             .compactMap { $0 }

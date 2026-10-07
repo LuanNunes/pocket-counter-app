@@ -30,13 +30,8 @@ struct APITransactionRepository: TransactionRepository {
         }
     }
 
-    /// Total order: the sort is unstable and `displayOrder` is 0 on most rows.
     private func ordered(_ dtos: [TransactionDTO]) throws(LoadFailure) -> [HistoryItem] {
-        try dtos.mappedOrFailing(TransactionMapper.map).sorted { Self.key($0) < Self.key($1) }
-    }
-
-    private static func key(_ item: HistoryItem) -> (Int, Int, Int, CalendarDay, String) {
-        (item.ref.raw, item.type == .income ? 0 : 1, item.displayOrder, item.date, item.id.rawValue)
+        LedgerOrder.sorted(try dtos.mappedOrFailing(TransactionMapper.map))
     }
 
     enum Route {

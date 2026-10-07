@@ -32,6 +32,9 @@ enum PocketColor {
     static let warning = Color.orange
     static let incomeInk = Color("incomeInk")
     static let warningInk = Color("warningInk")
+    /// Status-pill fills: `green` at 14% and `--orange-soft`.
+    static let incomeSoft = Color("incomeSoft")
+    static let warningSoft = Color("warningSoft")
 
     /// `.exp` is `--label`: an expense is the default case, so its value is not colored.
     static let expense = Color.primary
