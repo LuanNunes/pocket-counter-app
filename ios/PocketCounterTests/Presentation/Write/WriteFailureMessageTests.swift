@@ -41,6 +41,19 @@ struct WriteFailureMessageTests {
         let unreachable = WriteFailure.unreachable
         #expect(WriteFailureMessage.message(for: unreachable, subject: .saving)?.title == "Não foi possível salvar")
         #expect(WriteFailureMessage.message(for: unreachable, subject: .deleting)?.title == "Não foi possível excluir")
+        #expect(WriteFailureMessage.message(for: unreachable, subject: .reordering)?.title == "Não foi possível reordenar")
+    }
+
+    @Test("a reorder that finds a row gone talks about the list, not the row")
+    func reorderVanished() {
+        #expect(WriteFailureMessage.message(for: .vanished, subject: .reordering) == PocketNotice(
+            kind: .error, title: "A lista mudou",
+            detail: "Algum lançamento foi excluído em outro aparelho."))
+    }
+
+    @Test("a reorder says nothing when the session ended")
+    func reorderSilent() {
+        #expect(WriteFailureMessage.message(for: .sessionExpired, subject: .reordering) == nil)
     }
 
     @Test("a vanished row keeps its own title whatever the subject", arguments: [

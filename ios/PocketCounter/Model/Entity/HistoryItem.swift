@@ -65,6 +65,14 @@ struct HistoryItem: Hashable, Sendable {
         )
     }
 
+    func settingDisplayOrder(_ order: Int) -> HistoryItem {
+        HistoryItem(
+            id: id, ref: ref, date: date, amount: amount, type: type, tagIds: tagIds, statusPayment: statusPayment,
+            displayOrder: order, paymentMethod: paymentMethod, cardId: cardId, seriesId: seriesId,
+            name: name, description: description, isInvoice: isInvoice
+        )
+    }
+
     var hasTitle: Bool { title != nil }
 
     func displayTitle() -> String { title ?? "—" }

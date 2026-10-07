@@ -51,4 +51,13 @@ struct TransactionsCopyTests {
         #expect(TransactionsCopy.detailCategories(tags) == "Mercado, Restaurante")
         #expect(TransactionsCopy.detailCategories([]) == "—")
     }
+
+    @Test("the reorder hint names the scope the drag stays within", arguments: [
+        (LedgerGroupMode.lista, "Arraste para reordenar dentro do dia"),
+        (.categoria, "Arraste para reordenar dentro do grupo"),
+        (.tag, "Arraste para reordenar dentro do grupo"),
+    ])
+    func reorderHint(mode: LedgerGroupMode, expected: String) {
+        #expect(TransactionsCopy.reorderHint(mode) == expected)
+    }
 }

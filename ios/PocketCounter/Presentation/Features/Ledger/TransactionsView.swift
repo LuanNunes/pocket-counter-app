@@ -6,6 +6,7 @@ struct TransactionsView: View {
     let board: LedgerBoard
     let lookups: LookupSet
     let state: TransactionsViewState
+    let reorderNotice: PocketNotice?
     let writes: [TransactionID: PaymentStatusWrite]
     let intents: [TransactionID: RowIntentWrite]
     let onAction: (TransactionsAction) -> Void
@@ -13,13 +14,28 @@ struct TransactionsView: View {
     let onToggleFixo: (HistoryItem) -> Void
     let onDelete: (HistoryItem) -> Void
     let onRefresh: () -> Void
+    let onMove: ([TransactionID]) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         TransactionsSummary(
             total: board.total.amount, count: board.visibleCount, kind: state.kind, mode: state.mode,
-            onlyFixos: state.onlyFixos, onAction: onAction
+            onlyFixos: state.onlyFixos, canReorder: state.canReorder, isReordering: state.isReordering,
+            onAction: onAction
         )
         .pocketListBlock()
+
+        if let reorderNotice {
+            PocketNoticeCard(notice: reorderNotice)
+                .pocketListBlock()
+        }
+
+        if state.isReordering {
+            reorderHint
+                .pocketListBlock()
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+        }
 
         switch board.emptiness {
         case .notEmpty:
@@ -37,6 +53,20 @@ struct TransactionsView: View {
         }
     }
 
+    private var reorderHint: some View {
+        HStack(spacing: PocketMetrics.hintSpacing) {
+            Image(systemName: "line.3.horizontal")
+                .accessibilityHidden(true)
+            Text(TransactionsCopy.reorderHint(state.mode))
+        }
+        .pocketFont(PocketFont.hint)
+        .foregroundStyle(PocketColor.tintInk)
+        .padding(.horizontal, PocketMetrics.hintPaddingH)
+        .padding(.vertical, PocketMetrics.hintPaddingV)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PocketColor.tintSoft, in: .rect(cornerRadius: PocketMetrics.hintRadius))
+    }
+
     @ViewBuilder
     private var groups: some View {
         ForEach(board.groups) { group in
@@ -44,20 +74,27 @@ struct TransactionsView: View {
             TransactionGroupHeader(
                 label: .of(group.identity, lookups: lookups), count: group.items.count,
                 subtotal: group.subtotal.amount, isGrouped: state.mode != .lista, isCollapsed: isCollapsed,
-                onToggle: { onAction(.toggleGroup(group.identity)) }
+                isReordering: state.isReordering, onToggle: { onAction(.toggleGroup(group.identity)) }
             )
             .pocketListBlock()
 
             if !isCollapsed {
+                let ids = group.items.map(\.id)
+                let order = GroupOrder(ids: ids)
                 ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                    row(item)
+                    row(item, at: index, in: order)
                         .pocketCard(.of(index: index, count: group.items.count))
+                }
+                .onMove { source, destination in
+                    var ids = ids
+                    ids.move(fromOffsets: source, toOffset: destination)
+                    onMove(ids)
                 }
             }
         }
     }
 
-    private func row(_ item: HistoryItem) -> some View {
+    private func row(_ item: HistoryItem, at index: Int, in order: GroupOrder) -> some View {
         let status = TransactionRowWrite.of(writes[item.id], subject: .saving)
         let intent = TransactionRowWrite.of(intents[item.id])
         let shown = status.notice == nil ? intent : status
@@ -67,7 +104,7 @@ struct TransactionsView: View {
             content: .of(item, lookups: lookups), isBusy: status.isBusy || intent.isBusy,
             busyLabel: isDeleting ? TransactionsCopy.statusDeleting : TransactionsCopy.statusSaving,
             notice: shown.notice,
-            noticeAction: shown.remedy.map { remedy in
+            noticeAction: state.isReordering ? nil : shown.remedy.map { remedy in
                 .init(title: TransactionsCopy.remedyTitle(remedy)) {
                     switch remedy {
                     case .retry: retry(item)
@@ -75,8 +112,17 @@ struct TransactionsView: View {
                     }
                 }
             },
+            reordering: state.isReordering ? reordering(item, at: index, in: order) : nil,
             onToggleStatus: { onToggleStatus(item) },
             onOpen: { onAction(.openDetail(DetailTarget(id: item.id, ref: item.ref))) }
+        )
+    }
+
+    private func reordering(_ item: HistoryItem, at index: Int, in order: GroupOrder) -> TransactionRow.Reordering {
+        .init(
+            position: TransactionsCopy.position(index + 1, of: order.ids.count),
+            moveUp: order.movingUp(item.id).map { ids in { onMove(ids) } },
+            moveDown: order.movingDown(item.id).map { ids in { onMove(ids) } }
         )
     }
 
@@ -157,17 +203,20 @@ enum TransactionsPreview {
     @MainActor static func screen(
         _ phase: LoadPhase<MonthLedger>, kind: TransactionType = .expense, mode: LedgerGroupMode = .lista,
         query: String = "", collapsed: Set<LedgerGroupIdentity> = [],
-        writes: [TransactionID: PaymentStatusWrite] = [:], intents: [TransactionID: RowIntentWrite] = [:]
+        writes: [TransactionID: PaymentStatusWrite] = [:], intents: [TransactionID: RowIntentWrite] = [:],
+        isReordering: Bool = false, reorderNotice: PocketNotice? = nil
     ) -> some View {
         var state = TransactionsViewState(kind: kind, mode: mode, query: query)
         collapsed.forEach { state.toggle($0) }
+        if isReordering { state.beginReordering() }
         return NavigationStack {
             List {
                 LoadRegionRows(phase: phase, placeholder: { .placeholder(for: ref) }, onRetry: {}) { value in
                     TransactionsView(
                         board: .from(value, filter: state.filter, mode: mode),
-                        lookups: value.lookups, state: state, writes: writes, intents: intents, onAction: { _ in },
-                        onToggleStatus: { _ in }, onToggleFixo: { _ in }, onDelete: { _ in }, onRefresh: {})
+                        lookups: value.lookups, state: state, reorderNotice: reorderNotice, writes: writes,
+                        intents: intents, onAction: { _ in }, onToggleStatus: { _ in }, onToggleFixo: { _ in },
+                        onDelete: { _ in }, onRefresh: {}, onMove: { _ in })
                 }
             }
             .listStyle(.plain)
@@ -211,6 +260,27 @@ enum TransactionsPreview {
     TransactionsPreview.screen(
         .loaded(TransactionsPreview.ledger()),
         writes: [.init(rawValue: "a"): .init(ref: TransactionsPreview.ref, phase: .failed(.unreachable))])
+}
+
+#Preview("Reordenando") {
+    TransactionsPreview.screen(.loaded(TransactionsPreview.ledger()), isReordering: true)
+}
+
+#Preview("Reordenando por categoria") {
+    TransactionsPreview.screen(.loaded(TransactionsPreview.ledger()), mode: .categoria, isReordering: true)
+}
+
+#Preview("Reordenando, AX5") {
+    TransactionsPreview.screen(.loaded(TransactionsPreview.ledger()), isReordering: true)
+        .dynamicTypeSize(.accessibility5)
+}
+
+#Preview("Falha ao reordenar") {
+    TransactionsPreview.screen(
+        .loaded(TransactionsPreview.ledger()),
+        reorderNotice: ReorderNotice.message(
+            for: FailedReorder(ref: TransactionsPreview.ref, kind: .expense, failure: .unreachable),
+            month: TransactionsPreview.ref, kind: .expense))
 }
 
 #Preview("Carregando") { TransactionsPreview.screen(.firstLoad) }

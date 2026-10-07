@@ -7,10 +7,11 @@ struct TransactionGroupHeader: View {
     let subtotal: Decimal
     let isGrouped: Bool
     let isCollapsed: Bool
+    var isReordering = false
     let onToggle: () -> Void
 
     var body: some View {
-        if isGrouped {
+        if isGrouped, !isReordering {
             Button(action: onToggle) { content }
                 .buttonStyle(.plain)
                 .accessibilityValue(isCollapsed ? "Recolhido" : "Expandido")
@@ -45,6 +46,7 @@ struct TransactionGroupHeader: View {
                     .pocketFont(PocketFont.groupChevron)
                     .foregroundStyle(PocketColor.labelSecondary)
                     .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                    .opacity(isReordering ? 0 : 1)
                     .accessibilityHidden(true)
                 if let argb = label.argb {
                     LedgerDot(argb: argb, size: PocketMetrics.groupDot)

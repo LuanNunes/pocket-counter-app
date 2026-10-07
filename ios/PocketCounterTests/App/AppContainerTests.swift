@@ -141,6 +141,19 @@ struct AppContainerTests {
         #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
     }
 
+    @Test("the reorder action issues one authenticated PUT to the reorder path")
+    func reorderAction() async throws {
+        let http = FakeHTTP(FakeHTTP.empty(200))
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+
+        try await container.reorderTransactions([TransactionID(rawValue: "t1"), TransactionID(rawValue: "t2")])
+
+        #expect(http.requests.map(\.httpMethod) == ["PUT"])
+        #expect(http.requests.first?.url?.path == "/api/v1/transactions/reorder")
+        #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
+    }
+
     @Test("the fixo action on a plain row creates a series, then links the row to it")
     func toggleFixoAction() async throws {
         let http = FakeHTTP(routes: [

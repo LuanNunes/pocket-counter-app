@@ -13,13 +13,27 @@ struct TransactionsScreen: View {
         } content: { value in
             TransactionsView(
                 board: .from(value, filter: state.filter, mode: state.mode),
-                lookups: value.lookups, state: state, writes: ledger.state.writes,
+                lookups: value.lookups, state: state,
+                reorderNotice: ReorderNotice.message(
+                    for: ledger.state.failedReorder, month: ledger.state.month, kind: state.kind),
+                writes: ledger.state.writes,
                 intents: ledger.state.intents, onAction: perform,
                 onToggleStatus: { item in Task { await ledger.togglePaymentStatus(of: item) } },
                 onToggleFixo: { item in Task { await ledger.toggleFixo(of: item) } },
                 onDelete: { item in Task { await ledger.delete(item) } },
-                onRefresh: { Task { await ledger.refresh() } }
+                onRefresh: { Task { await ledger.refresh() } },
+                onMove: { ids in
+                    Task { await ledger.reorder(ids, of: state.kind, in: ledger.state.month) }
+                }
             )
+        }
+        .environment(\.editMode, .constant(state.isReordering ? .active : .inactive))
+        .toolbar {
+            if state.isReordering {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(TransactionsCopy.reorderDone) { perform(.endReordering) }
+                }
+            }
         }
         .searchable(
             text: Binding(get: { state.query }, set: { perform(.setQuery($0)) }),
@@ -74,6 +88,8 @@ struct TransactionsScreen: View {
             case .toggleGroup(let identity): state.toggle(identity)
             case .openDetail(let target): state.openDetail(target)
             case .closeDetail: state.closeDetail()
+            case .beginReordering: state.beginReordering()
+            case .endReordering: state.endReordering()
             }
         }
     }

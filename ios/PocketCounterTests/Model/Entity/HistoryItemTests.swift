@@ -86,4 +86,19 @@ struct CatalogEntityTests {
             seriesId: "s1", name: "Aluguel", isInvoice: true
         ))
     }
+
+    @Test("setting the display order changes that field and nothing else")
+    func settingDisplayOrder() {
+        let item = HistoryItem.fixture(
+            id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .pending, displayOrder: 3,
+            seriesId: "s1", name: "Aluguel", isInvoice: true
+        )
+
+        let moved = item.settingDisplayOrder(0)
+
+        #expect(moved == HistoryItem.fixture(
+            id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .pending, displayOrder: 0,
+            seriesId: "s1", name: "Aluguel", isInvoice: true
+        ))
+    }
 }

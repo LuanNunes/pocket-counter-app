@@ -82,6 +82,19 @@ enum TransactionsCopy {
     static let deleteConfirmMessage = "Isso não pode ser desfeito."
     static let deleteConfirm = "Excluir"
     static let deleteCancel = "Cancelar"
+    static let reorderAction = "Reordenar"
+    static let reorderDone = "OK"
+    static let moveUp = "Mover para cima"
+    static let moveDown = "Mover para baixo"
+
+    static func position(_ number: Int, of total: Int) -> String {
+        "posição \(number) de \(total)"
+    }
+
+    static func reorderHint(_ mode: LedgerGroupMode) -> String {
+        "Arraste para reordenar dentro do \(mode == .lista ? "dia" : "grupo")"
+    }
+
     static let emptyValue = "—"
 
     static func detailValue(_ text: String?) -> String {

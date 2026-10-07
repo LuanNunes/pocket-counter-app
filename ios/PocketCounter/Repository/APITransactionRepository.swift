@@ -1,6 +1,15 @@
 import Foundation
 
 struct APITransactionRepository: TransactionRepository {
+    private struct ReorderBody: Encodable, Sendable {
+        struct Item: Encodable, Sendable {
+            let id: String
+            let displayOrder: Int
+        }
+
+        let items: [Item]
+    }
+
     private let client: AuthenticatedAPIClient
 
     init(client: AuthenticatedAPIClient) {
@@ -27,6 +36,10 @@ struct APITransactionRepository: TransactionRepository {
 
     func delete(_ id: TransactionID) async throws(WriteFailure) {
         try await client.write(Route.delete(id))
+    }
+
+    func reorder(_ ids: [TransactionID]) async throws(WriteFailure) {
+        try await client.write(Route.reorder(ids))
     }
 
     /// `async let` erases a typed throw to `any Error`, so the failure travels as a `Result`.
@@ -70,6 +83,13 @@ struct APITransactionRepository: TransactionRepository {
 
         static func delete(_ id: TransactionID) -> Endpoint<EmptyResponse> {
             Endpoint(method: .delete, path: "api/v1/transactions/\(id.rawValue)", authentication: .bearer)
+        }
+
+        static func reorder(_ ids: [TransactionID]) -> Endpoint<EmptyResponse> {
+            let items = ids.enumerated().map { ReorderBody.Item(id: $1.rawValue, displayOrder: $0) }
+            return Endpoint(
+                method: .put, path: "api/v1/transactions/reorder", authentication: .bearer, body: ReorderBody(items: items)
+            )
         }
 
         /// Not derived from the wire value: a renamed path or a new case must fail to compile.

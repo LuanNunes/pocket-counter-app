@@ -12,10 +12,12 @@ enum LedgerModelFixture {
         setPaymentStatus: @escaping SetPaymentStatusAction = { _, _ in },
         toggleFixo: @escaping ToggleFixoAction = { _ in },
         deleteTransaction: @escaping DeleteTransactionAction = { _ in },
+        reorderTransactions: @escaping ReorderTransactionsAction = { _ in },
         onSessionExpired: @escaping SessionExpiredAction
     ) -> MonthLedgerModel {
         MonthLedgerModel(
             window: window, month: month, loadMonth: loadMonth, setPaymentStatus: setPaymentStatus,
-            toggleFixo: toggleFixo, deleteTransaction: deleteTransaction, onSessionExpired: onSessionExpired)
+            toggleFixo: toggleFixo, deleteTransaction: deleteTransaction,
+            reorderTransactions: reorderTransactions, onSessionExpired: onSessionExpired)
     }
 }
