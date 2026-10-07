@@ -44,6 +44,13 @@ enum PocketColor {
     /// exist for. Light is Apple's increased-contrast systemRed rather than a new hue.
     static let destructiveInk = Color("destructiveInk")
 
+    /// `.btn.dst` fill: `--red` at 14%.
+    static let destructiveSoft = Color("destructiveSoft")
+
+    /// The label on `destructiveSoft`. `destructiveInk` measures 4.03:1 there in light and 4.28:1
+    /// in dark; this pair is 5.12:1 and 5.67:1 on the sheet's grouped background.
+    static let destructiveSoftInk = Color("destructiveSoftInk")
+
     /// `--red`, reserved for destructive actions — `.btn.dst`, `.mi.dst`, `.catc-del`.
     static let destructive = Color.red
 

@@ -38,6 +38,15 @@ enum WireFixtures {
         """
     }
 
+    static func series(
+        id: String? = "s1", name: String? = "Aluguel", type: String? = "EXPENSE", recurrenceDay: Int? = 5
+    ) -> String {
+        """
+        {"id":\(quoted(id)),"idUser":"u1","name":\(quoted(name)),"transactionType":\(quoted(type)),\
+        "recurrenceDay":\(recurrenceDay.map(String.init) ?? "null")}
+        """
+    }
+
     static func transaction(
         id: String = "t1", type: String = "EXPENSE", name: String? = "Mercado", amount: String = "10.50",
         status: String = "PAID", ref: Int = 202610, displayOrder: Int = 0, method: String? = nil,

@@ -50,3 +50,32 @@ struct MonthLedgerApplyingTests {
         #expect(ledger.kpis.pendingTotal == Money(30))
     }
 }
+
+@Suite("MonthLedger removing")
+struct MonthLedgerRemovingTests {
+    private let lookups = LookupSet.fixture(tags: [.fixture("g1")])
+    private let a = HistoryItem.fixture(id: "a", amount: -10, statusPayment: .pending)
+    private let b = HistoryItem.fixture(id: "b", amount: -20, statusPayment: .pending)
+    private let c = HistoryItem.fixture(id: "c", amount: -30, statusPayment: .pending)
+
+    private func ledger(_ items: HistoryItem...) -> MonthLedger {
+        MonthLedger(ref: CalendarDay.fixture.refYearMonth, items: items, lookups: lookups)
+    }
+
+    @Test("the named item leaves; order, ref and lookups stay")
+    func removes() {
+        #expect(ledger(a, b, c).removing(b.id) == ledger(a, c))
+    }
+
+    @Test("an id the ledger does not hold changes nothing")
+    func absent() {
+        let ledger = ledger(a, b)
+
+        #expect(ledger.removing(TransactionID(rawValue: "gone")) == ledger)
+    }
+
+    @Test("the totals no longer count the row")
+    func totals() {
+        #expect(ledger(a, b).removing(a.id).kpis.pendingTotal == Money(20))
+    }
+}

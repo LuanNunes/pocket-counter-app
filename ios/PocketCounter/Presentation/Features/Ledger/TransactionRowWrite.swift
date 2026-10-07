@@ -13,15 +13,21 @@ struct TransactionRowWrite: Equatable {
 
     static let none = TransactionRowWrite(isBusy: false, notice: nil, remedy: nil)
 
-    static func of(_ write: PaymentStatusWrite?) -> TransactionRowWrite {
+    static func of<Target>(
+        _ write: RowWrite<Target>?, subject: WriteFailureMessage.Subject
+    ) -> TransactionRowWrite {
         guard let write else { return .none }
         switch write.phase {
         case .inFlight:
             return TransactionRowWrite(isBusy: true, notice: nil, remedy: nil)
         case .failed(let failure):
-            guard let notice = WriteFailureMessage.message(for: failure) else { return .none }
+            guard let notice = WriteFailureMessage.message(for: failure, subject: subject) else { return .none }
             return TransactionRowWrite(isBusy: false, notice: notice, remedy: failure == .vanished ? .refresh : .retry)
         }
+    }
+
+    static func of(_ intent: RowIntentWrite?) -> TransactionRowWrite {
+        .of(intent, subject: intent?.verb == .deletion ? .deleting : .saving)
     }
 
     /// Targets of the writes that landed, to announce to VoiceOver. An entry also leaves the map

@@ -7,8 +7,11 @@ struct TransactionsView: View {
     let lookups: LookupSet
     let state: TransactionsViewState
     let writes: [TransactionID: PaymentStatusWrite]
+    let intents: [TransactionID: RowIntentWrite]
     let onAction: (TransactionsAction) -> Void
     let onToggleStatus: (HistoryItem) -> Void
+    let onToggleFixo: (HistoryItem) -> Void
+    let onDelete: (HistoryItem) -> Void
     let onRefresh: () -> Void
 
     var body: some View {
@@ -55,19 +58,30 @@ struct TransactionsView: View {
     }
 
     private func row(_ item: HistoryItem) -> some View {
-        let write = TransactionRowWrite.of(writes[item.id])
+        let status = TransactionRowWrite.of(writes[item.id], subject: .saving)
+        let intent = TransactionRowWrite.of(intents[item.id])
+        let shown = status.notice == nil ? intent : status
+        let retry = status.notice == nil ? retryIntent(intents[item.id]?.verb) : onToggleStatus
+        let isDeleting = intents[item.id]?.verb == .deletion
         return TransactionRow(
-            content: .of(item, lookups: lookups), isBusy: write.isBusy, notice: write.notice,
-            noticeAction: write.remedy.map { remedy in
+            content: .of(item, lookups: lookups), isBusy: status.isBusy || intent.isBusy,
+            busyLabel: isDeleting ? TransactionsCopy.statusDeleting : TransactionsCopy.statusSaving,
+            notice: shown.notice,
+            noticeAction: shown.remedy.map { remedy in
                 .init(title: TransactionsCopy.remedyTitle(remedy)) {
                     switch remedy {
-                    case .retry: onToggleStatus(item)
+                    case .retry: retry(item)
                     case .refresh: onRefresh()
                     }
                 }
             },
-            onToggleStatus: { onToggleStatus(item) }
+            onToggleStatus: { onToggleStatus(item) },
+            onOpen: { onAction(.openDetail(DetailTarget(id: item.id, ref: item.ref))) }
         )
+    }
+
+    private func retryIntent(_ verb: RowIntent?) -> (HistoryItem) -> Void {
+        verb == .deletion ? onDelete : onToggleFixo
     }
 
     @ViewBuilder
@@ -124,7 +138,7 @@ enum TransactionsPreview {
         HistoryItem(
             id: TransactionID(rawValue: id), ref: ref, date: date, amount: Money(Decimal(cents) / 100),
             type: cents < 0 ? .expense : .income, tagIds: tags?.map { TagID(rawValue: $0) }, statusPayment: status,
-            paymentMethod: method, cardId: card.map { CardID(rawValue: $0) }, seriesId: fixo ? "s" : nil, name: name)
+            paymentMethod: method, cardId: card.map { CardID(rawValue: $0) }, seriesId: fixo ? SeriesID(rawValue: "s") : nil, name: name)
     }
 
     static let items = [
@@ -143,7 +157,7 @@ enum TransactionsPreview {
     @MainActor static func screen(
         _ phase: LoadPhase<MonthLedger>, kind: TransactionType = .expense, mode: LedgerGroupMode = .lista,
         query: String = "", collapsed: Set<LedgerGroupIdentity> = [],
-        writes: [TransactionID: PaymentStatusWrite] = [:]
+        writes: [TransactionID: PaymentStatusWrite] = [:], intents: [TransactionID: RowIntentWrite] = [:]
     ) -> some View {
         var state = TransactionsViewState(kind: kind, mode: mode, query: query)
         collapsed.forEach { state.toggle($0) }
@@ -152,8 +166,8 @@ enum TransactionsPreview {
                 LoadRegionRows(phase: phase, placeholder: { .placeholder(for: ref) }, onRetry: {}) { value in
                     TransactionsView(
                         board: .from(value, filter: state.filter, mode: mode),
-                        lookups: value.lookups, state: state, writes: writes, onAction: { _ in },
-                        onToggleStatus: { _ in }, onRefresh: {})
+                        lookups: value.lookups, state: state, writes: writes, intents: intents, onAction: { _ in },
+                        onToggleStatus: { _ in }, onToggleFixo: { _ in }, onDelete: { _ in }, onRefresh: {})
                 }
             }
             .listStyle(.plain)

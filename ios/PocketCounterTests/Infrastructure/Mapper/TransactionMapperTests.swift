@@ -47,7 +47,7 @@ struct TransactionMapperTests {
         #expect(item.paymentMethod == .pix)
         #expect(item.cardId == CardID(rawValue: "k1"))
         #expect(item.isInvoice)
-        #expect(item.seriesId == "s1")
+        #expect(item.seriesId == SeriesID(rawValue: "s1"))
         #expect(item.isFixo)
     }
 
@@ -116,6 +116,13 @@ struct TransactionMapperTests {
     func emptyId() {
         #expect(throws: MappingFailure.missingField(entity: "Transaction", field: "id")) {
             try map(WireFixtures.transaction(id: ""))
+        }
+    }
+
+    @Test("an empty series id is a missing field, not a fixo with an unusable path")
+    func emptySeriesId() {
+        #expect(throws: MappingFailure.missingField(entity: "Transaction", field: "idSeries")) {
+            try map(WireFixtures.transaction(idSeries: ""))
         }
     }
 }

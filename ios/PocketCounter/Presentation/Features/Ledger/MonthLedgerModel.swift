@@ -4,6 +4,10 @@ typealias LoadMonthAction = @Sendable (RefYearMonth) async throws(LoadFailure) -
 
 typealias SetPaymentStatusAction = @Sendable (TransactionID, PaymentStatus) async throws(WriteFailure) -> Void
 
+typealias ToggleFixoAction = @Sendable (HistoryItem) async throws(WriteFailure) -> Void
+
+typealias DeleteTransactionAction = @Sendable (TransactionID) async throws(WriteFailure) -> Void
+
 @MainActor
 @Observable
 final class MonthLedgerModel {
@@ -13,6 +17,8 @@ final class MonthLedgerModel {
         fileprivate(set) var months: [RefYearMonth: LoadState<MonthLedger>] = [:]
         /// What the user asked for, by row. Never written into `months`: that stays the server's answer.
         fileprivate(set) var writes: [TransactionID: PaymentStatusWrite] = [:]
+        /// Fixo and deletion, by row. Read only by the control that started one: the ledger consequence is the server's.
+        fileprivate(set) var intents: [TransactionID: RowIntentWrite] = [:]
 
         var load: LoadState<MonthLedger> {
             var load = months[month] ?? LoadState()
@@ -29,8 +35,9 @@ final class MonthLedgerModel {
             self.month = month
         }
 
+        /// One door per row across both maps.
         func isWriting(_ id: TransactionID) -> Bool {
-            writes[id]?.target != nil
+            writes[id]?.target != nil || intents[id]?.target != nil
         }
 
         func holdsCommittedItem(_ id: TransactionID, in ref: RefYearMonth) -> Bool {
@@ -55,16 +62,43 @@ final class MonthLedgerModel {
             writes[id] = nil
         }
 
+        mutating func beginIntent(_ id: TransactionID, ref: RefYearMonth, target: RowIntent) {
+            intents[id] = RowIntentWrite(ref: ref, phase: .inFlight(target))
+        }
+
+        mutating func failIntent(_ id: TransactionID, ref: RefYearMonth, _ failure: WriteFailure) {
+            intents[id] = RowIntentWrite(ref: ref, phase: .failed(failure), attempted: intents[id]?.target)
+        }
+
+        mutating func dropIntent(_ id: TransactionID) {
+            intents[id] = nil
+        }
+
+        /// A failed status write can outlive its row (it fails, then the row is deleted), and no
+        /// reload would ever clear it.
+        mutating func completeDeletion(_ id: TransactionID, ref: RefYearMonth) {
+            months[ref]?.amend { $0.removing(id) }
+            intents[id] = nil
+            writes[id] = nil
+        }
+
         /// The server just answered for `ref`, so its failed writes are stale. In-flight ones still stand.
         mutating func commit(_ ledger: MonthLedger, for ref: RefYearMonth) {
             months[ref, default: LoadState()].commit(ledger)
-            writes = writes.filter { $0.value.ref != ref || $0.value.target != nil }
+            writes = writes.filter { Self.outlivesAnswer($0.value, for: ref) }
+            intents = intents.filter { Self.outlivesAnswer($0.value, for: ref) }
+        }
+
+        private static func outlivesAnswer<Target>(_ write: RowWrite<Target>, for ref: RefYearMonth) -> Bool {
+            write.ref != ref || write.target != nil
         }
     }
 
     private(set) var state: State
     private let loadMonth: LoadMonthAction
     private let setPaymentStatus: SetPaymentStatusAction
+    private let changeFixo: ToggleFixoAction
+    private let deleteTransaction: DeleteTransactionAction
     private let onSessionExpired: SessionExpiredAction
 
     init(
@@ -72,11 +106,15 @@ final class MonthLedgerModel {
         month: RefYearMonth = .current,
         loadMonth: @escaping LoadMonthAction,
         setPaymentStatus: @escaping SetPaymentStatusAction,
+        toggleFixo: @escaping ToggleFixoAction,
+        deleteTransaction: @escaping DeleteTransactionAction,
         onSessionExpired: @escaping SessionExpiredAction
     ) {
         state = State(window: window, month: window.clamped(month))
         self.loadMonth = loadMonth
         self.setPaymentStatus = setPaymentStatus
+        changeFixo = toggleFixo
+        self.deleteTransaction = deleteTransaction
         self.onSessionExpired = onSessionExpired
     }
 
@@ -139,6 +177,54 @@ final class MonthLedgerModel {
                 state.failWrite(item.id, ref: item.ref, error)
             }
         }
+    }
+
+    /// Takes the row as displayed. Async and spawning no `Task`, like `delete`.
+    func toggleFixo(of item: HistoryItem) async {
+        guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
+        guard !state.isWriting(item.id) else { return }
+        state.beginIntent(item.id, ref: item.ref, target: .fixo(!item.isFixo))
+        do {
+            try await changeFixo(item)
+        } catch {
+            switch error {
+            case .sessionExpired:
+                state.dropIntent(item.id)
+                await onSessionExpired()
+            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
+                state.failIntent(item.id, ref: item.ref, error)
+            }
+            return
+        }
+        // `refresh()` reloads the month on screen, whichever month the write touched.
+        guard state.month == item.ref else { state.dropIntent(item.id); return }
+        await refresh()
+        // Dropped even if the reload failed: the month is then stale and says so, and the switch
+        // returns to the committed value. The one place the display can lag the server.
+        state.dropIntent(item.id)
+    }
+
+    /// Async and spawning no `Task`: the view wraps it, so dismissing the sheet cannot cancel it.
+    func delete(_ item: HistoryItem) async {
+        guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
+        guard !state.isWriting(item.id) else { return }
+        state.beginIntent(item.id, ref: item.ref, target: .deletion)
+        do {
+            try await deleteTransaction(item.id)
+        } catch {
+            switch error {
+            case .sessionExpired:
+                state.dropIntent(item.id)
+                await onSessionExpired()
+                return
+            case .vanished:
+                break // DELETE is idempotent: a row already gone is the outcome the user asked for.
+            case .authenticationUnavailable, .unreachable, .rejected, .server:
+                state.failIntent(item.id, ref: item.ref, error)
+                return
+            }
+        }
+        state.completeDeletion(item.id, ref: item.ref)
     }
 
     private func request() async {

@@ -36,4 +36,19 @@ struct TransactionsCopyTests {
         #expect(TransactionsCopy.statusMarked(.paid) == "Marcada como paga")
         #expect(TransactionsCopy.statusMarked(.pending) == "Marcada como pendente")
     }
+
+    @Test("a missing or empty detail value reads as a dash", arguments: [(nil as String?, "—"), ("", "—"), ("Pix", "Pix")])
+    func detailValue(text: String?, expected: String) {
+        #expect(TransactionsCopy.detailValue(text) == expected)
+    }
+
+    @Test("categories join by name, and none reads as a dash")
+    func detailCategories() {
+        let tags = [
+            TransactionRowContent.TagChip(name: "Mercado", argb: nil),
+            TransactionRowContent.TagChip(name: "Restaurante", argb: nil),
+        ]
+        #expect(TransactionsCopy.detailCategories(tags) == "Mercado, Restaurante")
+        #expect(TransactionsCopy.detailCategories([]) == "—")
+    }
 }

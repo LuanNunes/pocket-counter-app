@@ -70,6 +70,9 @@ enum PocketFont {
     /// `.txsum-v` — 26/700, -0.02em
     static let summaryValue = PocketTextStyle(.system(.title, weight: .bold), tracking: -0.56)
 
+    /// `.qa-damt` — 34/700, -0.03em
+    static let detailAmount = PocketTextStyle(.system(.largeTitle, weight: .bold), tracking: -1.02)
+
     /// `.txg-n` — 15/600
     static let groupTitle = PocketTextStyle(.system(.subheadline, weight: .semibold))
 

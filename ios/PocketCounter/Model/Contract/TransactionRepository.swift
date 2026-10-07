@@ -8,4 +8,7 @@ protocol TransactionRepository: Sendable {
 
     /// Sets rather than toggles, so a retry cannot flip the row back.
     func setPaymentStatus(_ status: PaymentStatus, on id: TransactionID) async throws(WriteFailure)
+
+    /// A `.vanished` answer means the row was already gone.
+    func delete(_ id: TransactionID) async throws(WriteFailure)
 }

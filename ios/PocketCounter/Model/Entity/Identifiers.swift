@@ -12,6 +12,10 @@ struct CardID: RawRepresentable, Hashable, Sendable {
     let rawValue: String
 }
 
+struct SeriesID: RawRepresentable, Hashable, Sendable {
+    let rawValue: String
+}
+
 struct ContextID: RawRepresentable, Hashable, Sendable {
     let rawValue: String
 }

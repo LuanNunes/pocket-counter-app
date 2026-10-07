@@ -54,9 +54,8 @@ struct MonthLedgerStateWritesTests {
 
     private func loadedModel() async -> MonthLedgerModel {
         source.ledgers = [october: ledger(october, rent, gym, salary), november: ledger(november)]
-        let model = MonthLedgerModel(
-            window: .around(october), month: october, loadMonth: source.action,
-            setPaymentStatus: { _, _ in }, onSessionExpired: expiry.action
+        let model = LedgerModelFixture.model(
+            window: .around(october), month: october, loadMonth: source.action, onSessionExpired: expiry.action
         )
         await model.load()
         return model
@@ -188,9 +187,8 @@ struct MonthLedgerStateWritesTests {
     @Test("only a committed item of that month counts as held")
     func holdsCommittedItem() async {
         let model = await loadedModel()
-        let fresh = MonthLedgerModel(
-            window: .around(october), month: october, loadMonth: source.action,
-            setPaymentStatus: { _, _ in }, onSessionExpired: expiry.action
+        let fresh = LedgerModelFixture.model(
+            window: .around(october), month: october, loadMonth: source.action, onSessionExpired: expiry.action
         )
 
         #expect(model.state.holdsCommittedItem(rent.id, in: october))
@@ -211,7 +209,7 @@ struct MonthLedgerToggleTests {
         _ repository: FakeTransactionRepository, items: [HistoryItem] = [rent, gym, salary], loaded: Bool = true
     ) async -> MonthLedgerModel {
         source.ledgers = [october: MonthLedger(ref: october, items: items, lookups: .fixture())]
-        let model = MonthLedgerModel(
+        let model = LedgerModelFixture.model(
             window: .around(october), month: october, loadMonth: source.action,
             setPaymentStatus: { id, status throws(WriteFailure) in
                 try await repository.setPaymentStatus(status, on: id)

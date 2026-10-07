@@ -68,6 +68,30 @@ enum TransactionsCopy {
     }
 
     static let statusSaving = "Salvando"
+    static let statusDeleting = "Excluindo"
+
+    static let detailTitle = "Lançamento"
+    static let detailDate = "Data"
+    static let detailPayment = "Forma de Pagamento"
+    static let detailCategory = "Categoria"
+    static let detailPaid = "Paga"
+    static let detailRepeats = "Repete todo mês"
+    static let detailRepeatsHint = "Vira conta fixa"
+    static let deleteAction = "Excluir lançamento"
+    static let deleteConfirmTitle = "Excluir este lançamento?"
+    static let deleteConfirmMessage = "Isso não pode ser desfeito."
+    static let deleteConfirm = "Excluir"
+    static let deleteCancel = "Cancelar"
+    static let emptyValue = "—"
+
+    static func detailValue(_ text: String?) -> String {
+        guard let text, !text.isEmpty else { return emptyValue }
+        return text
+    }
+
+    static func detailCategories(_ tags: [TransactionRowContent.TagChip]) -> String {
+        detailValue(tags.map(\.name).joined(separator: ", "))
+    }
 
     static func extraTags(_ count: Int) -> String { "+\(count)" }
 }

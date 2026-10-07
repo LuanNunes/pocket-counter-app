@@ -17,10 +17,13 @@ struct PocketPrimaryButton: View {
         case onHero
         /// In the shell, over `background`/`cell`, where light-variant tint gives 5.25:1.
         case tinted
+        /// `.btn.dst`: red at 14% with a label darkened to pass AA on that tint.
+        case destructive
     }
 
     private let title: String
     private let role: Role
+    private let systemImage: String?
     private let isLoading: Bool
     private let action: () -> Void
 
@@ -28,9 +31,13 @@ struct PocketPrimaryButton: View {
     @Environment(\.isEnabled) private var isEnabled
     @ScaledMetric(relativeTo: .body) private var minHeight = PocketMetrics.primaryButtonHeight
 
-    init(_ title: String, role: Role, isLoading: Bool = false, action: @escaping () -> Void) {
+    init(
+        _ title: String, role: Role, systemImage: String? = nil, isLoading: Bool = false,
+        action: @escaping () -> Void
+    ) {
         self.title = title
         self.role = role
+        self.systemImage = systemImage
         self.isLoading = isLoading
         self.action = action
     }
@@ -53,10 +60,15 @@ struct PocketPrimaryButton: View {
             ProgressView()
                 .tint(ink)
         } else {
-            Text(title)
-                .pocketFont(PocketFont.valueEmphasis)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
+            HStack(spacing: PocketMetrics.rowSpacing) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                }
+                Text(title)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .pocketFont(PocketFont.valueEmphasis)
         }
     }
 
@@ -64,6 +76,7 @@ struct PocketPrimaryButton: View {
         switch role {
         case .onHero: PocketColor.onHero
         case .tinted: PocketColor.tint
+        case .destructive: PocketColor.destructiveSoft
         }
     }
 
@@ -71,6 +84,7 @@ struct PocketPrimaryButton: View {
         switch role {
         case .onHero: PocketColor.heroBase
         case .tinted: PocketColor.onTint
+        case .destructive: PocketColor.destructiveSoftInk
         }
     }
 }
@@ -162,6 +176,16 @@ private struct PrimaryButtonPreview<Content: View>: View {
         PocketPrimaryButton("Tentar novamente", role: .onHero) {}
     }
     .environment(\.dynamicTypeSize, .accessibility5)
+}
+
+#Preview("Destructive") {
+    VStack(spacing: 16) {
+        PocketPrimaryButton("Excluir lançamento", role: .destructive, systemImage: "trash") {}
+        PocketPrimaryButton("Excluir lançamento", role: .destructive) {}
+            .disabled(true)
+    }
+    .padding(PocketMetrics.screenMargin)
+    .background(PocketColor.background)
 }
 
 #Preview("Tinted") {

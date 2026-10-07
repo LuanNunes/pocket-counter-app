@@ -15,4 +15,8 @@ struct MonthLedger: Hashable, Sendable {
         }
         return MonthLedger(ref: ref, items: projected, lookups: lookups)
     }
+
+    func removing(_ id: TransactionID) -> MonthLedger {
+        MonthLedger(ref: ref, items: items.filter { $0.id != id }, lookups: lookups)
+    }
 }

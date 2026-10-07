@@ -2,9 +2,13 @@ import Foundation
 
 /// pt-BR copy for a failed write. `nil` renders nothing.
 enum WriteFailureMessage {
-    private static let title = "Não foi possível salvar"
+    /// What the failed write was doing; only the title depends on it.
+    enum Subject: Equatable, Sendable {
+        case saving, deleting
+    }
 
-    static func message(for failure: WriteFailure) -> PocketNotice? {
+    static func message(for failure: WriteFailure, subject: Subject) -> PocketNotice? {
+        let title = title(for: subject)
         switch failure {
         case .sessionExpired:
             return nil
@@ -21,6 +25,13 @@ enum WriteFailureMessage {
         case .vanished:
             return PocketNotice(
                 kind: .error, title: "Este lançamento não existe mais", detail: "Pode ter sido excluído em outro aparelho.")
+        }
+    }
+
+    private static func title(for subject: Subject) -> String {
+        switch subject {
+        case .saving: "Não foi possível salvar"
+        case .deleting: "Não foi possível excluir"
         }
     }
 }
