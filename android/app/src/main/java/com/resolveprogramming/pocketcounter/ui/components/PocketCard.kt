@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
@@ -18,10 +20,10 @@ fun PocketCard(
     backgroundColor: Color = PocketTheme.colors.surface,
     borderColor: Color? = null,
     elevated: Boolean = true,
+    shape: Shape = PocketTheme.shapes.card,
     contentPadding: PaddingValues = PaddingValues(PocketTheme.spacing.pad),
     content: @Composable () -> Unit,
 ) {
-    val shape = PocketTheme.shapes.card
     Box(
         modifier = modifier
             .then(run { if (elevated) return@run Modifier.pocketCardShadow(shape); Modifier })
@@ -32,6 +34,8 @@ fun PocketCard(
                 }
             )
             .background(backgroundColor, shape)
+            // `overflow: hidden`: a row background has to stop at the card's own corners.
+            .clip(shape)
             .padding(contentPadding),
     ) {
         content()

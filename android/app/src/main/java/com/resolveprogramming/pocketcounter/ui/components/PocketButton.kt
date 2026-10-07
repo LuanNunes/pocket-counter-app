@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 import com.resolveprogramming.pocketcounter.ui.theme.pressScale
@@ -98,7 +99,7 @@ fun PocketButton(
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             leading?.invoke()
             ProvideTextStyle(textStyle) {
-                Text(text = text, color = contentColor)
+                Text(text = text, color = contentColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

@@ -14,6 +14,7 @@ data class PocketShapes(
     val notification: RoundedCornerShape,
     val fab: RoundedCornerShape,
     val labelPicker: RoundedCornerShape,
+    val field: RoundedCornerShape,
     val sheet: RoundedCornerShape,
     val pill: RoundedCornerShape,
 )
@@ -26,6 +27,8 @@ val DefaultPocketShapes = PocketShapes(
     notification = RoundedCornerShape(18.dp),
     fab = RoundedCornerShape(19.dp),
     labelPicker = RoundedCornerShape(14.dp),
+    // Quick-add's field/row/option family (.qa-home, .qa-field, .qa-opt, .qa-amtwrap, .qa-rev).
+    field = RoundedCornerShape(15.dp),
     // Bottom sheets round only the top corners.
     sheet = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
     pill = RoundedCornerShape(999.dp),

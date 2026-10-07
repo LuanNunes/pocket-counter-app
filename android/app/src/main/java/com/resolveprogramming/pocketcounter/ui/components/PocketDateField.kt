@@ -135,7 +135,7 @@ private fun DateQuickChip(label: String, selected: Boolean, onClick: () -> Unit)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PocketDatePickerDialog(
+internal fun PocketDatePickerDialog(
     initialDate: LocalDate,
     onConfirm: (LocalDate) -> Unit,
     onDismiss: () -> Unit,
