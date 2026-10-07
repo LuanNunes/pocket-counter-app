@@ -21,6 +21,7 @@ struct PocketListSection<Content: View>: View {
 
                     if let linkTitle, let linkAction {
                         Button(linkTitle, action: linkAction)
+                            .buttonStyle(.plain)
                             .pocketFont(PocketFont.link)
                             .foregroundStyle(PocketColor.tint)
                     }

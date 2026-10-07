@@ -67,7 +67,7 @@ struct MonthLedgerModelTests {
         let october = try ref(2026, 10)
         return MonthLedgerModel(
             window: .around(october), month: month ?? october,
-            loadMonth: recorder.action, onSessionExpired: expiry.action
+            loadMonth: recorder.action, setPaymentStatus: { _, _ in }, onSessionExpired: expiry.action
         )
     }
 

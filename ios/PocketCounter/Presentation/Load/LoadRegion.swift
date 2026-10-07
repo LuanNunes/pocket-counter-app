@@ -22,7 +22,7 @@ struct LoadRegion<Value: Equatable, Content: View>: View {
                 loaded(value, notice: notice)
             }
         }
-        .placeholderGrace(isFirstLoad: isFirstLoad, elapsed: $showsPlaceholder)
+        .graced(isActive: isFirstLoad, elapsed: $showsPlaceholder)
     }
 
     private var isFirstLoad: Bool {
@@ -35,6 +35,7 @@ struct LoadRegion<Value: Equatable, Content: View>: View {
                 content(placeholder())
                     .redacted(reason: .placeholder)
                     .accessibilityHidden(true)
+                    .allowsHitTesting(false)
                     .transition(.opacity)
             }
         }

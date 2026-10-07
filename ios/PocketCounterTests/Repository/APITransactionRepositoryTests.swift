@@ -24,6 +24,20 @@ struct APITransactionRepositoryRouteTests {
         #expect(routes.allSatisfy { $0.authentication == .bearer })
         #expect(APITransactionRepository.Route.items(TransactionID(rawValue: "t1")).path == "api/v1/transactions/t1/items")
     }
+
+    @Test("each payment status has its own PUT path, bearer-authenticated")
+    func paymentStatusRoutes() {
+        let id = TransactionID(rawValue: "t1")
+        let paid = APITransactionRepository.Route.paymentStatus(.paid, of: id)
+        let pending = APITransactionRepository.Route.paymentStatus(.pending, of: id)
+
+        #expect(paid.path == "api/v1/transactions/t1/paid")
+        #expect(pending.path == "api/v1/transactions/t1/pending")
+        #expect([paid.method, pending.method] == [.put, .put])
+        #expect(paid.authentication == .bearer)
+        #expect(pending.authentication == .bearer)
+        #expect(paid.body == nil)
+    }
 }
 
 @Suite("APITransactionRepository")
@@ -162,5 +176,34 @@ struct APITransactionRepositoryTests {
 
     private var span: RefYearMonthRange {
         get throws { try RefYearMonthRange(from: #require(RefYearMonth(raw: 202610)), through: #require(RefYearMonth(raw: 202611))) }
+    }
+
+    @Test("setting a status succeeds on a 200 whose body is the bare id")
+    func setStatusIgnoresBody() async throws {
+        let http = FakeHTTP(FakeHTTP.json(#""t1""#))
+
+        try await repository(http).setPaymentStatus(.paid, on: TransactionID(rawValue: "t1"))
+
+        #expect(http.requests.map(\.httpMethod) == ["PUT"])
+        #expect(http.requests.compactMap { $0.url?.path } == ["/api/v1/transactions/t1/paid"])
+        #expect(http.requests.first?.httpBody == nil)
+    }
+
+    @Test("setting pending uses the pending path")
+    func setPending() async throws {
+        let http = FakeHTTP(FakeHTTP.json(#""t1""#))
+
+        try await repository(http).setPaymentStatus(.pending, on: TransactionID(rawValue: "t1"))
+
+        #expect(http.requests.compactMap { $0.url?.path } == ["/api/v1/transactions/t1/pending"])
+    }
+
+    @Test("a 404 on a write is a vanished row")
+    func setStatusVanished() async {
+        let http = FakeHTTP(FakeHTTP.empty(404))
+
+        await #expect(throws: WriteFailure.vanished) {
+            try await repository(http).setPaymentStatus(.paid, on: TransactionID(rawValue: "t1"))
+        }
     }
 }

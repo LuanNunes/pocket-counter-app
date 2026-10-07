@@ -27,6 +27,12 @@ struct LoadState<Value: Equatable>: Equatable {
         isLoading = false
     }
 
+    /// Rewrites a value already committed; `isLoading` and `failure` are untouched.
+    mutating func amend(_ transform: (Value) -> Value) {
+        guard let value else { return }
+        self.value = transform(value)
+    }
+
     /// A signal, not a message: `.sessionExpired` and `.abandoned` have nothing to render.
     mutating func fail(_ failure: LoadFailure) {
         switch failure {

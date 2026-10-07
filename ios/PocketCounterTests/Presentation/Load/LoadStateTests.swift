@@ -124,4 +124,40 @@ struct LoadStateTests {
         #expect(loading.isLoading)
         #expect(loading.phase == state.phase)
     }
+
+    @Test("amending rewrites the committed value and leaves loading and failure alone")
+    func amend() {
+        var state = LoadState<[Int]>()
+        state.commit([1])
+        state.beginLoading()
+        state.fail(.server)
+        state.beginLoading()
+
+        state.amend { $0 + [2] }
+
+        #expect(state.phase == .stale([1, 2], .server))
+        #expect(state.isLoading)
+    }
+
+    @Test("amending before any commit creates no value")
+    func amendFirstLoad() {
+        var state = LoadState<[Int]>()
+        state.beginLoading()
+
+        state.amend { $0 + [2] }
+
+        #expect(state.phase == .firstLoad)
+        #expect(state.isLoading)
+    }
+
+    @Test("amending a failed state creates no value")
+    func amendFailed() {
+        var state = LoadState<[Int]>()
+        state.fail(.unreachable)
+
+        state.amend { $0 + [2] }
+
+        #expect(state.phase == .failed(.unreachable))
+        #expect(state.value == nil)
+    }
 }

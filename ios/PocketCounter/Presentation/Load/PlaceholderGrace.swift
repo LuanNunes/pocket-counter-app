@@ -1,11 +1,11 @@
 import SwiftUI
 
 extension View {
-    /// Raises `elapsed` once a first load outlasts the grace period, and lowers it when the load ends.
+    /// Raises `elapsed` once an activity outlasts the grace period, and lowers it when it ends.
     /// Time belongs to the view: in a model it would make tests sleep.
-    func placeholderGrace(isFirstLoad: Bool, elapsed: Binding<Bool>) -> some View {
-        task(id: isFirstLoad) {
-            guard isFirstLoad else {
+    func graced(isActive: Bool, elapsed: Binding<Bool>) -> some View {
+        task(id: isActive) {
+            guard isActive else {
                 elapsed.wrappedValue = false
                 return
             }

@@ -57,6 +57,14 @@ struct HistoryItem: Hashable, Sendable {
         tagIds ?? inherited
     }
 
+    func settingPaymentStatus(_ status: PaymentStatus) -> HistoryItem {
+        HistoryItem(
+            id: id, ref: ref, date: date, amount: amount, type: type, tagIds: tagIds, statusPayment: status,
+            displayOrder: displayOrder, paymentMethod: paymentMethod, cardId: cardId, seriesId: seriesId,
+            name: name, description: description, isInvoice: isInvoice
+        )
+    }
+
     func displayTitle() -> String {
         [name, description]
             .compactMap { $0 }

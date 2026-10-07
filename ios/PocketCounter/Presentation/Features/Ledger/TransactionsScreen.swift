@@ -13,7 +13,9 @@ struct TransactionsScreen: View {
         } content: { value in
             TransactionsView(
                 board: .from(value, filter: state.filter, mode: state.mode),
-                lookups: value.lookups, state: state, onAction: perform
+                lookups: value.lookups, state: state, writes: ledger.state.writes, onAction: perform,
+                onToggleStatus: { item in Task { await ledger.togglePaymentStatus(of: item) } },
+                onRefresh: { Task { await ledger.refresh() } }
             )
         }
         .searchable(
@@ -21,6 +23,15 @@ struct TransactionsScreen: View {
             prompt: TransactionsCopy.searchPrompt
         )
         .onChange(of: ledger.state.month) { state.monthChanged() }
+        .onChange(of: ledger.state.writes) { old, new in announceCompleted(from: old, to: new) }
+    }
+
+    private func announceCompleted(from old: [TransactionID: PaymentStatusWrite], to new: [TransactionID: PaymentStatusWrite]) {
+        let items = ledger.state.load.value?.items ?? []
+        let statuses = Dictionary(items.map { ($0.id, $0.statusPayment) }, uniquingKeysWith: { first, _ in first })
+        TransactionRowWrite.completed(from: old, to: new, statusOf: { statuses[$0] }).forEach {
+            AccessibilityNotification.Announcement(TransactionsCopy.statusMarked($0)).post()
+        }
     }
 
     private func perform(_ action: TransactionsAction) {

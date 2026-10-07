@@ -15,13 +15,11 @@ extension LoadFailure {
         case .transport:
             self = .unreachable
         case .status(403, let server):
-            self = .rejected(Self.text(server?.message) ?? "Você não tem acesso a este recurso")
+            self = .rejected(RejectionText.forbidden(server))
         case .status(404, _):
             self = .notFound
         case .status(400, let server), .status(422, let server):
-            self = .rejected(
-                Self.text(server?.details.first) ?? Self.text(server?.message) ?? "Não foi possível processar a solicitação"
-            )
+            self = .rejected(RejectionText.unprocessable(server))
         case .decoding(let endpoint, _):
             Self.logger.error("Decoding failed for \(endpoint, privacy: .public)")
             self = .server
@@ -41,10 +39,5 @@ extension LoadFailure {
             Self.logger.error("Mapping failed: invalid ref month \(ref, privacy: .public)")
         }
         self = .server
-    }
-
-    private static func text(_ value: String?) -> String? {
-        guard let value, !value.isEmpty else { return nil }
-        return value
     }
 }
