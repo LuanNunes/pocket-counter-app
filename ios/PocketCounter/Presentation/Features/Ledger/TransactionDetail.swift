@@ -12,9 +12,9 @@ struct TransactionDetail: Equatable {
     let isFixo: Bool
     let payLabel: String?
     let tags: [TransactionRowContent.TagChip]
-    let statusWrite: TransactionRowWrite
-    let fixoWrite: TransactionRowWrite
-    let deleteWrite: TransactionRowWrite
+    let statusWrite: WriteIndicator
+    let fixoWrite: WriteIndicator
+    let deleteWrite: WriteIndicator
 
     var isBusy: Bool { statusWrite.isBusy || fixoWrite.isBusy || deleteWrite.isBusy }
 }
@@ -31,8 +31,8 @@ enum TransactionDetailProjection: Equatable {
             let item = ledger.items.first(where: { $0.id == target.id })
         else { return .gone }
         let lookups = ledger.lookups
-        let intent = state.intents[item.id]
-        let intentWrite = TransactionRowWrite.of(intent)
+        let intent = state.writes.intents[item.id]
+        let intentWrite = WriteIndicator.of(intent)
         let isDeletion = intent?.verb == .deletion
         return .showing(TransactionDetail(
             item: item,
@@ -44,7 +44,7 @@ enum TransactionDetailProjection: Equatable {
             isFixo: intent?.target?.fixo ?? item.isFixo,
             payLabel: TransactionRowContent.payLabel(item, lookups: lookups),
             tags: item.effectiveTagIds(inheriting: []).map { TransactionRowContent.chip(for: $0, lookups: lookups) },
-            statusWrite: .of(state.writes[item.id], subject: .saving),
+            statusWrite: .of(state.writes.statuses[item.id], subject: .saving),
             fixoWrite: isDeletion ? .none : intentWrite,
             deleteWrite: isDeletion ? intentWrite : .none
         ))

@@ -95,7 +95,7 @@ struct TransactionDetailTests {
     @Test("the Paga switch follows the status overlay")
     func overlay() async throws {
         var state = await loadedState()
-        state.beginWrite(rent.id, ref: october, target: .paid)
+        state.beginStatus(rent.id, ref: october, target: .paid)
 
         let detail = try #require(detail(.of(target, in: state)))
 
@@ -158,8 +158,8 @@ struct TransactionDetailTests {
     @Test("a status write that failed shows its notice")
     func statusFailed() async throws {
         var state = await loadedState()
-        state.beginWrite(rent.id, ref: october, target: .paid)
-        state.failWrite(rent.id, ref: october, .server)
+        state.beginStatus(rent.id, ref: october, target: .paid)
+        state.failStatus(rent.id, ref: october, .server)
 
         let detail = try #require(detail(.of(target, in: state)))
 

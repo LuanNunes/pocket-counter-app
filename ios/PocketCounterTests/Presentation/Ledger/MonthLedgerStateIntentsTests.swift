@@ -36,34 +36,34 @@ struct MonthLedgerStateIntentsTests {
         state.beginIntent(gym.id, ref: october, target: .deletion)
 
         #expect(state.load == before)
-        #expect(state.intents[rent.id] == RowIntentWrite(ref: october, phase: .inFlight(.fixo(true))))
+        #expect(state.writes.intents[rent.id] == RowIntentWrite(ref: october, phase: .inFlight(.fixo(true))))
     }
 
     @Test("one door per row across both maps", arguments: [true, false])
     func sharedDoor(statusFirst: Bool) async {
         var state = await loadedModel().state
-        #expect(!state.isWriting(rent.id))
+        #expect(!state.writes.isWriting(rent.id))
 
         if statusFirst {
-            state.beginWrite(rent.id, ref: october, target: .paid)
+            state.beginStatus(rent.id, ref: october, target: .paid)
         } else {
             state.beginIntent(rent.id, ref: october, target: .deletion)
         }
 
-        #expect(state.isWriting(rent.id))
-        #expect(!state.isWriting(gym.id))
+        #expect(state.writes.isWriting(rent.id))
+        #expect(!state.writes.isWriting(gym.id))
     }
 
     @Test("a failed write of either kind does not hold the door")
     func failedDoesNotHold() async {
         var state = await loadedModel().state
-        state.failWrite(rent.id, ref: october, .server)
+        state.failStatus(rent.id, ref: october, .server)
         state.beginIntent(gym.id, ref: october, target: .deletion)
         state.failIntent(gym.id, ref: october, .server)
 
-        #expect(!state.isWriting(rent.id))
-        #expect(!state.isWriting(gym.id))
-        #expect(state.intents[gym.id] == RowIntentWrite(ref: october, phase: .failed(.server), attempted: .deletion))
+        #expect(!state.writes.isWriting(rent.id))
+        #expect(!state.writes.isWriting(gym.id))
+        #expect(state.writes.intents[gym.id] == RowIntentWrite(ref: october, phase: .failed(.server), attempted: .deletion))
     }
 
     @Test("a failure replaces the in-flight intent and a new attempt replaces the failure")
@@ -71,11 +71,11 @@ struct MonthLedgerStateIntentsTests {
         var state = await loadedModel().state
         state.beginIntent(rent.id, ref: october, target: .deletion)
         state.failIntent(rent.id, ref: october, .unreachable)
-        #expect(state.intents[rent.id] == RowIntentWrite(ref: october, phase: .failed(.unreachable), attempted: .deletion))
+        #expect(state.writes.intents[rent.id] == RowIntentWrite(ref: october, phase: .failed(.unreachable), attempted: .deletion))
 
         state.beginIntent(rent.id, ref: october, target: .deletion)
 
-        #expect(state.intents[rent.id]?.phase == .inFlight(.deletion))
+        #expect(state.writes.intents[rent.id]?.phase == .inFlight(.deletion))
     }
 
     @Test("dropping an intent forgets it")
@@ -85,7 +85,7 @@ struct MonthLedgerStateIntentsTests {
 
         state.dropIntent(rent.id)
 
-        #expect(state.intents.isEmpty)
+        #expect(state.writes.intents.isEmpty)
     }
 
     @Test("completing a deletion removes the row from its month and clears the intent")
@@ -95,20 +95,20 @@ struct MonthLedgerStateIntentsTests {
 
         state.completeDeletion(rent.id, ref: october)
 
-        #expect(state.intents.isEmpty)
+        #expect(state.writes.intents.isEmpty)
         #expect(state.load.value == ledger(october, gym, salary))
     }
 
     @Test("completing a deletion also clears a failed status write for that row")
     func completeDeletionClearsFailedStatus() async {
         var state = await loadedModel().state
-        state.beginWrite(rent.id, ref: october, target: .paid)
-        state.failWrite(rent.id, ref: october, .server)
+        state.beginStatus(rent.id, ref: october, target: .paid)
+        state.failStatus(rent.id, ref: october, .server)
         state.beginIntent(rent.id, ref: october, target: .deletion)
 
         state.completeDeletion(rent.id, ref: october)
 
-        #expect(state.writes.isEmpty)
+        #expect(state.writes.statuses.isEmpty)
     }
 
     @Test("completing a deletion leaves other rows' writes, the loading flag and a standing failure alone")
@@ -122,14 +122,14 @@ struct MonthLedgerStateIntentsTests {
         let refresh = Task { await model.refresh() }
         await hold.untilArrivals(1)
         var state = model.state
-        state.beginWrite(gym.id, ref: october, target: .paid)
+        state.beginStatus(gym.id, ref: october, target: .paid)
         state.beginIntent(rent.id, ref: october, target: .deletion)
 
         state.completeDeletion(rent.id, ref: october)
 
         #expect(state.load.isLoading)
         #expect(state.load.failure == .server)
-        #expect(state.writes[gym.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
+        #expect(state.writes.statuses[gym.id] == PaymentStatusWrite(ref: october, phase: .inFlight(.paid)))
         await hold.release()
         await refresh.value
     }
@@ -139,11 +139,11 @@ struct MonthLedgerStateIntentsTests {
         var state = await loadedModel().state
         let other = TransactionID(rawValue: "nov")
         let otherIntent = TransactionID(rawValue: "nov-intent")
-        state.beginWrite(rent.id, ref: october, target: .paid)
-        state.beginWrite(gym.id, ref: october, target: .paid)
-        state.failWrite(gym.id, ref: october, .server)
-        state.beginWrite(other, ref: november, target: .paid)
-        state.failWrite(other, ref: november, .server)
+        state.beginStatus(rent.id, ref: october, target: .paid)
+        state.beginStatus(gym.id, ref: october, target: .paid)
+        state.failStatus(gym.id, ref: october, .server)
+        state.beginStatus(other, ref: november, target: .paid)
+        state.failStatus(other, ref: november, .server)
         state.beginIntent(salary.id, ref: october, target: .fixo(true))
         let failedIntent = TransactionID(rawValue: "failed-intent")
         state.beginIntent(failedIntent, ref: october, target: .deletion)
@@ -153,11 +153,11 @@ struct MonthLedgerStateIntentsTests {
 
         state.commit(ledger(october, rent, gym, salary), for: october)
 
-        #expect(state.writes == [
+        #expect(state.writes.statuses == [
             rent.id: PaymentStatusWrite(ref: october, phase: .inFlight(.paid)),
             other: PaymentStatusWrite(ref: november, phase: .failed(.server)),
         ])
-        #expect(state.intents == [
+        #expect(state.writes.intents == [
             salary.id: RowIntentWrite(ref: october, phase: .inFlight(.fixo(true))),
             otherIntent: RowIntentWrite(ref: november, phase: .failed(.server), attempted: .deletion),
         ])

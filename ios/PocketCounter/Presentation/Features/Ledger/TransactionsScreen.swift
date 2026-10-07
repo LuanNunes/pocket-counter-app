@@ -15,16 +15,9 @@ struct TransactionsScreen: View {
                 board: .from(value, filter: state.filter, mode: state.mode),
                 lookups: value.lookups, state: state,
                 reorderNotice: ReorderNotice.message(
-                    for: ledger.state.failedReorder, month: ledger.state.month, kind: state.kind),
+                    for: ledger.state.writes.failedReorder, month: ledger.state.month, kind: state.kind),
                 writes: ledger.state.writes,
-                intents: ledger.state.intents, onAction: perform,
-                onToggleStatus: { item in Task { await ledger.togglePaymentStatus(of: item) } },
-                onToggleFixo: { item in Task { await ledger.toggleFixo(of: item) } },
-                onDelete: { item in Task { await ledger.delete(item) } },
-                onRefresh: { Task { await ledger.refresh() } },
-                onMove: { ids in
-                    Task { await ledger.reorder(ids, of: state.kind, in: ledger.state.month) }
-                }
+                onAction: perform, onCommand: perform
             )
         }
         .environment(\.editMode, .constant(state.isReordering ? .active : .inactive))
@@ -44,7 +37,7 @@ struct TransactionsScreen: View {
             set: { if !$0 { perform(.closeDetail) } }
         )) { detailSheet }
         .onChange(of: ledger.state.month) { state.monthChanged() }
-        .onChange(of: ledger.state.writes) { old, new in announceCompleted(from: old, to: new) }
+        .onChange(of: ledger.state.writes.statuses) { old, new in announceCompleted(from: old, to: new) }
     }
 
     private var detailProjection: TransactionDetailProjection? {
@@ -73,8 +66,18 @@ struct TransactionsScreen: View {
     private func announceCompleted(from old: [TransactionID: PaymentStatusWrite], to new: [TransactionID: PaymentStatusWrite]) {
         let items = ledger.state.load.value?.items ?? []
         let statuses = Dictionary(items.map { ($0.id, $0.statusPayment) }, uniquingKeysWith: { first, _ in first })
-        TransactionRowWrite.completed(from: old, to: new, statusOf: { statuses[$0] }).forEach {
+        LedgerWrites.completed(from: old, to: new, statusOf: { statuses[$0] }).forEach {
             AccessibilityNotification.Announcement(TransactionsCopy.statusMarked($0)).post()
+        }
+    }
+
+    private func perform(_ command: LedgerCommand) {
+        switch command {
+        case .toggleStatus(let item): Task { await ledger.togglePaymentStatus(of: item) }
+        case .toggleFixo(let item): Task { await ledger.toggleFixo(of: item) }
+        case .delete(let item): Task { await ledger.delete(item) }
+        case .refresh: Task { await ledger.refresh() }
+        case .move(let ids): Task { await ledger.reorder(ids, of: state.kind, in: ledger.state.month) }
         }
     }
 

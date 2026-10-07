@@ -133,7 +133,7 @@ struct TransactionDetailView: View {
     }
 
     @ViewBuilder
-    private func notice(_ write: TransactionRowWrite, retry: @escaping () -> Void) -> some View {
+    private func notice(_ write: WriteIndicator, retry: @escaping () -> Void) -> some View {
         if let notice = write.notice {
             PocketInlineMessage(
                 kind: notice.kind, text: notice.title, secondary: notice.detail,
@@ -156,8 +156,8 @@ struct TransactionDetailView: View {
 #if DEBUG
 private enum DetailPreview {
     static func detail(
-        fixo: Bool = false, bare: Bool = false, status: TransactionRowWrite = .none, fixoWrite: TransactionRowWrite = .none,
-        deleteWrite: TransactionRowWrite = .none
+        fixo: Bool = false, bare: Bool = false, status: WriteIndicator = .none, fixoWrite: WriteIndicator = .none,
+        deleteWrite: WriteIndicator = .none
     ) -> TransactionDetail {
         let item = TransactionsPreview.items[bare ? 3 : 0]
         let lookups = TransactionsPreview.lookups()
@@ -169,13 +169,13 @@ private enum DetailPreview {
             statusWrite: status, fixoWrite: fixoWrite, deleteWrite: deleteWrite)
     }
 
-    static let busy = TransactionRowWrite(isBusy: true, notice: nil, remedy: nil)
+    static let busy = WriteIndicator(isBusy: true, notice: nil, remedy: nil)
 
-    static func failed(_ target: RowIntent) -> TransactionRowWrite {
+    static func failed(_ target: RowIntent) -> WriteIndicator {
         .of(RowIntentWrite(ref: TransactionsPreview.ref, phase: .failed(.unreachable), attempted: target))
     }
 
-    static let failedStatus = TransactionRowWrite.of(
+    static let failedStatus = WriteIndicator.of(
         PaymentStatusWrite(ref: TransactionsPreview.ref, phase: .failed(.unreachable)), subject: .saving)
 
     @MainActor static func sheet(_ detail: TransactionDetail) -> some View {

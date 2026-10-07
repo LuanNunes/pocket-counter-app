@@ -17,17 +17,11 @@ final class MonthLedgerModel {
         let window: MonthWindow
         var month: RefYearMonth
         fileprivate(set) var months: [RefYearMonth: LoadState<MonthLedger>] = [:]
-        /// What the user asked for, by row. Never written into `months`: that stays the server's answer.
-        fileprivate(set) var writes: [TransactionID: PaymentStatusWrite] = [:]
-        /// Fixo and deletion, by row. Read only by the control that started one: the ledger consequence is the server's.
-        fileprivate(set) var intents: [TransactionID: RowIntentWrite] = [:]
-        /// The last reorder the server refused. Not a row's: the list already shows the order it asked for.
-        fileprivate(set) var failedReorder: FailedReorder?
+        fileprivate(set) var writes = LedgerWrites()
 
         var load: LoadState<MonthLedger> {
             var load = months[month] ?? LoadState()
-            let targets = writes.compactMapValues(\.target)
-            load.amend { $0.applying(targets) }
+            load.amend { writes.overlaying($0) }
             return load
         }
 
@@ -39,58 +33,50 @@ final class MonthLedgerModel {
             self.month = month
         }
 
-        /// One door per row across both maps.
-        func isWriting(_ id: TransactionID) -> Bool {
-            writes[id]?.target != nil || intents[id]?.target != nil
-        }
-
         func holdsCommittedItem(_ id: TransactionID, in ref: RefYearMonth) -> Bool {
             months[ref]?.value?.items.contains { $0.id == id } ?? false
         }
 
-        mutating func beginWrite(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
-            writes[id] = PaymentStatusWrite(ref: ref, phase: .inFlight(target))
+        mutating func beginStatus(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
+            writes.beginStatus(id, ref: ref, target: target)
         }
 
         /// Promotes and clears in one mutation, so no render sees the overlay gone and the ledger not yet updated.
         mutating func completeWrite(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
             months[ref]?.amend { $0.applying([id: target]) }
-            writes[id] = nil
+            writes.dropStatus(id)
         }
 
-        mutating func failWrite(_ id: TransactionID, ref: RefYearMonth, _ failure: WriteFailure) {
-            writes[id] = PaymentStatusWrite(ref: ref, phase: .failed(failure))
+        mutating func failStatus(_ id: TransactionID, ref: RefYearMonth, _ failure: WriteFailure) {
+            writes.failStatus(id, ref: ref, failure)
         }
 
-        mutating func dropWrite(_ id: TransactionID) {
-            writes[id] = nil
+        mutating func dropStatus(_ id: TransactionID) {
+            writes.dropStatus(id)
         }
 
         mutating func beginIntent(_ id: TransactionID, ref: RefYearMonth, target: RowIntent) {
-            intents[id] = RowIntentWrite(ref: ref, phase: .inFlight(target))
+            writes.beginIntent(id, ref: ref, target: target)
         }
 
         mutating func failIntent(_ id: TransactionID, ref: RefYearMonth, _ failure: WriteFailure) {
-            intents[id] = RowIntentWrite(ref: ref, phase: .failed(failure), attempted: intents[id]?.target)
+            writes.failIntent(id, ref: ref, failure)
         }
 
         mutating func dropIntent(_ id: TransactionID) {
-            intents[id] = nil
+            writes.dropIntent(id)
         }
 
-        /// A failed status write can outlive its row (it fails, then the row is deleted), and no
-        /// reload would ever clear it.
         mutating func completeDeletion(_ id: TransactionID, ref: RefYearMonth) {
             months[ref]?.amend { $0.removing(id) }
-            intents[id] = nil
-            writes[id] = nil
+            writes.forget(id)
         }
 
         /// Projects into the committed ledger, like a deletion: no row owns a reorder.
         /// A fresh attempt supersedes the old notice: the order on screen is the new one.
         mutating func beginReorder(_ ref: RefYearMonth, order: [TransactionID]) {
             months[ref]?.amend { $0.reordering(order) }
-            failedReorder = nil
+            writes.dropReorder()
         }
 
         mutating func revertReorder(_ ref: RefYearMonth, to order: [TransactionID]) {
@@ -98,23 +84,16 @@ final class MonthLedgerModel {
         }
 
         mutating func failReorder(_ ref: RefYearMonth, kind: TransactionType, _ failure: WriteFailure) {
-            failedReorder = FailedReorder(ref: ref, kind: kind, failure: failure)
+            writes.failReorder(ref, kind: kind, failure)
         }
 
         mutating func dropReorder() {
-            failedReorder = nil
+            writes.dropReorder()
         }
 
-        /// The server just answered for `ref`, so its failed writes are stale. In-flight ones still stand.
         mutating func commit(_ ledger: MonthLedger, for ref: RefYearMonth) {
             months[ref, default: LoadState()].commit(ledger)
-            if failedReorder?.ref == ref { failedReorder = nil }
-            writes = writes.filter { Self.outlivesAnswer($0.value, for: ref) }
-            intents = intents.filter { Self.outlivesAnswer($0.value, for: ref) }
-        }
-
-        private static func outlivesAnswer<Target>(_ write: RowWrite<Target>, for ref: RefYearMonth) -> Bool {
-            write.ref != ref || write.target != nil
+            writes.answered(for: ref)
         }
     }
 
@@ -189,19 +168,19 @@ final class MonthLedgerModel {
     func togglePaymentStatus(of item: HistoryItem) async {
         // A redacted placeholder row carries the real handler; this stops its tap.
         guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
-        guard !state.isWriting(item.id) else { return }
+        guard !state.writes.isWriting(item.id) else { return }
         let target: PaymentStatus = item.statusPayment == .paid ? .pending : .paid
-        state.beginWrite(item.id, ref: item.ref, target: target)
+        state.beginStatus(item.id, ref: item.ref, target: target)
         do {
             try await setPaymentStatus(item.id, target)
             state.completeWrite(item.id, ref: item.ref, target: target)
         } catch {
             switch error {
             case .sessionExpired:
-                state.dropWrite(item.id)
+                state.dropStatus(item.id)
                 await onSessionExpired()
             case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
-                state.failWrite(item.id, ref: item.ref, error)
+                state.failStatus(item.id, ref: item.ref, error)
             }
         }
     }
@@ -209,7 +188,7 @@ final class MonthLedgerModel {
     /// Takes the row as displayed. Async and spawning no `Task`, like `delete`.
     func toggleFixo(of item: HistoryItem) async {
         guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
-        guard !state.isWriting(item.id) else { return }
+        guard !state.writes.isWriting(item.id) else { return }
         state.beginIntent(item.id, ref: item.ref, target: .fixo(!item.isFixo))
         do {
             try await changeFixo(item)
@@ -234,7 +213,7 @@ final class MonthLedgerModel {
     /// Async and spawning no `Task`: the view wraps it, so dismissing the sheet cannot cancel it.
     func delete(_ item: HistoryItem) async {
         guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
-        guard !state.isWriting(item.id) else { return }
+        guard !state.writes.isWriting(item.id) else { return }
         state.beginIntent(item.id, ref: item.ref, target: .deletion)
         do {
             try await deleteTransaction(item.id)
