@@ -35,6 +35,8 @@ struct FakeTransactionRepository: TransactionRepository {
     func delete(_ id: TransactionID) async throws(WriteFailure) {
         try deleteResult.get()
     }
+
+    func reorder(_ ids: [TransactionID]) async throws(WriteFailure) {}
 }
 
 final class StatusWriteLog: @unchecked Sendable {

@@ -231,5 +231,14 @@ documented reason not to.
   (`secondarySystemGroupedBackground`, white in light mode), which would not separate from a
   light sheet material. Not rendered here: if a device shows the cells separating, drop the
   `.background` in `TransactionDetailView`.
+* "OK" sits trailing in the reorder toolbar, where `tx.jsx:104` puts it on the left: every system
+  edit mode (Mail, Reminders, Notes) puts Done trailing, and the HIG wins over a web prototype.
+  Not `EditButton()` either — its inactive state would add a second entry labelled "Editar" beside
+  the menu item labelled "Reordenar".
+* The status pill is inert while reordering, where `tx.jsx:40` leaves it live. A status write puts a
+  spinner and, on failure, an inline notice with a retry button into a row that is being dragged —
+  two interaction models in one cell. The pill keeps its colour, because it is still information.
+* The group header drops its collapse button while reordering, where `tx.jsx:67` keeps it: a
+  collapsed group would hide rows from the order.
 * Início orders `MonthPill` → quick-add → hero, where `home.jsx:21-22` puts quick-add first: the
   pill is shared chrome owned by `MonthScreen`.

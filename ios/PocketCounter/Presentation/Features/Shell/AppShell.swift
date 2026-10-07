@@ -23,6 +23,7 @@ struct AppShell: View {
         _ledger = State(wrappedValue: MonthLedgerModel(
             loadMonth: container.loadMonth, setPaymentStatus: container.setPaymentStatus,
             toggleFixo: container.toggleFixo, deleteTransaction: container.deleteTransaction,
+            reorderTransactions: container.reorderTransactions,
             onSessionExpired: onSessionExpired))
     }
 

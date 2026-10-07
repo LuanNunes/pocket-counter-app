@@ -71,6 +71,11 @@ struct AppContainer {
         return { id throws(WriteFailure) in try await transactions.delete(id) }
     }
 
+    var reorderTransactions: ReorderTransactionsAction {
+        let transactions = transactionRepository
+        return { ids throws(WriteFailure) in try await transactions.reorder(ids) }
+    }
+
     /// Hands the session model the verb it needs, not the repositories.
     var endSession: SessionEndAction {
         let caches: [any LookupCaching] = [tagRepository, creditCardRepository]

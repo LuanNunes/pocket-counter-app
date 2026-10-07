@@ -64,6 +64,11 @@ enum PocketMetrics {
     static let modeChipHeight: CGFloat = 30
     static let modeChipPaddingH: CGFloat = 12
     static let modeChipSpacing: CGFloat = 6
+    /// `.edit-hint`
+    static let hintSpacing: CGFloat = 6
+    static let hintPaddingH: CGFloat = 12
+    static let hintPaddingV: CGFloat = 8
+    static let hintRadius: CGFloat = 14
 
     // MARK: Hero
 

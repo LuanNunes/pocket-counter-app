@@ -1,3 +1,5 @@
+import Foundation
+
 struct DetailTarget: Equatable, Sendable {
     let id: TransactionID
     let ref: RefYearMonth
@@ -12,6 +14,7 @@ struct TransactionsViewState: Equatable {
     private(set) var onlyFixos = false
     private(set) var collapsed: Set<LedgerGroupIdentity> = []
     private(set) var detail: DetailTarget?
+    private(set) var isReordering = false
 
     init(
         kind: TransactionType = .expense, mode: LedgerGroupMode = .lista, query: String = "", onlyFixos: Bool = false
@@ -26,8 +29,16 @@ struct TransactionsViewState: Equatable {
         LedgerFilter(kind: kind, query: query, onlyFixos: onlyFixos)
     }
 
+    /// A query hides rows, and a reorder renumbers the kind's complete list.
+    var canReorder: Bool {
+        !filter.isNarrowing
+    }
+
+    /// A search narrows the list, and reordering is defined over the whole kind.
     mutating func set(query: String) {
         self.query = query
+        guard !canReorder else { return }
+        isReordering = false
     }
 
     mutating func toggleOnlyFixos() {
@@ -46,9 +57,22 @@ struct TransactionsViewState: Equatable {
         collapsed = []
     }
 
+    /// Clears the filter and the collapse that would hide rows from the order.
+    mutating func beginReordering() {
+        guard canReorder else { return }
+        isReordering = true
+        onlyFixos = false
+        collapsed = []
+    }
+
+    mutating func endReordering() {
+        isReordering = false
+    }
+
     mutating func monthChanged() {
         collapsed = []
         detail = nil
+        isReordering = false
     }
 
     mutating func openDetail(_ target: DetailTarget) {
@@ -73,4 +97,6 @@ enum TransactionsAction: Equatable {
     case toggleGroup(LedgerGroupIdentity)
     case openDetail(DetailTarget)
     case closeDetail
+    case beginReordering
+    case endReordering
 }

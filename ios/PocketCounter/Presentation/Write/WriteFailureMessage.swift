@@ -4,7 +4,7 @@ import Foundation
 enum WriteFailureMessage {
     /// What the failed write was doing; only the title depends on it.
     enum Subject: Equatable, Sendable {
-        case saving, deleting
+        case saving, deleting, reordering
     }
 
     static func message(for failure: WriteFailure, subject: Subject) -> PocketNotice? {
@@ -22,6 +22,10 @@ enum WriteFailureMessage {
         case .rejected(let text):
             return PocketNotice(
                 kind: .error, title: title, detail: ServerText.presentable(text) ?? "O servidor recusou a alteração.")
+        case .vanished where subject == .reordering:
+            return PocketNotice(
+                kind: .error, title: "A lista mudou",
+                detail: "Algum lançamento foi excluído em outro aparelho.")
         case .vanished:
             return PocketNotice(
                 kind: .error, title: "Este lançamento não existe mais", detail: "Pode ter sido excluído em outro aparelho.")
@@ -32,6 +36,7 @@ enum WriteFailureMessage {
         switch subject {
         case .saving: "Não foi possível salvar"
         case .deleting: "Não foi possível excluir"
+        case .reordering: "Não foi possível reordenar"
         }
     }
 }

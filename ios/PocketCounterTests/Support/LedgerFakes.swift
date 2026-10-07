@@ -38,7 +38,7 @@ final class ExpirySignal {
 final class WriteProbe<Input: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [Input] = []
-    private let result: Result<Void, WriteFailure>
+    private var result: Result<Void, WriteFailure>
     private let rendezvous: Rendezvous?
 
     init(_ result: Result<Void, WriteFailure> = .success(()), rendezvous: Rendezvous? = nil) {
@@ -48,9 +48,21 @@ final class WriteProbe<Input: Sendable>: @unchecked Sendable {
 
     var calls: [Input] { lock.withLock { recorded } }
 
+    /// Rescripts the answer for the calls that follow.
+    func answer(_ result: Result<Void, WriteFailure>) { lock.withLock { self.result = result } }
+
+    /// Bounded: a call that never comes fails on the assertion instead of hanging.
+    func untilCalled(_ expected: Int = 1) async {
+        var spins = 0
+        while calls.count < expected, spins < 10_000 {
+            await Task.yield()
+            spins += 1
+        }
+    }
+
     func run(_ input: Input) async throws(WriteFailure) {
         lock.withLock { recorded.append(input) }
         await rendezvous?.arrive()
-        try result.get()
+        try lock.withLock { result }.get()
     }
 }

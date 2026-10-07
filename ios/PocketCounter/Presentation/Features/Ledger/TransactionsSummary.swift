@@ -7,6 +7,8 @@ struct TransactionsSummary: View {
     let kind: TransactionType
     let mode: LedgerGroupMode
     let onlyFixos: Bool
+    let canReorder: Bool
+    let isReordering: Bool
     let onAction: (TransactionsAction) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -43,6 +45,11 @@ struct TransactionsSummary: View {
                 }
             }
             Toggle(TransactionsCopy.onlyFixos, isOn: Binding(get: { onlyFixos }, set: { _ in onAction(.toggleOnlyFixos) }))
+                .disabled(isReordering)
+            if !isReordering {
+                Button(TransactionsCopy.reorderAction, systemImage: "line.3.horizontal") { onAction(.beginReordering) }
+                    .disabled(!canReorder)
+            }
         } label: {
             HStack(spacing: PocketMetrics.modeChipSpacing) {
                 Text(TransactionsCopy.modeName(mode))

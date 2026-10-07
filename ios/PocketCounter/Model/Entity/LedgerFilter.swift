@@ -5,6 +5,9 @@ struct LedgerFilter: Hashable, Sendable {
     let query: String
     let onlyFixos: Bool
 
+    var needle: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var isNarrowing: Bool { !needle.isEmpty }
+
     func apply(to items: [HistoryItem], lookups: LookupSet) -> [HistoryItem] {
         items.filter { item in
             item.type == kind && (!onlyFixos || item.isFixo) && matches(item, lookups: lookups)
@@ -12,8 +15,7 @@ struct LedgerFilter: Hashable, Sendable {
     }
 
     private func matches(_ item: HistoryItem, lookups: LookupSet) -> Bool {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !needle.isEmpty else { return true }
+        guard isNarrowing else { return true }
         let texts = [item.displayTitle()]
             + item.effectiveTagIds(inheriting: []).compactMap { lookups.tagsById[$0]?.name }
         guard !texts.contains(where: { $0.range(of: needle, options: Self.textOptions) != nil }) else { return true }

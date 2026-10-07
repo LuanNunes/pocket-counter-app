@@ -105,4 +105,96 @@ struct TransactionsViewStateTests {
 
         #expect(state.detail == target)
     }
+
+    @Test("beginning to reorder clears só fixos and the collapse, which would hide rows from the order")
+    func beginReordering() {
+        var state = TransactionsViewState(onlyFixos: true)
+        state.toggle(group)
+
+        state.beginReordering()
+
+        #expect(state.isReordering)
+        #expect(!state.onlyFixos)
+        #expect(state.collapsed.isEmpty)
+    }
+
+    @Test("ending a reorder leaves the screen as it was")
+    func endReordering() {
+        var state = TransactionsViewState()
+        state.beginReordering()
+
+        state.endReordering()
+
+        #expect(!state.isReordering)
+    }
+
+    @Test("a query forbids reordering, and beginning is then a no-op", arguments: ["luz", " luz "])
+    func queryForbids(query: String) {
+        var state = TransactionsViewState(query: query, onlyFixos: true)
+
+        state.beginReordering()
+
+        #expect(!state.canReorder)
+        #expect(!state.isReordering)
+        #expect(state.onlyFixos)
+    }
+
+    @Test("a blank query still allows reordering", arguments: ["", "   "])
+    func blankQueryAllows(query: String) {
+        var state = TransactionsViewState(query: query)
+
+        state.beginReordering()
+
+        #expect(state.canReorder)
+        #expect(state.isReordering)
+    }
+
+    @Test("a month change ends reordering")
+    func monthEndsReordering() {
+        var state = TransactionsViewState()
+        state.beginReordering()
+
+        state.monthChanged()
+
+        #expect(!state.isReordering)
+    }
+
+    @Test("a kind or mode change keeps reordering")
+    func selectionKeepsReordering() {
+        var state = TransactionsViewState()
+        state.beginReordering()
+
+        state.select(kind: .income)
+        state.select(mode: .tag)
+
+        #expect(state.isReordering)
+    }
+}
+
+@Suite("TransactionsViewState, reordenação")
+struct TransactionsViewStateReorderTests {
+    private func reordering() -> TransactionsViewState {
+        var state = TransactionsViewState()
+        state.beginReordering()
+        return state
+    }
+
+    @Test("a busca digitada durante a reordenação a encerra")
+    func queryEndsReordering() {
+        var state = reordering()
+
+        state.set(query: "luz")
+
+        #expect(!state.isReordering)
+    }
+
+    @Test("limpar a busca não reabre a reordenação")
+    func clearingQueryDoesNotResume() {
+        var state = reordering()
+        state.set(query: "luz")
+
+        state.set(query: "")
+
+        #expect(!state.isReordering)
+    }
 }

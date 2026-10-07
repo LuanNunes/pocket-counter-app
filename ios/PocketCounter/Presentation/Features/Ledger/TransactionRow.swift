@@ -2,11 +2,19 @@ import SwiftUI
 
 /// `.txr`, without its card: the caller applies `pocketCard(_:)`. Reads as one VoiceOver element.
 struct TransactionRow: View {
+    /// What a row needs while the list is being reordered; absent otherwise.
+    struct Reordering {
+        let position: String
+        let moveUp: (() -> Void)?
+        let moveDown: (() -> Void)?
+    }
+
     let content: TransactionRowContent
     var isBusy = false
     var busyLabel = TransactionsCopy.statusSaving
     var notice: PocketNotice? = nil
     var noticeAction: PocketInlineMessage.Action? = nil
+    var reordering: Reordering? = nil
     let onToggleStatus: () -> Void
     let onOpen: () -> Void
 
@@ -66,22 +74,32 @@ struct TransactionRow: View {
         .animation(PocketMotion.quick, value: content.isPaid)
         .graced(isActive: isBusy, elapsed: $showsSpinner)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(isBusy ? busyLabel : "")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(.default, onOpen)
+        .accessibilityValue([isBusy ? busyLabel : nil, reordering?.position].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityAddTraits(reordering == nil ? .isButton : [])
+        .defaultAction(reordering == nil ? onOpen : nil)
         .accessibilityActions {
-            if !isBusy {
-                Button(TransactionsCopy.statusToggleLabel(isPaid: content.isPaid), action: onToggleStatus)
+            if let reordering {
+                if let moveUp = reordering.moveUp { Button(TransactionsCopy.moveUp, action: moveUp) }
+                if let moveDown = reordering.moveDown { Button(TransactionsCopy.moveDown, action: moveDown) }
+            } else {
+                if !isBusy {
+                    Button(TransactionsCopy.statusToggleLabel(isPaid: content.isPaid), action: onToggleStatus)
+                }
             }
         }
     }
 
+    @ViewBuilder
     private func openButton<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        Button(action: onOpen) {
+        if reordering == nil {
+            Button(action: onOpen) {
+                content()
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        } else {
             content()
-                .contentShape(.rect)
         }
-        .buttonStyle(.plain)
     }
 
     private var statusPill: some View {
@@ -89,7 +107,7 @@ struct TransactionRow: View {
             pillFace
         }
         .buttonStyle(.plain)
-        .disabled(isBusy)
+        .disabled(isBusy || reordering != nil)
         .accessibilityHidden(true)
     }
 
@@ -181,6 +199,17 @@ struct TransactionRow: View {
                 .textCase(.uppercase)
                 .pocketFont(PocketFont.statusCaption)
                 .foregroundStyle(content.isPaid ? PocketColor.incomeInk : PocketColor.warningInk)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func defaultAction(_ action: (() -> Void)?) -> some View {
+        if let action {
+            accessibilityAction(.default, action)
+        } else {
+            self
         }
     }
 }

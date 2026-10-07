@@ -79,6 +79,9 @@ enum PocketFont {
     /// `.txg-t` — 14/500, on the 13pt `footnote` like `caption`
     static let groupSubtotal = PocketTextStyle(.system(.footnote, weight: .medium))
 
+    /// `.edit-hint` — 13/500
+    static let hint = PocketTextStyle(.system(.footnote, weight: .medium))
+
     /// `.txg-c` — 12, the count badge of a group
     static let groupCount = PocketTextStyle(.system(.caption))
 

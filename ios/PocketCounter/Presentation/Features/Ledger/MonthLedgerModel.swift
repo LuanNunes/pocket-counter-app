@@ -8,6 +8,8 @@ typealias ToggleFixoAction = @Sendable (HistoryItem) async throws(WriteFailure) 
 
 typealias DeleteTransactionAction = @Sendable (TransactionID) async throws(WriteFailure) -> Void
 
+typealias ReorderTransactionsAction = @Sendable ([TransactionID]) async throws(WriteFailure) -> Void
+
 @MainActor
 @Observable
 final class MonthLedgerModel {
@@ -19,6 +21,8 @@ final class MonthLedgerModel {
         fileprivate(set) var writes: [TransactionID: PaymentStatusWrite] = [:]
         /// Fixo and deletion, by row. Read only by the control that started one: the ledger consequence is the server's.
         fileprivate(set) var intents: [TransactionID: RowIntentWrite] = [:]
+        /// The last reorder the server refused. Not a row's: the list already shows the order it asked for.
+        fileprivate(set) var failedReorder: FailedReorder?
 
         var load: LoadState<MonthLedger> {
             var load = months[month] ?? LoadState()
@@ -82,9 +86,29 @@ final class MonthLedgerModel {
             writes[id] = nil
         }
 
+        /// Projects into the committed ledger, like a deletion: no row owns a reorder.
+        /// A fresh attempt supersedes the old notice: the order on screen is the new one.
+        mutating func beginReorder(_ ref: RefYearMonth, order: [TransactionID]) {
+            months[ref]?.amend { $0.reordering(order) }
+            failedReorder = nil
+        }
+
+        mutating func revertReorder(_ ref: RefYearMonth, to order: [TransactionID]) {
+            months[ref]?.amend { $0.reordering(order) }
+        }
+
+        mutating func failReorder(_ ref: RefYearMonth, kind: TransactionType, _ failure: WriteFailure) {
+            failedReorder = FailedReorder(ref: ref, kind: kind, failure: failure)
+        }
+
+        mutating func dropReorder() {
+            failedReorder = nil
+        }
+
         /// The server just answered for `ref`, so its failed writes are stale. In-flight ones still stand.
         mutating func commit(_ ledger: MonthLedger, for ref: RefYearMonth) {
             months[ref, default: LoadState()].commit(ledger)
+            if failedReorder?.ref == ref { failedReorder = nil }
             writes = writes.filter { Self.outlivesAnswer($0.value, for: ref) }
             intents = intents.filter { Self.outlivesAnswer($0.value, for: ref) }
         }
@@ -99,6 +123,7 @@ final class MonthLedgerModel {
     private let setPaymentStatus: SetPaymentStatusAction
     private let changeFixo: ToggleFixoAction
     private let deleteTransaction: DeleteTransactionAction
+    private let reorderTransactions: ReorderTransactionsAction
     private let onSessionExpired: SessionExpiredAction
 
     init(
@@ -108,6 +133,7 @@ final class MonthLedgerModel {
         setPaymentStatus: @escaping SetPaymentStatusAction,
         toggleFixo: @escaping ToggleFixoAction,
         deleteTransaction: @escaping DeleteTransactionAction,
+        reorderTransactions: @escaping ReorderTransactionsAction,
         onSessionExpired: @escaping SessionExpiredAction
     ) {
         state = State(window: window, month: window.clamped(month))
@@ -115,6 +141,7 @@ final class MonthLedgerModel {
         self.setPaymentStatus = setPaymentStatus
         changeFixo = toggleFixo
         self.deleteTransaction = deleteTransaction
+        self.reorderTransactions = reorderTransactions
         self.onSessionExpired = onSessionExpired
     }
 
@@ -225,6 +252,33 @@ final class MonthLedgerModel {
             }
         }
         state.completeDeletion(item.id, ref: item.ref)
+    }
+
+    /// `group` is the rows as dragged, in their new order. Async and spawning no `Task`, like `delete`.
+    /// Does not consult `isWriting`: a reorder belongs to no row, and `displayOrder` is disjoint from every row write.
+    func reorder(_ group: [TransactionID], of kind: TransactionType, in ref: RefYearMonth) async {
+        guard let ledger = state.months[ref]?.value else { return }
+        let all = ledger.items.filter { $0.type == kind }.map(\.id)
+        let order = LedgerReorder.placing(group, into: all)
+        guard order != all else { return }
+        // A commit from a load already in flight can overwrite this; the next load reconciles.
+        state.beginReorder(ref, order: order)
+        do {
+            try await reorderTransactions(order)
+        } catch {
+            switch error {
+            case .sessionExpired:
+                state.dropReorder()
+                await onSessionExpired()
+                return
+            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
+                break
+            }
+            // A partial reorder may have committed; the reload is the only way to see how much.
+            // Recorded after it: the reload's own answer would clear the notice.
+            if state.month == ref { await refresh() } else { state.revertReorder(ref, to: all) }
+            state.failReorder(ref, kind: kind, error)
+        }
     }
 
     private func request() async {

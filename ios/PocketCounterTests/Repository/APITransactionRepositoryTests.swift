@@ -38,6 +38,15 @@ struct APITransactionRepositoryRouteTests {
         #expect(pending.authentication == .bearer)
         #expect(paid.body == nil)
     }
+
+    @Test("reordering is a bearer PUT to the reorder path")
+    func reorderRoute() {
+        let route = APITransactionRepository.Route.reorder([TransactionID(rawValue: "t1")])
+
+        #expect(route.path == "api/v1/transactions/reorder")
+        #expect(route.method == .put)
+        #expect(route.authentication == .bearer)
+    }
 }
 
 @Suite("APITransactionRepository")
@@ -223,6 +232,29 @@ struct APITransactionRepositoryTests {
     func deleteVanished() async {
         await #expect(throws: WriteFailure.vanished) {
             try await repository(FakeHTTP(FakeHTTP.empty(404))).delete(TransactionID(rawValue: "t1"))
+        }
+    }
+
+    @Test("reordering sends an items object numbering the ids densely in array order")
+    func reorder() async throws {
+        let http = FakeHTTP(FakeHTTP.empty(200))
+
+        try await repository(http).reorder(["c", "a", "b"].map { TransactionID(rawValue: $0) })
+
+        let request = try #require(http.requests.first)
+        #expect(request.httpMethod == "PUT")
+        #expect(request.url?.path == "/api/v1/transactions/reorder")
+        let body = try #require(request.httpBody)
+        let sent = try JSONSerialization.jsonObject(with: body) as? NSDictionary
+        #expect(sent == ["items": [
+            ["id": "c", "displayOrder": 0], ["id": "a", "displayOrder": 1], ["id": "b", "displayOrder": 2],
+        ]])
+    }
+
+    @Test("a 404 on a reorder is a vanished row")
+    func reorderVanished() async {
+        await #expect(throws: WriteFailure.vanished) {
+            try await repository(FakeHTTP(FakeHTTP.empty(404))).reorder([TransactionID(rawValue: "t1")])
         }
     }
 }

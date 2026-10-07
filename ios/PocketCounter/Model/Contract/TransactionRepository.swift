@@ -11,4 +11,8 @@ protocol TransactionRepository: Sendable {
 
     /// A `.vanished` answer means the row was already gone.
     func delete(_ id: TransactionID) async throws(WriteFailure)
+
+    /// `ids` is the complete order of one kind within a month; each id's index becomes its display order.
+    /// Not atomic: a failure can leave the ids before the failing one already committed.
+    func reorder(_ ids: [TransactionID]) async throws(WriteFailure)
 }
