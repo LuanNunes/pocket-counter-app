@@ -73,4 +73,24 @@ struct PocketFormatTests {
         #expect(PocketFormat.monthName(ref, capitalized: false) == plain)
         #expect(PocketFormat.monthName(ref, capitalized: true) == capitalized)
     }
+
+    @Test("a day label is the day and the lower-case month")
+    func dayLabel() {
+        #expect(PocketFormat.dayLabel(.of(2026, 5, 19)) == "19 de maio")
+        #expect(PocketFormat.dayLabel(.of(2026, 3, 1)) == "1 de março")
+    }
+
+    @Test("a movement carries its direction, written and spoken")
+    func movement() {
+        #expect(PocketFormat.movement(-10.5, isIncome: false) == "\u{2212} R$\u{00A0}10,50")
+        #expect(PocketFormat.movement(10.5, isIncome: true) == "+ R$\u{00A0}10,50")
+        #expect(PocketFormat.spokenMovement(-10.5, isIncome: false) == "menos R$\u{00A0}10,50")
+        #expect(PocketFormat.spokenMovement(10.5, isIncome: true) == "mais R$\u{00A0}10,50")
+    }
+
+    @Test("a zero keeps its kind's direction, where the amount's sign has none")
+    func zeroMovement() {
+        #expect(PocketFormat.movement(0, isIncome: false) == "\u{2212} R$\u{00A0}0,00")
+        #expect(PocketFormat.movement(0, isIncome: true) == "+ R$\u{00A0}0,00")
+    }
 }

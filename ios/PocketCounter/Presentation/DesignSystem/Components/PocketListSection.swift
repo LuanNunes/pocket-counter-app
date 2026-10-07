@@ -127,15 +127,41 @@ struct PocketRowSeparator: View {
 /// what it is — `.inc` is the income ink, `.wrn` the warning ink, `.exp` the default label.
 struct PocketAmount: View {
     enum Kind { case income, expense, pending }
+    enum Style { case body, rowAmount, summaryValue }
 
     var value: Decimal
     var kind: Kind
+    var style: Style = .body
+    /// `false` where the segment and the ink already say the kind.
+    var signed = true
+    /// The spec's `+ R$` / `− R$` on every row of a ledger.
+    var showsDirection = false
 
     var body: some View {
-        Text(PocketFormat.currency(value))
-            .pocketFont(PocketFont.body, tabularFigures: true)
+        let text = Text(text)
+            .pocketFont(textStyle, tabularFigures: true)
             .foregroundStyle(color)
-            .accessibilityValue(PocketFormat.spokenCurrency(value))
+        if signed || showsDirection {
+            text.accessibilityValue(spokenText)
+        } else {
+            text
+        }
+    }
+
+    private var text: String {
+        showsDirection ? PocketFormat.movement(value, isIncome: kind == .income) : PocketFormat.currency(value, signed: signed)
+    }
+
+    private var spokenText: String {
+        showsDirection ? PocketFormat.spokenMovement(value, isIncome: kind == .income) : PocketFormat.spokenCurrency(value)
+    }
+
+    private var textStyle: PocketTextStyle {
+        switch style {
+        case .body: PocketFont.body
+        case .rowAmount: PocketFont.rowAmount
+        case .summaryValue: PocketFont.summaryValue
+        }
     }
 
     private var color: Color {

@@ -67,6 +67,39 @@ enum PocketFont {
     /// `.textCase(.uppercase)` at the call site; the tracking is what the uppercase needs.
     static let eyebrow = PocketTextStyle(.system(.caption, weight: .bold), tracking: 0.48)
 
+    /// `.txsum-v` — 26/700, -0.02em
+    static let summaryValue = PocketTextStyle(.system(.title, weight: .bold), tracking: -0.56)
+
+    /// `.txg-n` — 15/600
+    static let groupTitle = PocketTextStyle(.system(.subheadline, weight: .semibold))
+
+    /// `.txg-t` — 14/500, on the 13pt `footnote` like `caption`
+    static let groupSubtotal = PocketTextStyle(.system(.footnote, weight: .medium))
+
+    /// `.txg-c` — 12, the count badge of a group
+    static let groupCount = PocketTextStyle(.system(.caption))
+
+    /// `.txr-b .nm` — 16/500
+    static let rowTitle = PocketTextStyle(.system(.callout, weight: .medium))
+
+    /// `.txr-r .amt` — 16/600
+    static let rowAmount = PocketTextStyle(.system(.callout, weight: .semibold))
+
+    /// `.txr-b .mt` — 12.5
+    static let rowMeta = PocketTextStyle(.system(.caption))
+
+    /// `.mtag` — 12.5/500
+    static let tagChip = PocketTextStyle(.system(.caption, weight: .medium))
+
+    /// `.txr-r .sl` — 10.5/700, 0.05em. Apply `.textCase(.uppercase)` at the call site.
+    static let statusCaption = PocketTextStyle(.system(.caption2, weight: .bold), tracking: 0.55)
+
+    /// The 16pt check or clock in a status pill.
+    static let statusIcon = PocketTextStyle(.system(.callout, weight: .bold))
+
+    /// `chevron.down` in a group header, 14pt.
+    static let groupChevron = PocketTextStyle(.system(.footnote, weight: .semibold))
+
     /// The 28pt symbol that opens a full-screen notice. `.title` *is* 28pt, and scales.
     static let notice = PocketTextStyle(.system(.title, weight: .semibold))
 }

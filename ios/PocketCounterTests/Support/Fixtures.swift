@@ -23,6 +23,7 @@ extension HistoryItem {
         type: TransactionType = .expense,
         tagIds: [TagID]? = nil,
         statusPayment: PaymentStatus = .paid,
+        displayOrder: Int = 0,
         seriesId: String? = nil,
         name: String? = nil,
         description: String? = nil,
@@ -37,6 +38,7 @@ extension HistoryItem {
             type: type,
             tagIds: tagIds,
             statusPayment: statusPayment,
+            displayOrder: displayOrder,
             cardId: cardId,
             seriesId: seriesId,
             name: name,
@@ -60,4 +62,34 @@ extension HistoryItem {
 
 extension AuthenticatedUser {
     static let fixture = AuthenticatedUser(id: JWTFixture.userId, name: "Ana", email: "ana@b.com")
+}
+
+extension TagID {
+    static func of(_ raw: String) -> TagID { TagID(rawValue: raw) }
+}
+
+extension ContextID {
+    static func of(_ raw: String) -> ContextID { ContextID(rawValue: raw) }
+}
+
+extension Tag {
+    static func fixture(
+        _ id: String, _ name: String = "", kind: TransactionType = .expense, context: String? = nil
+    ) -> Tag {
+        Tag(id: .of(id), name: name.isEmpty ? id : name, kind: kind, contextId: context.map(ContextID.of))
+    }
+}
+
+extension TagContext {
+    static func fixture(_ id: String, _ name: String = "") -> TagContext {
+        TagContext(id: .of(id), name: name.isEmpty ? id : name, color: nil)
+    }
+}
+
+extension LookupSet {
+    static func fixture(
+        categories: [TagContext] = [], tags: [Tag] = [], failed: Set<LookupKind> = []
+    ) -> LookupSet {
+        LookupSet(categories: categories, tags: tags, cards: [], failed: failed)
+    }
 }

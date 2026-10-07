@@ -84,13 +84,7 @@ struct AppShell: View {
     }
 
     private var transactions: some View {
-        MonthScreen(title: "Transações", ledger: ledger) { value in
-            PocketListSection {
-                PocketRow(title: "Lançamentos") {
-                    Text(value.items.count, format: .number.locale(PocketFormat.locale)).pocketFont(PocketFont.body)
-                }
-            }
-        }
+        TransactionsScreen(ledger: ledger)
     }
 
     // MARK: Mais

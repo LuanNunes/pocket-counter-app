@@ -9,45 +9,24 @@ struct LoadRegion<Value: Equatable, Content: View>: View {
     let onRetry: () -> Void
     @ViewBuilder let content: (Value) -> Content
 
-    /// Time belongs to the view: in a model it would make tests sleep.
     @State private var showsPlaceholder = false
 
     var body: some View {
         Group {
-            switch phase {
-            case .firstLoad:
+            switch LoadPlan(phase) {
+            case .skeleton:
                 skeleton
-            case .failed(let failure):
-                blocking(failure)
-            case .loaded(let value):
-                content(value)
-            case .stale(let value, let failure):
-                VStack(alignment: .leading, spacing: 0) {
-                    if let notice = LoadFailureMessage.notice(for: failure) {
-                        PocketNoticeCard(notice: notice, action: retryAction, isBusy: isRetrying)
-                            .padding(.bottom, PocketMetrics.tileSpacing)
-                    }
-
-                    content(value)
-                }
+            case .blocking(let failure):
+                LoadBlockingView(failure: failure, isRetrying: isRetrying, onRetry: onRetry)
+            case .content(let value, let notice):
+                loaded(value, notice: notice)
             }
         }
-        .task(id: isFirstLoad) {
-            guard isFirstLoad else {
-                showsPlaceholder = false
-                return
-            }
-            do { try await Task.sleep(for: PocketMotion.indicatorGrace) } catch { return }
-            withAnimation(PocketMotion.quick) { showsPlaceholder = true }
-        }
+        .placeholderGrace(isFirstLoad: isFirstLoad, elapsed: $showsPlaceholder)
     }
 
     private var isFirstLoad: Bool {
         phase == .firstLoad
-    }
-
-    private var retryAction: PocketInlineMessage.Action {
-        .init(title: "Tentar novamente", perform: onRetry)
     }
 
     private var skeleton: some View {
@@ -64,20 +43,15 @@ struct LoadRegion<Value: Equatable, Content: View>: View {
     }
 
     @ViewBuilder
-    private func blocking(_ failure: LoadFailure) -> some View {
-        if let notice = LoadFailureMessage.blocking(for: failure) {
-            ContentUnavailableView {
-                Label(notice.title, systemImage: notice.kind.symbol)
-            } description: {
-                if let detail = notice.detail { Text(detail) }
-            } actions: {
-                if isRetrying {
-                    ProgressView()
-                } else {
-                    Button("Tentar novamente", action: onRetry)
-                        .buttonStyle(.bordered)
-                }
+    private func loaded(_ value: Value, notice: PocketNotice?) -> some View {
+        if let notice {
+            VStack(alignment: .leading, spacing: 0) {
+                LoadNoticeCard(notice: notice, isRetrying: isRetrying, onRetry: onRetry)
+
+                content(value)
             }
+        } else {
+            content(value)
         }
     }
 }
