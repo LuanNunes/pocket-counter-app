@@ -85,5 +85,7 @@ struct AppContainer {
     // Computed: it holds no cache, so the built-once rule does not apply.
     private var recurringSeriesRepository: any RecurringSeriesRepository { APIRecurringSeriesRepository(client: authenticatedClient) }
 
+    var sentenceReadingRepository: any SentenceReadingRepository { APISentenceReadingRepository(client: authenticatedClient) }
+
     var sessionRepository: any SessionRepository { APISessionRepository(client: client, tokens: tokens) }
 }

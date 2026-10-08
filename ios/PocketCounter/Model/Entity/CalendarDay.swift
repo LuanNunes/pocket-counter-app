@@ -70,8 +70,10 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        try container.encode(String(format: "%04d-%02d-%02d", year, month, day))
+        try container.encode(iso)
     }
+
+    var iso: String { String(format: "%04d-%02d-%02d", year, month, day) }
 
     private static func daysIn(month: Int, year: Int) -> Int {
         switch month {
