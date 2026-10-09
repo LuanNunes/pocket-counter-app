@@ -20,11 +20,10 @@ enum QuickAddQuestionKind: Equatable {
     /// A row per option: the footer is "Editar a frase", because there is nothing to confirm.
     case picked(MissingField)
 
-    init(_ field: MissingField, choices: [CardCandidate]) {
+    init(_ field: MissingField) {
         switch field {
         case .amount, .description: self = .typed(field)
-        case .type: self = .picked(field)
-        case .card: self = choices.isEmpty ? .typed(field) : .picked(field)
+        case .type, .card: self = .picked(field)
         }
     }
 }
@@ -44,6 +43,10 @@ final class QuickAddModel {
         /// Set when a write succeeds and never cleared while this model lives: the sheet can be
         /// swiped away on the receipt, and Início must still reload.
         fileprivate(set) var didWrite = false
+
+        /// The review's "Lançar" is only live when the draft can actually become an entry: `pending`
+        /// is the server's word, not a guarantee, and `TransactionEntry` can still refuse what is there.
+        var canConfirm: Bool { draft?.confirmed() != nil }
 
         var draft: ReadingDraft? {
             switch stage {
@@ -69,6 +72,7 @@ final class QuickAddModel {
     }
 
     func type(_ text: String) {
+        guard case .writing = state.stage else { return }
         state.sentence = text
         state.stage = .writing(text)
         state.readingFailure = nil
@@ -76,6 +80,7 @@ final class QuickAddModel {
 
     func send() async {
         guard case .writing(let text) = state.stage else { return }
+        // The button is disabled unless the text makes a sentence, so bad input cannot reach here.
         guard let sentence = try? SentenceText(text) else { return }
         state.stage = .reading
         state.readingFailure = nil
@@ -90,6 +95,7 @@ final class QuickAddModel {
     }
 
     func editSentence() {
+        guard case .asking = state.stage else { return }
         state.stage = .writing(state.sentence)
     }
 
@@ -117,6 +123,7 @@ final class QuickAddModel {
     }
 
     func startAnother() {
+        guard case .saved = state.stage else { return }
         let wrote = state.didWrite
         state = State()
         state.didWrite = wrote
