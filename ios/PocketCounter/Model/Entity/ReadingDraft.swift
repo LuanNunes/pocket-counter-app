@@ -52,7 +52,7 @@ struct ReadingDraft: Hashable, Sendable {
         }
     }
 
-    /// The same invariant, read backwards.
+    /// Leaving credit drops the card.
     func settingPaymentMethod(_ value: PaymentMethod?) -> ReadingDraft {
         changing {
             $0.paymentMethod = value.map(DraftField.defined)
@@ -61,12 +61,8 @@ struct ReadingDraft: Hashable, Sendable {
         }
     }
 
-    /// `nil` on two grounds: one of the three required fields is absent, or `TransactionEntry`
-    /// refuses what is there. Deliberately not asking `nextQuestion`: `pending` is what the
-    /// server said was missing, and a total function cannot depend on that word.
-    ///
-    /// The card travels whenever it is *present* — not when its provenance is `.defined`. A card
-    /// the sentence named carries `.fromSentence`, and dropping it would lose what the user wrote.
+    /// `nil` when a required field is absent or `TransactionEntry` refuses what is there. Does not
+    /// consult `nextQuestion`. The card travels whenever present, whatever its provenance.
     func confirmed() -> TransactionEntry? {
         guard let type, let amount, let name else { return nil }
         return TransactionEntry(
@@ -81,11 +77,16 @@ struct ReadingDraft: Hashable, Sendable {
         return changing { $0.name = trimmed.isEmpty ? nil : .defined(trimmed) }
     }
 
+    private var isNotCardCharge: Bool {
+        guard let method = paymentMethod?.value else { return false }
+        return method != .credit
+    }
+
     private func satisfies(_ field: MissingField) -> Bool {
         switch field {
         case .amount: amount != nil
         case .description: name != nil
-        case .card: card != nil || cardSkipped
+        case .card: card != nil || cardSkipped || isNotCardCharge
         case .type: type != nil
         }
     }

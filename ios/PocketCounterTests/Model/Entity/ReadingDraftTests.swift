@@ -240,4 +240,32 @@ struct ReadingDraftTests {
         #expect(draft.card == nil)
         #expect(draft.confirmed()?.card == nil)
     }
+
+    @Test("a card dropped by leaving credit is not asked about again")
+    func droppedCardIsNotAsked() {
+        let draft = ReadingDraft(.fixture(missing: [.card])).settingCard(.fixture())
+
+        #expect(draft.settingPaymentMethod(.pix).nextQuestion == nil)
+    }
+
+    @Test("an unknown payment method keeps the card question open")
+    func unknownMethodKeepsCardQuestion() {
+        let draft = ReadingDraft(.fixture(missing: [.card])).settingCard(.fixture())
+
+        #expect(draft.settingPaymentMethod(nil).nextQuestion == .card)
+    }
+
+    @Test("choosing credit again keeps the card")
+    func creditKeepsCard() {
+        let draft = ReadingDraft(.fixture()).settingCard(.fixture()).settingPaymentMethod(.credit)
+
+        #expect(draft.card != nil)
+    }
+
+    @Test("a name the entry refuses on length does not confirm")
+    func overlongNameDoesNotConfirm() {
+        let name = String(repeating: "a", count: TransactionEntry.maxNameUTF16Units + 1)
+
+        #expect(ReadingDraft(.fixture(name: Sourced(value: name, source: .written))).confirmed() == nil)
+    }
 }
