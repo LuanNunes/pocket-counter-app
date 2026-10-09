@@ -18,7 +18,7 @@ struct TransactionEntryTests {
         #expect(entry.allowDuplicate == false)
     }
 
-    @Test("a name the server would refuse is refused here", arguments: ["", " ", "\n\t"])
+    @Test("a blank name is refused", arguments: ["", " ", "\n\t"])
     func blankName(name: String) {
         #expect(entry(name: name) == nil)
     }
@@ -36,12 +36,23 @@ struct TransactionEntryTests {
         #expect(entry(name: String(repeating: "a", count: 251)) == nil)
     }
 
+    @Test("the name limit counts UTF-16 units, not characters")
+    func multiScalarName() {
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+        #expect(entry(name: String(repeating: family, count: 200)) == nil)
+    }
+
     @Test("the duplicate retry changes only that flag")
     func allowingDuplicate() throws {
-        let retry = try #require(entry()).withAllowingDuplicate()
+        func full(allowDuplicate: Bool) -> TransactionEntry? {
+            TransactionEntry(
+                type: .expense, amount: Money(250), date: .fixture, name: "Consulta do cachorro",
+                paymentMethod: .pix, card: CardID(rawValue: "card-1"), tag: TagID(rawValue: "tag-1"),
+                allowDuplicate: allowDuplicate)
+        }
 
-        #expect(retry.allowDuplicate)
-        #expect(retry.amount == Money(250))
-        #expect(retry.name == "Consulta do cachorro")
+        let retry = try #require(full(allowDuplicate: false)).withAllowingDuplicate()
+
+        #expect(retry == full(allowDuplicate: true))
     }
 }

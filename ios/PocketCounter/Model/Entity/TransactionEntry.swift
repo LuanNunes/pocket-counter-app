@@ -15,7 +15,8 @@ struct TransactionEntry: Hashable, Sendable {
     let tag: TagID?
     let allowDuplicate: Bool
 
-    static let maxNameCharacters = 250
+    /// UTF-16 units, the strictest candidate unit: never accepts a name the column would reject.
+    static let maxNameUTF16Units = 250
 
     init?(
         type: TransactionType,
@@ -29,7 +30,7 @@ struct TransactionEntry: Hashable, Sendable {
     ) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard trimmed.count <= Self.maxNameCharacters else { return nil }
+        guard trimmed.utf16.count <= Self.maxNameUTF16Units else { return nil }
         guard amount > .zero else { return nil }
         self.type = type
         self.amount = amount
