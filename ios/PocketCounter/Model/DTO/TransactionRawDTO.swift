@@ -10,8 +10,9 @@ struct TransactionRawResponseDTO: Decodable, Sendable {
     struct Reading: Decodable, Sendable {
         let type: String?
         let amount: Decimal?
-        /// Text, as `TransactionDTO.dateDue`: a bad date is a mapping failure, not a decoding one.
-        let date: String
+        /// Optional even though the server always sends it: an absent field should fail the mapping,
+        /// which names it, not the decoding, which does not.
+        let date: String?
         let name: String?
         let paymentMethod: String?
     }
@@ -20,7 +21,7 @@ struct TransactionRawResponseDTO: Decodable, Sendable {
     struct Source: Decodable, Sendable {
         let type: String?
         let amount: String?
-        let date: String
+        let date: String?
         let name: String?
         let paymentMethod: String?
         let card: String?

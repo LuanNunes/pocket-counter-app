@@ -158,6 +158,17 @@ struct SentenceReadingMapperTests {
         #expect(result.card == .unresolved)
     }
 
+    /// The DTO keeps `date` optional so an absent one names itself here, rather than failing the
+    /// whole decode with nothing to show for it.
+    @Test("an absent date is a mapping failure that names the field")
+    func absentDate() {
+        #expect(throws: MappingFailure.missingField(entity: "SentenceReading", field: "date")) {
+            try map(WireFixtures.rawResponse(
+                reading: #"{"type":"EXPENSE","amount":150.00,"name":"Supermercado","paymentMethod":null}"#
+            ))
+        }
+    }
+
     @Test("an ambiguous card with no candidates is a failure")
     func ambiguousWithoutCandidates() {
         #expect(throws: MappingFailure.missingField(entity: "SentenceReading", field: "card.candidates")) {

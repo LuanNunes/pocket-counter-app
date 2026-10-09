@@ -11,7 +11,7 @@ enum SentenceReadingMapper {
         return SentenceReading(
             type: try paired(try transactionType(reading.type), source.type, field: "type"),
             amount: try paired(reading.amount.map(Money.init), source.amount, field: "amount"),
-            date: Sourced(value: try day(reading.date), source: try fieldSource(source.date, field: "source.date")),
+            date: try sourced(try day(reading.date), source.date, field: "date"),
             name: try paired(reading.name, source.name, field: "name"),
             paymentMethod: try paired(reading.paymentMethod.flatMap(PaymentMethod.init(wire:)), source.paymentMethod, field: "paymentMethod"),
             card: try card(dto.card, source: source.card),
@@ -91,7 +91,8 @@ enum SentenceReadingMapper {
         return CardCandidate(id: CardID(rawValue: dto.id), name: dto.name)
     }
 
-    private static func day(_ text: String) throws(MappingFailure) -> CalendarDay {
+    private static func day(_ text: String?) throws(MappingFailure) -> CalendarDay {
+        guard let text else { throw .missingField(entity: entity, field: "date") }
         guard let day = try? CalendarDay(iso: text) else { throw .invalidDate(entity: entity, value: text) }
         return day
     }
