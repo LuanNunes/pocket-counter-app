@@ -88,9 +88,10 @@ extension TagContext {
 
 extension LookupSet {
     static func fixture(
-        categories: [TagContext] = [], tags: [Tag] = [], failed: Set<LookupKind> = []
+        categories: [TagContext] = [], tags: [Tag] = [], cards: [CreditCard] = [],
+        failed: Set<LookupKind> = []
     ) -> LookupSet {
-        LookupSet(categories: categories, tags: tags, cards: [], failed: failed)
+        LookupSet(categories: categories, tags: tags, cards: cards, failed: failed)
     }
 }
 
