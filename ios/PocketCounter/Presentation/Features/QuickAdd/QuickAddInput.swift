@@ -62,12 +62,18 @@ struct QuickAddWriting: View {
             QuickAddField(
                 placeholder: QuickAddCopy.placeholder,
                 accessibilityLabel: QuickAddCopy.sentenceField,
-                text: Binding(get: { text }, set: { onAction(.type($0)) }),
+                text: Binding(get: { text }, set: edit),
                 onSubmit: submit
             )
             .disabled(isReading)
             .padding(.horizontal, PocketMetrics.screenMargin)
         }
+    }
+
+    /// A refocus writes the same text back; that is not typing and must not clear the notice.
+    private func edit(_ typed: String) {
+        guard typed != text else { return }
+        onAction(.type(typed))
     }
 
     private func submit() {
