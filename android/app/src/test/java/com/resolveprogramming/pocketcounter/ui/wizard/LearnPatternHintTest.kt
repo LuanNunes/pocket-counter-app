@@ -15,7 +15,7 @@ class LearnPatternHintTest {
     private val salary = Tag("sal", "Salário", TransactionType.INCOME)
 
     private fun state(type: TransactionType?, vararg picked: String) = WizardUiState(
-        draft = WizardDraft(type = type, tagIds = picked.toList()),
+        draft = WizardDraft(type = type, tagIds = picked.toList(), name = "Padaria"),
         allTags = listOf(food, fun_, salary),
     )
 
@@ -67,5 +67,20 @@ class LearnPatternHintTest {
         assertFalse(state(TransactionType.INCOME, "sal").canTeachRule)
         assertFalse(state(TransactionType.EXPENSE).canTeachRule)
         assertTrue(state(TransactionType.EXPENSE, "food").canTeachRule)
+    }
+
+    @Test
+    fun canTeachRule_isFalseWhenTheDraftYieldsNoPattern() {
+        val noPattern = WizardUiState(
+            draft = WizardDraft(type = TransactionType.EXPENSE, tagIds = listOf("food")),
+            allTags = listOf(food, fun_, salary),
+        )
+
+        assertFalse(noPattern.canTeachRule)
+    }
+
+    @Test
+    fun teachPattern_comesFromTheDraftWhenThereIsNoNotification() {
+        assertEquals("Padaria", state(TransactionType.EXPENSE, "food").teachPattern)
     }
 }

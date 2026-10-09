@@ -8,6 +8,10 @@ import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.slot
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.ResponseBody.Companion.toResponseBody
+import retrofit2.HttpException
+import retrofit2.Response
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -15,6 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
 import java.time.LocalDate
+import kotlinx.serialization.json.Json
 
 /**
  * Regression tests for [RetrofitTransactionRepository.toDto] ensuring that
@@ -24,7 +29,7 @@ import java.time.LocalDate
 class RetrofitTransactionRepositoryTest {
 
     private val api = mockk<TransactionApi>()
-    private val repo = RetrofitTransactionRepository(api)
+    private val repo = RetrofitTransactionRepository(api, Json { ignoreUnknownKeys = true })
 
     private val fixedDate = LocalDate.of(2026, 6, 26)
 
@@ -163,5 +168,60 @@ class RetrofitTransactionRepositoryTest {
         val result = repo.getMonth("2026-06")
 
         assertTrue(result.isFailure)
+    }
+
+    // -------------------------------------------------------------------------
+    // allowDuplicate + the 409 it answers
+    // -------------------------------------------------------------------------
+
+    private fun conflict(body: String) = HttpException(
+        Response.error<Any>(409, body.toResponseBody("application/json".toMediaType())),
+    )
+
+    @Test
+    fun `save omits allowDuplicate by default`() = runTest {
+        val captured = slot<TransactionDto>()
+        coEvery { api.addExpense(capture(captured)) } returns "tx-1"
+
+        repo.save(expenseDraft("Mercado"))
+
+        assertEquals(false, captured.captured.allowDuplicate)
+    }
+
+    @Test
+    fun `save sends allowDuplicate once the user confirmed the repeat`() = runTest {
+        val captured = slot<TransactionDto>()
+        coEvery { api.addExpense(capture(captured)) } returns "tx-1"
+
+        repo.save(expenseDraft("Mercado"), allowDuplicate = true)
+
+        assertEquals(true, captured.captured.allowDuplicate)
+    }
+
+    @Test
+    fun `a 409 becomes a duplicate carrying the existing id`() = runTest {
+        val body = """{"code":"CONFLICT","message":"Já existe","details":["tx-existing"]}"""
+        coEvery { api.addExpense(any()) } throws conflict(body)
+
+        val failure = repo.save(expenseDraft("Mercado")).exceptionOrNull()
+
+        assertEquals("tx-existing", (failure as DuplicateTransactionException).existingTransactionId)
+    }
+
+    @Test
+    fun `a 409 with no details still reports a duplicate`() = runTest {
+        coEvery { api.addExpense(any()) } throws conflict("""{"code":"CONFLICT","message":"Já existe"}""")
+
+        val failure = repo.save(expenseDraft("Mercado")).exceptionOrNull()
+
+        assertTrue(failure is DuplicateTransactionException)
+        assertNull((failure as DuplicateTransactionException).existingTransactionId)
+    }
+
+    @Test
+    fun `a duplicate carries a message the wizard toast can render`() = runTest {
+        coEvery { api.addExpense(any()) } throws conflict("""{"code":"CONFLICT","message":"x"}""")
+
+        assertEquals("Transação duplicada", repo.save(expenseDraft("Mercado")).exceptionOrNull()?.message)
     }
 }

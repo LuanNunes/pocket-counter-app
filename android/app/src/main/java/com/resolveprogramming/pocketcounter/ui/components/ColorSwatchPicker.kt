@@ -2,7 +2,7 @@ package com.resolveprogramming.pocketcounter.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +17,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
@@ -34,12 +36,14 @@ fun ColorSwatchPicker(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        colors.forEach { argb ->
+        colors.forEachIndexed { index, argb ->
             val isSelected = argb == selected
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clickable { onSelect(argb) },
+                    .size(48.dp)
+                    .selectable(selected = isSelected, onClick = { onSelect(argb) })
+                    // A colour has no name to read, so TalkBack gets its position in the row.
+                    .semantics { contentDescription = "Cor ${index + 1}" },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(

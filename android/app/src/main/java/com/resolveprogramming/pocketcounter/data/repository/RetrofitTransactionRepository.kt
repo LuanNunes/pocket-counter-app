@@ -2,6 +2,9 @@ package com.resolveprogramming.pocketcounter.data.repository
 
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers
 import com.resolveprogramming.pocketcounter.data.remote.RemoteMappers.toHistoryItem
+import com.resolveprogramming.pocketcounter.data.remote.errorDetails
+import com.resolveprogramming.pocketcounter.data.remote.isConflict
+import com.resolveprogramming.pocketcounter.data.remote.withoutHttpException
 import com.resolveprogramming.pocketcounter.data.remote.api.TransactionApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ReorderItemDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
@@ -11,14 +14,17 @@ import com.resolveprogramming.pocketcounter.domain.model.HistoryItem
 import com.resolveprogramming.pocketcounter.domain.model.PaymentStatus
 import com.resolveprogramming.pocketcounter.domain.model.TransactionType
 import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class RetrofitTransactionRepository @Inject constructor(
     private val api: TransactionApi,
+    private val json: Json,
 ) : TransactionRepository {
 
     override suspend fun getHistory(): Result<List<HistoryItem>> =
@@ -37,13 +43,29 @@ class RetrofitTransactionRepository @Inject constructor(
         }
     }
 
-    override suspend fun save(draft: WizardDraft, notificationId: String?): Result<String> = runCatching {
+    override suspend fun save(
+        draft: WizardDraft,
+        notificationId: String?,
+        allowDuplicate: Boolean,
+    ): Result<String> = try {
         val type = draft.type ?: error("Type is required")
-        val dto = draft.toDto(notificationId)
-        run {
-            if (type == TransactionType.INCOME) return@run api.addIncome(dto)
-            api.addExpense(dto)
-        }
+        val dto = draft.toDto(notificationId, allowDuplicate)
+        Result.success(
+            run {
+                if (type == TransactionType.INCOME) return@run api.addIncome(dto)
+                api.addExpense(dto)
+            },
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure(e.asSaveFailure())
+    }
+
+    /** By status only: the body's `code` is the generic "CONFLICT" for every conflict the API has. */
+    private fun Throwable.asSaveFailure(): Throwable {
+        if (isConflict()) return DuplicateTransactionException(errorDetails(json).firstOrNull())
+        return withoutHttpException()
     }
 
     override suspend fun update(transactionId: String, draft: WizardDraft): Result<String> = runCatching {
@@ -81,7 +103,10 @@ class RetrofitTransactionRepository @Inject constructor(
         api.delete(transactionId)
     }
 
-    private fun WizardDraft.toDto(notificationId: String? = null): TransactionDto {
+    private fun WizardDraft.toDto(
+        notificationId: String? = null,
+        allowDuplicate: Boolean = false,
+    ): TransactionDto {
         val type = type ?: error("Type is required")
         val amount = amount?.abs() ?: error("Amount is required")
         val date = date ?: error("Date is required")
@@ -108,6 +133,7 @@ class RetrofitTransactionRepository @Inject constructor(
             idSeries = seriesId,
             // The wizard holds "" with no notification behind it; the backend parses this as a UUID.
             idNotification = notificationId?.takeIf { it.isNotBlank() },
+            allowDuplicate = allowDuplicate,
         )
     }
 

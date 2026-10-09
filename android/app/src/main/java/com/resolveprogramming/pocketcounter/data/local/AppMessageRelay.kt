@@ -1,5 +1,7 @@
 package com.resolveprogramming.pocketcounter.data.local
 
+import com.resolveprogramming.pocketcounter.data.session.SessionScopedStore
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -13,7 +15,7 @@ import javax.inject.Singleton
  * message is sent here instead and the screen the user lands on shows it.
  */
 @Singleton
-class AppMessageRelay @Inject constructor() {
+class AppMessageRelay @Inject constructor() : SessionScopedStore {
 
     private val _messages = MutableSharedFlow<String>(
         extraBufferCapacity = 1,
@@ -24,4 +26,8 @@ class AppMessageRelay @Inject constructor() {
     fun send(message: String) {
         _messages.tryEmit(message)
     }
+
+    /** A message names what the previous user did, so nothing held may cross a session boundary. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun clearForSession() = _messages.resetReplayCache()
 }

@@ -30,6 +30,8 @@ local.properties
 # ---------- design handoff ----------
 # Copiado localmente, nunca versionado. Ausente num clone novo.
 /handoff
+# Bundles colados dentro do repo seguem a mesma regra: sao prototipo, nao fonte.
+/android/docs/design_handoff_*/
 
 # ---------- Claude ----------
 # Com barra no meio, o padrão ancora na raiz: sem o `**/`, não casa com ios/.claude/

@@ -69,6 +69,8 @@ fun TagPicker(
     onToggleTag: (String) -> Unit,
     modifier: Modifier = Modifier,
     onCreateTag: ((contextId: String?, name: String) -> Unit)? = null,
+    /** False when the caller already offers a create affordance beside the picker. */
+    showRootCreate: Boolean = true,
 ) {
     var query by remember { mutableStateOf("") }
     var openCtx by remember { mutableStateOf<String?>(null) }
@@ -133,6 +135,7 @@ fun TagPicker(
                 selectedSet = selectedSet,
                 onToggleTag = onToggleTag,
                 onCreateTag = onCreateTag,
+                showRootCreate = showRootCreate,
             )
         }
         if (!isSearching && type != TransactionType.INCOME) {
@@ -145,6 +148,7 @@ fun TagPicker(
                 onBack = { openCtx = null },
                 onToggleTag = onToggleTag,
                 onCreateTag = onCreateTag,
+                showRootCreate = showRootCreate,
             )
         }
     }
@@ -194,8 +198,9 @@ private fun IncomeTagFlow(
     selectedSet: Set<String>,
     onToggleTag: (String) -> Unit,
     onCreateTag: ((String?, String) -> Unit)?,
+    showRootCreate: Boolean,
 ) {
-    val createChip = onCreateTag?.let { create ->
+    val createChip = onCreateTag?.takeIf { showRootCreate }?.let { create ->
         @Composable {
             CreateChip(
                 label = "+ Nova categoria",
@@ -268,10 +273,11 @@ private fun ExpenseDrill(
     onBack: () -> Unit,
     onToggleTag: (String) -> Unit,
     onCreateTag: ((String?, String) -> Unit)?,
+    showRootCreate: Boolean,
 ) {
     if (openCtx == null) {
         val categories = categoriesFor(universe, contexts, selectedSet)
-        val rootCreateChip = onCreateTag?.let { create ->
+        val rootCreateChip = onCreateTag?.takeIf { showRootCreate }?.let { create ->
             @Composable {
                 CreateChip(
                     label = "+ Nova tag",

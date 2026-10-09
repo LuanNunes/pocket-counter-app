@@ -44,6 +44,16 @@ e sugerir o registro delas.
 - Não utilizamos SDKs de publicidade nem vendemos dados a terceiros.
 - `[CONFIRMAR: existe analytics/crash reporting no backend?]`
 
+### 2.5 Descrições em texto livre (lançamento rápido)
+Quando você descreve um lançamento em texto, a frase é enviada aos nossos servidores
+para ser interpretada e pré-preencher o formulário. **A frase não é armazenada** — ela
+é processada e descartada, e apenas a transação que você confirmar é salva.
+
+Se você escolher ensinar o padrão daquele lançamento (*Aprender este padrão*), o trecho
+que você confirmar é salvo como uma regra de classificação na sua conta, para classificar
+lançamentos futuros. Fora dos dados da própria transação que você confirmar, esse trecho é
+o único conteúdo derivado da frase que fica armazenado, e você pode apagá-lo em *Regras*.
+
 ## 3. Para que usamos os dados
 
 - Prestar o serviço: registrar, organizar e exibir suas finanças pessoais.

@@ -6,10 +6,16 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -59,4 +65,30 @@ fun Modifier.pressScale(
         label = "pressScale",
     )
     return this.scale(scale)
+}
+
+private val DashIntervals = floatArrayOf(6f, 4f)
+
+/** A dashed 1dp outline, for surfaces the handoff draws with `border-style: dashed`. */
+fun Modifier.dashedBorder(color: Color, cornerRadius: Dp): Modifier = drawBehind {
+    val radius = cornerRadius.toPx()
+    drawRoundRect(
+        color = color,
+        cornerRadius = CornerRadius(radius, radius),
+        style = Stroke(
+            width = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(DashIntervals, 0f),
+        ),
+    )
+}
+
+/** The same dash as [dashedBorder], as a rule along the top edge (`border-top: 1px dashed`). */
+fun Modifier.dashedTopRule(color: Color): Modifier = drawBehind {
+    drawLine(
+        color = color,
+        start = Offset.Zero,
+        end = Offset(size.width, 0f),
+        strokeWidth = 1.dp.toPx(),
+        pathEffect = PathEffect.dashPathEffect(DashIntervals, 0f),
+    )
 }

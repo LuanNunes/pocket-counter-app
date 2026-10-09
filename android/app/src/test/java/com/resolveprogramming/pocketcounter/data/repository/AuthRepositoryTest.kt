@@ -31,7 +31,7 @@ class AuthRepositoryTest {
     private val json = Json { ignoreUnknownKeys = true }
     private val appLockState = AppLockState()
 
-    private fun makeRepo() = AuthRepository(authApi, tokenStore, json, appLockState)
+    private fun makeRepo() = AuthRepository(authApi, tokenStore, json, appLockState, emptySet())
 
     private fun successResponse() = Response.success(
         TokenResponse(

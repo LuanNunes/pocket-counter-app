@@ -18,6 +18,8 @@ import com.resolveprogramming.pocketcounter.data.remote.dto.RenameRecurringSerie
 import com.resolveprogramming.pocketcounter.data.remote.dto.TagDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionItemDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionRawRequestDto
+import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionRawResponseDto
 import com.resolveprogramming.pocketcounter.data.remote.dto.TransactionReorderRequest
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -59,6 +61,10 @@ interface TransactionApi {
 
     @PUT("api/v1/transactions/reorder")
     suspend fun reorder(@Body body: TransactionReorderRequest)
+
+    /** Reads one typed sentence. The server answers what it understood; it never writes. */
+    @POST("api/v1/transactions/raw")
+    suspend fun readRaw(@Body body: TransactionRawRequestDto): TransactionRawResponseDto
 }
 
 interface CreditCardApi {

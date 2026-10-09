@@ -48,6 +48,7 @@ import com.resolveprogramming.pocketcounter.domain.model.WizardDraft
 import com.resolveprogramming.pocketcounter.ui.components.FormLabel
 import com.resolveprogramming.pocketcounter.ui.components.MoneyTextField
 import com.resolveprogramming.pocketcounter.ui.components.FormTextField
+import com.resolveprogramming.pocketcounter.ui.components.CardPicker
 import com.resolveprogramming.pocketcounter.ui.components.PocketBottomSheet
 import com.resolveprogramming.pocketcounter.ui.components.PocketButton
 import com.resolveprogramming.pocketcounter.ui.components.PocketDateField
@@ -80,8 +81,11 @@ fun TransacaoFormSheet(
     onSave: (WizardDraft) -> Unit,
     onDismiss: () -> Unit,
     defaultDate: LocalDate? = null,
+    defaultName: String? = null,
 ) {
-    var draft by remember { mutableStateOf(seedDraft(initialItem, initialType, defaultDate)) }
+    var draft by remember {
+        mutableStateOf(seedDraft(initialItem, initialType, defaultDate, defaultName))
+    }
 
     PocketBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxHeight(0.92f)) {
@@ -390,77 +394,22 @@ private fun PayChip(
     }
 }
 
-@Composable
-private fun CardPicker(
-    cards: List<CreditCard>,
-    selectedCardId: String?,
-    onSelect: (String) -> Unit,
-) {
-    if (cards.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, PocketTheme.colors.line, PocketTheme.shapes.card)
-                .padding(16.dp),
-        ) {
-            Text(
-                text = "Nenhum cartão ainda",
-                style = PocketTheme.typography.body,
-                color = PocketTheme.colors.text3,
-            )
-        }
-        return
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        cards.forEach { card ->
-            val isSelected = selectedCardId == card.id
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        color = PocketTheme.colors.accent.takeIf { isSelected } ?: PocketTheme.colors.line,
-                        shape = PocketTheme.shapes.card,
-                    )
-                    .background(
-                        PocketTheme.colors.accentBg.takeIf { isSelected } ?: PocketTheme.colors.surface,
-                        PocketTheme.shapes.card,
-                    )
-                    .clickable(role = Role.Button, onClick = { onSelect(card.id) })
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = card.name,
-                        style = PocketTheme.typography.body.copy(fontWeight = FontWeight.SemiBold),
-                        color = PocketTheme.colors.text,
-                    )
-                    Text(
-                        text = "fecha dia ${card.billDay}",
-                        style = PocketTheme.typography.bodyXs,
-                        color = PocketTheme.colors.text3,
-                    )
-                }
-                if (isSelected) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = PocketTheme.colors.accent,
-                    )
-                }
-            }
-        }
-    }
-}
+/** A sentence carried in from quick-add seeds Descrição; it is not a row title to save verbatim. */
+private const val DEFAULT_NAME_MAX_CHARS = 120
 
 private fun seedDraft(
     item: HistoryItem?,
     initialType: TransactionType?,
     defaultDate: LocalDate?,
+    defaultName: String? = null,
 ): WizardDraft {
-    if (item == null) return WizardDraft(type = initialType, date = defaultDate ?: LocalDate.now())
+    if (item == null) {
+        return WizardDraft(
+            type = initialType,
+            date = defaultDate ?: LocalDate.now(),
+            name = defaultName?.take(DEFAULT_NAME_MAX_CHARS),
+        )
+    }
     return WizardDraft(
         type = item.type,
         amount = item.amount.abs(),

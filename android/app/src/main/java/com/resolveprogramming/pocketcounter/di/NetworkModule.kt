@@ -1,7 +1,9 @@
 package com.resolveprogramming.pocketcounter.di
 
 import com.resolveprogramming.pocketcounter.BuildConfig
+import com.resolveprogramming.pocketcounter.data.remote.AcceptLanguageInterceptor
 import com.resolveprogramming.pocketcounter.data.remote.AuthInterceptor
+import com.resolveprogramming.pocketcounter.data.remote.BodyLoggingInterceptor
 import com.resolveprogramming.pocketcounter.data.remote.TokenAuthenticator
 import com.resolveprogramming.pocketcounter.data.remote.api.AuthApi
 import com.resolveprogramming.pocketcounter.data.remote.api.ClassificationRuleApi
@@ -20,7 +22,6 @@ import kotlinx.serialization.json.Json
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
@@ -41,15 +42,12 @@ object NetworkModule {
     @Singleton
     fun provideOkHttpClient(
         authInterceptor: AuthInterceptor,
+        acceptLanguageInterceptor: AcceptLanguageInterceptor,
         tokenAuthenticator: TokenAuthenticator,
     ): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
-        .addInterceptor(
-            HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY.takeIf { BuildConfig.DEBUG }
-                    ?: HttpLoggingInterceptor.Level.NONE
-            },
-        )
+        .addInterceptor(acceptLanguageInterceptor)
+        .addInterceptor(BodyLoggingInterceptor(BuildConfig.DEBUG))
         .authenticator(tokenAuthenticator)
         // TokenAuthenticator refreshes on THIS client. When a burst of requests all 401 at once
         // (expired token), each holds a per-host slot while blocking on /auth/refresh — which then
