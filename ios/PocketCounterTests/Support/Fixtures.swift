@@ -88,8 +88,34 @@ extension TagContext {
 
 extension LookupSet {
     static func fixture(
-        categories: [TagContext] = [], tags: [Tag] = [], failed: Set<LookupKind> = []
+        categories: [TagContext] = [], tags: [Tag] = [], cards: [CreditCard] = [],
+        failed: Set<LookupKind> = []
     ) -> LookupSet {
-        LookupSet(categories: categories, tags: tags, cards: [], failed: failed)
+        LookupSet(categories: categories, tags: tags, cards: cards, failed: failed)
+    }
+}
+
+extension CardCandidate {
+    static func fixture(_ id: String = "k1", _ name: String = "Nubank") -> CardCandidate {
+        CardCandidate(id: CardID(rawValue: id), name: name)
+    }
+}
+
+extension SentenceReading {
+    /// A complete expense that asks nothing; each test overrides what it is about.
+    static func fixture(
+        type: Sourced<TransactionType>? = Sourced(value: .expense, source: .written),
+        amount: Sourced<Money>? = Sourced(value: Money(250), source: .written),
+        date: Sourced<CalendarDay> = Sourced(value: .fixture, source: .inferred),
+        name: Sourced<String>? = Sourced(value: "Consulta do cachorro", source: .written),
+        paymentMethod: Sourced<PaymentMethod>? = nil,
+        card: CardReading = .notApplicable,
+        tag: TagID? = nil,
+        missing: [MissingField] = []
+    ) -> SentenceReading {
+        SentenceReading(
+            type: type, amount: amount, date: date, name: name, paymentMethod: paymentMethod,
+            card: card, tag: tag, missing: missing
+        )
     }
 }

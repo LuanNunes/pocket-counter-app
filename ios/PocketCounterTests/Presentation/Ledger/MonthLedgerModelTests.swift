@@ -5,7 +5,7 @@ import Testing
 /// Stands in for `LoadLedger.month`: records refs, answers as scripted, and can hold calls open.
 @MainActor
 private final class LoadMonthRecorder {
-    private(set) var calls: [RefYearMonth] = []
+    var calls: [RefYearMonth] = []
     var outcomes: [Result<MonthLedger, LoadFailure>] = []
     private var holding = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -93,6 +93,27 @@ struct MonthLedgerModelTests {
             return
         }
         #expect(ledger.items.isEmpty)
+    }
+
+    @Test("invalidating drops every other cached month and refetches the displayed one")
+    func invalidateAndRefresh() async throws {
+        let october = try ref(2026, 10)
+        let september = october.previous()
+        let model = try model()
+        await model.load()
+        model.select(september)
+        await model.load()
+        model.select(october)
+        recorder.calls.removeAll()
+
+        await model.invalidateAndRefresh()
+
+        #expect(recorder.calls == [october])
+        #expect(model.state.ledger(for: october) != nil)
+        #expect(model.state.ledger(for: september) == nil)
+        model.select(september)
+        await model.load()
+        #expect(recorder.calls == [october, september])
     }
 
     @Test("a failed first load carries no ledger")

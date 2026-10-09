@@ -15,4 +15,8 @@ protocol TransactionRepository: Sendable {
     /// `ids` is the complete order of one kind within a month; each id's index becomes its display order.
     /// Not atomic: a failure can leave the ids before the failing one already committed.
     func reorder(_ ids: [TransactionID]) async throws(WriteFailure)
+
+    /// Answers nothing: a credit-card charge is stored as an invoice line item, so the POST
+    /// answers the invoice's id and not the row's. Nothing here needs an id.
+    func create(_ entry: TransactionEntry) async throws(WriteFailure)
 }

@@ -24,6 +24,8 @@ struct WriteFailureMessageTests {
         (.vanished, PocketNotice(
             kind: .error, title: "Este lançamento não existe mais", detail: "Pode ter sido excluído em outro aparelho.")),
         (.rejected("Sem permissão"), PocketNotice(kind: .error, title: title, detail: "Sem permissão")),
+        (.duplicate("Já existe Consulta do cachorro"), PocketNotice(
+            kind: .error, title: title, detail: "Já existe Consulta do cachorro")),
     ])
     func shown(failure: WriteFailure, expected: PocketNotice) {
         #expect(WriteFailureMessage.message(for: failure, subject: .saving) == expected)

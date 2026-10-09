@@ -67,3 +67,28 @@ struct RefYearMonthTests {
         #expect(RefYearMonth.current == RefYearMonth.containing(.now))
     }
 }
+
+struct RefYearMonthCurrentTests {
+    // 2026-10-09 15:00 UTC
+    private let now = Date(timeIntervalSince1970: 1_791_558_000)
+
+    @Test func answersTheGregorianMonth() throws {
+        #expect(RefYearMonth.current(in: .gmt, now: now) == (try RefYearMonth(year: 2026, month: 10)))
+    }
+
+    // Unit-level pin only: a regression putting `Calendar.current` back inside `current` fails nothing
+    // here (the host calendar is Gregorian). The structural guard is the non-optional factory.
+    @Test(arguments: [Calendar.Identifier.buddhist, .hebrew, .islamic, .persian, .japanese, .coptic])
+    func nonGregorianCalendarReadsADifferentMonthThanCurrent(_ id: Calendar.Identifier) {
+        var other = Calendar(identifier: id)
+        other.timeZone = .gmt
+        #expect(RefYearMonth.containing(now, calendar: other) != RefYearMonth.current(in: .gmt, now: now))
+    }
+
+    @Test func followsTheTimeZone() throws {
+        let auckland = try #require(TimeZone(identifier: "Pacific/Auckland"))
+        let lateOnTheThirtyFirst = Date(timeIntervalSince1970: 1_793_486_400) // 2026-10-31 22:40 UTC
+        #expect(RefYearMonth.current(in: .gmt, now: lateOnTheThirtyFirst) == (try RefYearMonth(year: 2026, month: 10)))
+        #expect(RefYearMonth.current(in: auckland, now: lateOnTheThirtyFirst) == (try RefYearMonth(year: 2026, month: 11)))
+    }
+}

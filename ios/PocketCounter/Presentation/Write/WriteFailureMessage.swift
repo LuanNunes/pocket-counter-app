@@ -22,6 +22,10 @@ enum WriteFailureMessage {
         case .rejected(let text):
             return PocketNotice(
                 kind: .error, title: title, detail: ServerText.presentable(text) ?? "O servidor recusou a alteração.")
+        case .duplicate(let text):
+            return PocketNotice(
+                kind: .error, title: title,
+                detail: ServerText.presentable(text) ?? "Já existe um lançamento igual neste mês")
         case .vanished where subject == .reordering:
             return PocketNotice(
                 kind: .error, title: "A lista mudou",

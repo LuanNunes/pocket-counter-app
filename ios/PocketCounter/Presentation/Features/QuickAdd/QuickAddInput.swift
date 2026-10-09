@@ -1,0 +1,72 @@
+import SwiftUI
+
+/// The text surface: the sentence, and the description when the server asks for one.
+struct QuickAddField: View {
+    let placeholder: String
+    let accessibilityLabel: String
+    @Binding var text: String
+    var lines: ClosedRange<Int> = 3...8
+    var submitLabel = SubmitLabel.send
+    var onSubmit: () -> Void = {}
+
+    @Environment(\.isEnabled) private var isEnabled
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField(
+            "", text: $text,
+            prompt: Text(verbatim: placeholder).foregroundStyle(PocketColor.labelTertiary),
+            axis: .vertical
+        )
+        .pocketFont(PocketFont.entry)
+        .foregroundStyle(PocketColor.label)
+        .lineLimit(lines)
+        .submitLabel(submitLabel)
+        .onSubmit(onSubmit)
+        .focused($isFocused)
+        .accessibilityLabel(accessibilityLabel)
+        .padding(PocketMetrics.entryPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PocketColor.cell, in: .rect(cornerRadius: PocketMetrics.entryRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PocketMetrics.entryRadius, style: .continuous)
+                .strokeBorder(PocketColor.tint.opacity(0.35), lineWidth: PocketMetrics.entryRing)
+        }
+        .focusedAfterSettling($isFocused, when: isEnabled)
+    }
+}
+
+/// The `writing` and `reading` stages.
+struct QuickAddWriting: View {
+    let text: String
+    let notice: PocketNotice?
+    let isReading: Bool
+    let onAction: (QuickAddAction) -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if let notice {
+                PocketNoticeCard(notice: notice)
+            }
+            QuickAddField(
+                placeholder: QuickAddCopy.placeholder,
+                accessibilityLabel: QuickAddCopy.sentenceField,
+                text: Binding(get: { text }, set: edit),
+                onSubmit: submit
+            )
+            .disabled(isReading)
+            .padding(.horizontal, PocketMetrics.screenMargin)
+        }
+    }
+
+    /// A refocus writes the same text back; that is not typing and must not clear the notice.
+    private func edit(_ typed: String) {
+        guard typed != text else { return }
+        onAction(.type(typed))
+    }
+
+    private func submit() {
+        guard QuickAddAnswer.isSendable(text) else { return }
+        onAction(.send)
+    }
+}

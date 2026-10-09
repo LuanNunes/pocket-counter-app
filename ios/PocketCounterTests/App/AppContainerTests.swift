@@ -36,6 +36,18 @@ struct AppContainerTests {
         #expect(keychain.readCount == 0)
     }
 
+    @Test("the sentence repository reads through the container's authenticated client")
+    func sentenceReading() async throws {
+        let http = FakeHTTP(routes: ["/api/v1/transactions/raw": FakeHTTP.json(WireFixtures.Captured.supermarket)])
+        let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
+        let container = try container("dev", keychain: keychain, send: http)
+
+        _ = try await container.sentenceReadingRepository.reading(of: try SentenceText("gastei 150"), on: .fixture)
+
+        #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
+        #expect(http.count(path: "/api/v1/transactions/raw") == 1)
+    }
+
     @Test("two reads of a lookup repository share one cache")
     func sharedCache() async throws {
         let http = FakeHTTP(routes: ["/api/v1/tags": FakeHTTP.json("[]")])

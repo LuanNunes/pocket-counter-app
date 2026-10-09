@@ -257,4 +257,79 @@ struct APITransactionRepositoryTests {
             try await repository(FakeHTTP(FakeHTTP.empty(404))).reorder([TransactionID(rawValue: "t1")])
         }
     }
+
+    @Test("the create route is the type's own path, bearer-authenticated, as a POST", arguments: [
+        (TransactionType.expense, "api/v1/transactions/expenses"),
+        (TransactionType.income, "api/v1/transactions/incomes"),
+    ])
+    func createRoute(type: TransactionType, path: String) throws {
+        let entry = try #require(
+            TransactionEntry(type: type, amount: Money(250), date: .of(2026, 10, 7), name: "Consulta")
+        )
+
+        let route = APITransactionRepository.Route.create(entry)
+
+        #expect(route.path == path)
+        #expect(route.method == .post)
+        #expect(route.authentication == .bearer)
+    }
+
+    @Test("the body carries a positive amount, the ISO date, the derived month and one tag")
+    func createBody() async throws {
+        let http = FakeHTTP(FakeHTTP.json(#""7f3a1c2e-0000-4000-8000-000000000001""#))
+        let entry = try #require(
+            TransactionEntry(
+                type: .expense, amount: Money(250), date: .of(2026, 10, 7), name: "Consulta do cachorro",
+                paymentMethod: .credit, card: CardID(rawValue: "k1"), tag: .of("g1")
+            )
+        )
+
+        try await repository(http).create(entry)
+
+        let request = try #require(http.requests.first)
+        let sent = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: Any]
+        #expect(request.url?.path == "/api/v1/transactions/expenses")
+        #expect(sent?["name"] as? String == "Consulta do cachorro")
+        #expect(sent?["dateDue"] as? String == "2026-10-07")
+        #expect(sent?["datePurchase"] as? String == "2026-10-07")
+        #expect(sent?["refYearMonth"] as? Int == 202610)
+        #expect(sent?["paymentMethod"] as? String == "CREDIT")
+        #expect(sent?["cardId"] as? String == "k1")
+        #expect(sent?["allowDuplicate"] as? Bool == false)
+        #expect((sent?["amount"] as? NSNumber)?.decimalValue == 250)
+        #expect(sent?["transactionType"] == nil)
+        // The server requires `name` on a tag; without the key the whole create is a 400.
+        #expect(sent?["tags"] as? [[String: String]] == [["id": "g1", "name": ""]])
+    }
+
+    @Test("a row with no tag sends no tags at all")
+    func createWithoutTag() async throws {
+        let http = FakeHTTP(FakeHTTP.json(#""7f3a1c2e-0000-4000-8000-000000000001""#))
+        let entry = try #require(
+            TransactionEntry(type: .income, amount: Money(125), date: .of(2026, 10, 7), name: "Dividendos")
+        )
+
+        try await repository(http).create(entry)
+
+        let request = try #require(http.requests.first)
+        let body = try #require(request.httpBody)
+        let sent = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(sent["tags"] == nil)
+        #expect(sent["paymentMethod"] == nil)
+        #expect(sent["cardId"] == nil)
+        #expect(sent["transactionType"] == nil)
+    }
+
+    @Test("a 409 on create is a duplicate the user can resolve")
+    func createDuplicate() async throws {
+        let body = #"{"code":"CONFLICT","message":"Já existe Consulta do cachorro","details":["7f3a1c2e"]}"#
+        let http = FakeHTTP(FakeHTTP.json(body, status: 409))
+        let entry = try #require(
+            TransactionEntry(type: .expense, amount: Money(250), date: .fixture, name: "Consulta do cachorro")
+        )
+
+        await #expect(throws: WriteFailure.duplicate("Já existe Consulta do cachorro")) {
+            try await repository(http).create(entry)
+        }
+    }
 }

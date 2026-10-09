@@ -20,6 +20,8 @@ extension WriteFailure {
             self = .rejected(RejectionText.forbidden(server))
         case .status(400, let server), .status(422, let server):
             self = .rejected(RejectionText.unprocessable(server))
+        case .status(409, let server):
+            self = .duplicate(RejectionText.conflict(server))
         case .decoding(let endpoint, _):
             Self.logger.error("Decoding failed for \(endpoint, privacy: .public)")
             self = .server

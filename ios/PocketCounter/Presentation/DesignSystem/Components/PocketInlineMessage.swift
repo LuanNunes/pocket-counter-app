@@ -48,11 +48,11 @@ struct PocketInlineMessage: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(text)
+                    Text(verbatim: text)
                         .pocketFont(PocketFont.subtitle)
 
                     if let secondary {
-                        Text(secondary)
+                        Text(verbatim: secondary)
                             .pocketFont(PocketFont.caption)
                             .foregroundStyle(secondaryInk)
                     }
@@ -68,7 +68,7 @@ struct PocketInlineMessage: View {
                 ProgressView()
                     .padding(.vertical, 12)
             } else if let action {
-                Button(action.title, action: action.perform)
+                Button(action: action.perform) { Text(verbatim: action.title) }
                     .buttonStyle(.plain)
                     .pocketFont(PocketFont.link)
                     .foregroundStyle(primaryInk)

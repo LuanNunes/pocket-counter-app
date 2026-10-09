@@ -147,6 +147,22 @@ struct CalendarDayTests {
         #expect(calendar.component(.hour, from: date) == 12)
         #expect(calendar.component(.minute, from: date) == 0)
     }
+
+    @Test(
+        "shifting by whole days crosses month, year and leap-year edges",
+        arguments: [
+            (CalendarDay.of(2026, 10, 7), -1, CalendarDay.of(2026, 10, 6)),
+            (CalendarDay.of(2026, 10, 1), -1, CalendarDay.of(2026, 9, 30)),
+            (CalendarDay.of(2026, 1, 1), -1, CalendarDay.of(2025, 12, 31)),
+            (CalendarDay.of(2024, 3, 1), -1, CalendarDay.of(2024, 2, 29)),
+            (CalendarDay.of(2025, 3, 1), -1, CalendarDay.of(2025, 2, 28)),
+            (CalendarDay.of(2025, 12, 31), 1, CalendarDay.of(2026, 1, 1)),
+            (CalendarDay.of(2026, 10, 7), 0, CalendarDay.of(2026, 10, 7)),
+        ]
+    )
+    func addingDays(start: CalendarDay, days: Int, expected: CalendarDay) {
+        #expect(start.adding(days: days) == expected)
+    }
 }
 
 extension Calendar {

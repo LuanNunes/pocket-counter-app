@@ -8,6 +8,7 @@ struct AppShell: View {
     let onSignOut: () -> Void
 
     @State private var ledger: MonthLedgerModel
+    private let quickAdd: @MainActor () -> QuickAddModel
     @State private var tab: TabRoute = .inicio
 
     init(
@@ -20,6 +21,11 @@ struct AppShell: View {
         self.user = user
         self.signOutFailed = signOutFailed
         self.onSignOut = onSignOut
+        let read = container.readSentence
+        let create = container.createTransaction
+        quickAdd = {
+            QuickAddModel(read: read, create: create, today: .today())
+        }
         _ledger = State(wrappedValue: MonthLedgerModel(
             loadMonth: container.loadMonth, setPaymentStatus: container.setPaymentStatus,
             toggleFixo: container.toggleFixo, deleteTransaction: container.deleteTransaction,
@@ -31,7 +37,7 @@ struct AppShell: View {
         TabView(selection: $tab) {
             Tab("Início", systemImage: "house.fill", value: TabRoute.inicio) {
                 NavigationStack {
-                    HomeScreen(ledger: ledger, onSelectTab: { tab = $0 })
+                    HomeScreen(ledger: ledger, onSelectTab: { tab = $0 }, quickAdd: quickAdd)
                         .navigationDestination(for: HomeRoute.self) { homeDestination($0) }
                 }
             }

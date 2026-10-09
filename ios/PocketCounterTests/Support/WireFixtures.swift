@@ -79,6 +79,38 @@ enum WireFixtures {
         """
     }
 
+    /// Live `POST /transactions/raw` answers from api-dev, `referenceDate` 2026-10-07.
+    enum Captured {
+        /// `missing: []`; no `source.paymentMethod` key; `NOT_APPLICABLE`.
+        static let supermarket = #"{"reading":{"type":"EXPENSE","amount":150.00,"date":"2026-10-07","name":"Supermercado","paymentMethod":null},"source":{"type":"WRITTEN","amount":"WRITTEN","date":"INFERRED","name":"WRITTEN"},"card":{"status":"NOT_APPLICABLE","resolved":null,"candidates":[]},"tag":{"idTag":null,"idCategory":null},"missing":[]}"#
+
+        /// `source.card` WRITTEN with `source.paymentMethod` INFERRED.
+        static let gasolineOnNubank = #"{"reading":{"type":"EXPENSE","amount":320.00,"date":"2026-10-07","name":"Gasolina","paymentMethod":"CREDIT"},"source":{"type":"WRITTEN","amount":"WRITTEN","date":"INFERRED","name":"WRITTEN","paymentMethod":"INFERRED","card":"WRITTEN"},"card":{"status":"RESOLVED","resolved":{"id":"d0000000-0000-0000-0000-000000000001","name":"NuBank"},"candidates":[]},"tag":{"idTag":null,"idCategory":null},"missing":[]}"#
+
+        /// Two candidates; `name` null and `source.name` absent.
+        static let ambiguousCredit = #"{"reading":{"type":"EXPENSE","amount":50.00,"date":"2026-10-07","name":null,"paymentMethod":"CREDIT"},"source":{"type":"WRITTEN","amount":"WRITTEN","date":"INFERRED","paymentMethod":"WRITTEN"},"card":{"status":"AMBIGUOUS","resolved":null,"candidates":[{"id":"d0000000-0000-0000-0000-000000000001","name":"NuBank"},{"id":"d0000000-0000-0000-0000-000000000002","name":"Itaú"}]},"tag":{"idTag":null,"idCategory":null},"missing":["DESCRIPTION","CARD"]}"#
+
+        /// `type` null; the date is resolved to yesterday and WRITTEN.
+        static let yesterday = #"{"reading":{"type":null,"amount":68.00,"date":"2026-10-06","name":null,"paymentMethod":null},"source":{"amount":"WRITTEN","date":"WRITTEN"},"card":{"status":"NOT_APPLICABLE","resolved":null,"candidates":[]},"tag":{"idTag":null,"idCategory":null},"missing":["DESCRIPTION","TYPE"]}"#
+
+        /// `amount` null and `source.amount` absent.
+        static let noAmount = #"{"reading":{"type":"EXPENSE","amount":null,"date":"2026-10-07","name":"Mercado","paymentMethod":null},"source":{"type":"WRITTEN","date":"INFERRED","name":"WRITTEN"},"card":{"status":"NOT_APPLICABLE","resolved":null,"candidates":[]},"tag":{"idTag":null,"idCategory":null},"missing":["AMOUNT"]}"#
+
+        static let blankText = #"{"code":"BAD_REQUEST","message":"Domain exception occurred","details":["The text is required"],"correlationId":"…","timestamp":"…"}"#
+
+        static let missingReferenceDate = #"{"code":"BAD_REQUEST","message":"Domain exception occurred","details":["The reference date is required"],"correlationId":"…","timestamp":"…"}"#
+    }
+
+    static func rawResponse(
+        reading: String = #"{"type":"EXPENSE","amount":150.00,"date":"2026-10-07","name":"Supermercado","paymentMethod":null}"#,
+        source: String = #"{"type":"WRITTEN","amount":"WRITTEN","date":"INFERRED","name":"WRITTEN"}"#,
+        card: String = #"{"status":"NOT_APPLICABLE","resolved":null,"candidates":[]}"#,
+        tag: String = #"{"idTag":null,"idCategory":null}"#,
+        missing: String = "[]"
+    ) -> String {
+        #"{"reading":\#(reading),"source":\#(source),"card":\#(card),"tag":\#(tag),"missing":\#(missing)}"#
+    }
+
     static func decode<T: Decodable>(_ type: T.Type = T.self, _ json: String) throws -> T {
         try JSONDecoder().decode(type, from: Data(json.utf8))
     }
