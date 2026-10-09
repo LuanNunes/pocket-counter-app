@@ -6,7 +6,7 @@ import Testing
 @Suite("APIRecurringTransactionRepository routes")
 struct APIRecurringTransactionRepositoryRouteTests {
     private typealias Route = APIRecurringTransactionRepository.Route
-    private let recurring = RecurringTransactionID(rawValue: "s1")
+    private let recurring = RecurringTransactionID(rawValue: "r1")
     private let transaction = TransactionID(rawValue: "t1")
 
     @Test("each route names the backend path with no leading or trailing slash, bearer-authenticated")
@@ -18,8 +18,8 @@ struct APIRecurringTransactionRepositoryRouteTests {
 
         #expect([create.path, link.path, unlink.path] == [
             "api/v1/recurring-transactions",
-            "api/v1/recurring-transactions/s1/transactions/t1",
-            "api/v1/recurring-transactions/s1/transactions/t1",
+            "api/v1/recurring-transactions/r1/transactions/t1",
+            "api/v1/recurring-transactions/r1/transactions/t1",
         ])
         #expect([create.method.rawValue, link.method.rawValue, unlink.method.rawValue] == ["POST", "POST", "DELETE"])
         #expect(create.authentication == .bearer)
@@ -32,7 +32,7 @@ struct APIRecurringTransactionRepositoryRouteTests {
 
 @Suite("APIRecurringTransactionRepository")
 struct APIRecurringTransactionRepositoryTests {
-    private let recurring = RecurringTransactionID(rawValue: "s1")
+    private let recurring = RecurringTransactionID(rawValue: "r1")
     private let transaction = TransactionID(rawValue: "t1")
     private let draft = RecurringTransactionDraft(name: "Aluguel", type: .expense)
 
@@ -42,11 +42,11 @@ struct APIRecurringTransactionRepositoryTests {
 
     @Test("creating posts the draft and maps the recurring transaction the server answers with")
     func create() async throws {
-        let http = FakeHTTP(FakeHTTP.json(WireFixtures.recurringTransaction(id: "s9")))
+        let http = FakeHTTP(FakeHTTP.json(WireFixtures.recurringTransaction(id: "r9")))
 
         let created = try await repository(http).create(draft)
 
-        #expect(created == RecurringTransaction(id: RecurringTransactionID(rawValue: "s9"), name: "Aluguel", type: .expense))
+        #expect(created == RecurringTransaction(id: RecurringTransactionID(rawValue: "r9"), name: "Aluguel", type: .expense))
         let request = try #require(http.requests.first)
         #expect(request.httpMethod == "POST")
         let body = try #require(request.httpBody)
@@ -69,7 +69,7 @@ struct APIRecurringTransactionRepositoryTests {
 
         #expect(http.requests.map(\.httpMethod) == ["POST"])
         #expect(http.requests.compactMap { $0.url?.absoluteString } == [
-            "https://api.test/api/v1/recurring-transactions/s1/transactions/t1",
+            "https://api.test/api/v1/recurring-transactions/r1/transactions/t1",
         ])
         #expect(http.requests.first?.httpBody == nil)
     }
@@ -81,7 +81,7 @@ struct APIRecurringTransactionRepositoryTests {
         try await repository(http).unlink(transaction, from: recurring)
 
         #expect(http.requests.map(\.httpMethod) == ["DELETE"])
-        #expect(http.requests.compactMap { $0.url?.path } == ["/api/v1/recurring-transactions/s1/transactions/t1"])
+        #expect(http.requests.compactMap { $0.url?.path } == ["/api/v1/recurring-transactions/r1/transactions/t1"])
     }
 
     @Test("a 404 is vanished on every verb")

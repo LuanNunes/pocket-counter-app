@@ -39,7 +39,7 @@ enum WireFixtures {
     }
 
     static func recurringTransaction(
-        id: String? = "s1", name: String? = "Aluguel", type: String? = "EXPENSE"
+        id: String? = "r1", name: String? = "Aluguel", type: String? = "EXPENSE"
     ) -> String {
         """
         {"id":\(quoted(id)),"idUser":"u1","name":\(quoted(name)),"transactionType":\(quoted(type))}

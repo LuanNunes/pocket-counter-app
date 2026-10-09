@@ -12,7 +12,7 @@ struct RecurringTransactionMapperTests {
     @Test("a recurring transaction maps its id, name and type")
     func recurringTransaction() throws {
         #expect(try map(WireFixtures.recurringTransaction()) == RecurringTransaction(
-            id: RecurringTransactionID(rawValue: "s1"), name: "Aluguel", type: .expense))
+            id: RecurringTransactionID(rawValue: "r1"), name: "Aluguel", type: .expense))
     }
 
     @Test("an unknown type throws: it decides which recurring transaction a row joins")

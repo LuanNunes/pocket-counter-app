@@ -11,7 +11,9 @@ enum TransactionMapper {
         }
         guard let ref = RefYearMonth(raw: dto.refYearMonth) else { throw .invalidRef(dto.refYearMonth) }
         if let cardId = dto.cardId, cardId.isEmpty { throw .missingField(entity: "Transaction", field: "cardId") }
-        if let recurringTransactionId = dto.idRecurringTransaction, recurringTransactionId.isEmpty { throw .missingField(entity: "Transaction", field: "idRecurringTransaction") }
+        if let recurringTransactionId = dto.idRecurringTransaction, recurringTransactionId.isEmpty {
+            throw .missingField(entity: "Transaction", field: "idRecurringTransaction")
+        }
         // The sign comes from the type alone, never from the wire amount.
         let magnitude = Swift.abs(dto.amount)
         return HistoryItem(

@@ -5,7 +5,7 @@ import Testing
 @Suite("ToggleFixo")
 struct ToggleFixoTests {
     private let plain = HistoryItem.fixture(id: "t1", date: .of(2026, 10, 5), name: "Aluguel")
-    private let fixo = HistoryItem.fixture(id: "t2", recurringTransactionId: "s7", name: "Luz")
+    private let fixo = HistoryItem.fixture(id: "t2", recurringTransactionId: "r7", name: "Luz")
 
     private func toggle(_ item: HistoryItem, _ fake: FakeRecurringTransactionRepository) async throws(WriteFailure) {
         try await ToggleFixo(recurring: fake).toggle(item)
@@ -29,7 +29,7 @@ struct ToggleFixoTests {
 
         try await toggle(fixo, fake)
 
-        #expect(fake.log.calls == [.unlink(fixo.id, RecurringTransactionID(rawValue: "s7"))])
+        #expect(fake.log.calls == [.unlink(fixo.id, RecurringTransactionID(rawValue: "r7"))])
     }
 
     @Test("a failed create stops before linking")

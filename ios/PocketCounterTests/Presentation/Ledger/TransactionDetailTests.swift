@@ -64,7 +64,7 @@ struct TransactionDetailTests {
     @Test("a fresh answer with other tags is what the detail shows next")
     func rederives() async throws {
         var state = await loadedState()
-        let retagged = HistoryItem.fixture(id: "rent", tagIds: [.of("b")], recurringTransactionId: "s1", name: "Aluguel")
+        let retagged = HistoryItem.fixture(id: "rent", tagIds: [.of("b")], recurringTransactionId: "r1", name: "Aluguel")
 
         state.commit(MonthLedger(ref: october, items: [retagged], lookups: lookups), for: october, at: state.writes.revision)
 
@@ -131,7 +131,7 @@ struct TransactionDetailTests {
 
     @Test("a deletion in flight is busy and leaves the fixo switch on the committed value")
     func deleting() async throws {
-        var state = await loadedState([HistoryItem.fixture(id: "rent", recurringTransactionId: "s1")])
+        var state = await loadedState([HistoryItem.fixture(id: "rent", recurringTransactionId: "r1")])
         state.beginIntent(rent.id, ref: october, target: .deletion)
 
         let detail = try #require(detail(.of(target, in: state)))

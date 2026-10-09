@@ -11,12 +11,12 @@ struct CatalogDTOTests {
 
     @Test("a full tag decodes")
     func fullTag() throws {
-        let tag = try decode(TagDTO.self, ##"{"id":"g1","idUser":"u","name":"Mercado","kind":"INCOME","idCategory":"c1","color":"#112233","idRecurringTransaction":"s1"}"##)
+        let tag = try decode(TagDTO.self, ##"{"id":"g1","idUser":"u","name":"Mercado","kind":"INCOME","idCategory":"c1","color":"#112233","idRecurringTransaction":"r1"}"##)
 
         #expect(tag.kind == "INCOME")
         #expect(tag.idCategory == "c1")
         #expect(tag.color == "#112233")
-        #expect(tag.idRecurringTransaction == "s1")
+        #expect(tag.idRecurringTransaction == "r1")
     }
 
     @Test("the five-argument embedded tag has no colour and decodes without error")

@@ -5,7 +5,7 @@ protocol RecurringTransactionRepository: Sendable {
     /// Resolve-or-create: a name already in use answers with the existing recurring transaction.
     func create(_ draft: RecurringTransactionDraft) async throws(WriteFailure) -> RecurringTransaction
 
-    /// Rewrites the row's tags on the server.
+    /// A tag the recurring transaction already has wins and the row's own is dropped; with none, it adopts the row's.
     func link(_ id: TransactionID, to recurring: RecurringTransactionID) async throws(WriteFailure)
 
     /// `.vanished` means the recurring transaction or the row is not there, or the row was not in it.

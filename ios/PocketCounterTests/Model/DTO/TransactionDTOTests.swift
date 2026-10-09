@@ -50,6 +50,7 @@ struct TransactionDTOTests {
         #expect(try decode(body(tags: populated)).tags?.map(\.id) == ["g1"])
     }
 
+    // The only independent guard on this key: the other fixtures send null, which cannot tell a wrong key from a right one.
     @Test("a recurring link arrives under the backend's key: absence would silently un-fixo the row")
     func recurringLink() throws {
         let json = """
@@ -62,6 +63,26 @@ struct TransactionDTOTests {
         #expect(dto.idRecurringTransaction == "r1")
         #expect(dto.tags?.first?.idRecurringTransaction == "r1")
         #expect(try TransactionMapper.map(dto).isFixo)
+    }
+
+    @Test("every optional field arrives under the backend's key: a stale key would decode to nil without an error")
+    func optionalKeys() throws {
+        let json = """
+        {"id":"t1","transactionType":"EXPENSE","name":"Mercado","description":"Compra do mes","amount":10,
+        "statusPayment":"PAID","refYearMonth":202610,"displayOrder":2,"paymentMethod":"PIX","cardId":"k1",
+        "isInvoice":false,"idRecurringTransaction":"r1","dateDue":"2026-10-05","datePaid":"2026-10-07",
+        "tags":[{"id":"g1","name":"Casa","kind":"EXPENSE"}]}
+        """
+        let dto = try decode(json)
+
+        #expect(dto.name == "Mercado")
+        #expect(dto.description == "Compra do mes")
+        #expect(dto.paymentMethod == "PIX")
+        #expect(dto.cardId == "k1")
+        #expect(dto.idRecurringTransaction == "r1")
+        #expect(dto.dateDue == "2026-10-05")
+        #expect(dto.datePaid == "2026-10-07")
+        #expect(dto.tags?.map(\.id) == ["g1"])
     }
 
     @Test("an unknown extra field is ignored")

@@ -37,7 +37,7 @@ struct TransactionMapperTests {
     func scalars() throws {
         let item = try map(WireFixtures.transaction(
             id: "t9", name: "Aluguel", status: "PENDING", displayOrder: 4, method: "PIX",
-            cardId: "k1", isInvoice: true, idRecurringTransaction: "s1", dateDue: "2026-10-05"
+            cardId: "k1", isInvoice: true, idRecurringTransaction: "r1", dateDue: "2026-10-05"
         ))
 
         #expect(item.id == TransactionID(rawValue: "t9"))
@@ -47,7 +47,7 @@ struct TransactionMapperTests {
         #expect(item.paymentMethod == .pix)
         #expect(item.cardId == CardID(rawValue: "k1"))
         #expect(item.isInvoice)
-        #expect(item.recurringTransactionId == RecurringTransactionID(rawValue: "s1"))
+        #expect(item.recurringTransactionId == RecurringTransactionID(rawValue: "r1"))
         #expect(item.isFixo)
     }
 
