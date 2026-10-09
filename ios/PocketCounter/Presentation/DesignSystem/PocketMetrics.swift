@@ -121,7 +121,6 @@ enum PocketMetrics {
     static let quickAddRadius: CGFloat = 26
     static let quickAddIconSize: CGFloat = 36
     static let quickAddRing: CGFloat = 1.5
-    static let quickAddSpacing: CGFloat = 8
     static let quickAddInnerPadding: CGFloat = 8
     static let quickAddIconSpacing: CGFloat = 10
     static let quickAddBottomPadding: CGFloat = 14

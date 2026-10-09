@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 
 typealias ReadSentenceAction = @Sendable (SentenceText, CalendarDay) async throws(ReadingFailure) -> SentenceOpening
@@ -30,7 +31,8 @@ enum QuickAddQuestionKind: Equatable {
 
 @MainActor
 @Observable
-final class QuickAddModel {
+final class QuickAddModel: Identifiable {
+    let id = UUID()
     struct State: Equatable {
         var stage: QuickAddStage = .writing("")
         var lookups = LookupSet(categories: [], tags: [], cards: [])

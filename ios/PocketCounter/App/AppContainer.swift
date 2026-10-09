@@ -61,6 +61,16 @@ struct AppContainer {
         return { id, status throws(WriteFailure) in try await transactions.setPaymentStatus(status, on: id) }
     }
 
+    var readSentence: ReadSentenceAction {
+        let read = ReadSentence(sentences: sentenceReadingRepository, tags: tagRepository, cards: creditCardRepository)
+        return { text, day throws(ReadingFailure) in try await read.reading(of: text, on: day) }
+    }
+
+    var createTransaction: CreateTransactionAction {
+        let transactions = transactionRepository
+        return { entry throws(WriteFailure) in try await transactions.create(entry) }
+    }
+
     var toggleFixo: ToggleFixoAction {
         let toggle = ToggleFixo(series: recurringSeriesRepository)
         return { item throws(WriteFailure) in try await toggle.toggle(item) }

@@ -1,28 +1,16 @@
 import SwiftUI
 
-/// Stub: both controls open a placeholder sheet until quick-add exists.
 struct QuickAddHomeField: View {
-    @State private var isPresenting = false
-    @Environment(\.dynamicTypeSize) private var typeSize
+    let onOpen: () -> Void
 
     var body: some View {
-        Group {
-            if typeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: PocketMetrics.quickAddSpacing) { field; dictation }
-            } else {
-                HStack(spacing: PocketMetrics.quickAddSpacing) { field; dictation }
-            }
-        }
-        .padding(.horizontal, PocketMetrics.screenMargin)
-        .padding(.bottom, PocketMetrics.quickAddBottomPadding)
-        .sheet(isPresented: $isPresenting) {
-            ContentUnavailableView("Em construção", systemImage: "hammer")
-                .presentationDetents([.medium])
-        }
+        field
+            .padding(.horizontal, PocketMetrics.screenMargin)
+            .padding(.bottom, PocketMetrics.quickAddBottomPadding)
     }
 
     private var field: some View {
-        Button { isPresenting = true } label: {
+        Button(action: onOpen) {
             HStack(spacing: PocketMetrics.quickAddIconSpacing) {
                 Image(systemName: "sparkles")
                     .pocketFont(PocketFont.controlLabel)
@@ -48,18 +36,5 @@ struct QuickAddHomeField: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-    }
-
-    private var dictation: some View {
-        Button { isPresenting = true } label: {
-            Image(systemName: "mic.fill")
-                .pocketFont(PocketFont.body)
-                .foregroundStyle(PocketColor.onTint)
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                .frame(width: PocketMetrics.quickAddHeight, height: PocketMetrics.quickAddHeight)
-                .background(PocketColor.tint, in: .circle)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Ditar")
     }
 }
