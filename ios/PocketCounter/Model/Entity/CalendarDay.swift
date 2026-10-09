@@ -54,6 +54,17 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
         return date
     }
 
+    /// Shifts by whole days. Goes through `date(in:)`, which lands on noon precisely so a
+    /// daylight-saving day cannot move the result.
+    func adding(days: Int) -> CalendarDay? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .gmt
+        guard let date = try? date(in: .gmt),
+              let shifted = calendar.date(byAdding: .day, value: days, to: date)
+        else { return nil }
+        return try? CalendarDay.containing(shifted, calendar: calendar)
+    }
+
     var refYearMonth: RefYearMonth { RefYearMonth(containing: self) }
 
     init(from decoder: Decoder) throws {
