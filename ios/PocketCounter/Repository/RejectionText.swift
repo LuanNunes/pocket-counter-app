@@ -10,6 +10,11 @@ enum RejectionText {
         text(server?.details.first) ?? text(server?.message) ?? "Não foi possível processar a solicitação"
     }
 
+    /// Never reads `details`: on a 409 `details[0]` is the existing row's UUID, not text.
+    static func conflict(_ server: ServerMessage?) -> String {
+        text(server?.message) ?? "Já existe um lançamento igual neste mês"
+    }
+
     private static func text(_ value: String?) -> String? {
         guard let value, !value.isEmpty else { return nil }
         return value
