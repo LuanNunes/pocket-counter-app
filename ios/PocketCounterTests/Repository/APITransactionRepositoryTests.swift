@@ -298,6 +298,7 @@ struct APITransactionRepositoryTests {
         #expect(sent?["allowDuplicate"] as? Bool == false)
         #expect((sent?["amount"] as? NSNumber)?.decimalValue == 250)
         // The server requires `name` on a tag; without the key the whole create is a 400.
+        #expect(sent?["transactionType"] == nil)
         #expect(sent?["tags"] as? [[String: String]] == [["id": "g1", "name": ""]])
     }
 
@@ -311,10 +312,12 @@ struct APITransactionRepositoryTests {
         try await repository(http).create(entry)
 
         let request = try #require(http.requests.first)
-        let sent = try JSONSerialization.jsonObject(with: try #require(request.httpBody)) as? [String: Any]
-        #expect(sent?["tags"] == nil)
-        #expect(sent?["paymentMethod"] == nil)
-        #expect(sent?["cardId"] == nil)
+        let body = try #require(request.httpBody)
+        let sent = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(sent["tags"] == nil)
+        #expect(sent["paymentMethod"] == nil)
+        #expect(sent["cardId"] == nil)
+        #expect(sent["transactionType"] == nil)
     }
 
     @Test("a 409 on create is a duplicate the user can resolve")

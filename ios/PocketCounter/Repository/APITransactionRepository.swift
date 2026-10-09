@@ -20,6 +20,7 @@ struct APITransactionRepository: TransactionRepository {
         let name: String
         let amount: Decimal
         let dateDue: String
+        /// Sent explicitly: the server's `datePurchase ?? dateDue` fallback is temporary (TransactionService.kt:356).
         let datePurchase: String
         let refYearMonth: Int
         let paymentMethod: String?
@@ -124,7 +125,7 @@ struct APITransactionRepository: TransactionRepository {
                     dateDue: entry.date.iso,
                     datePurchase: entry.date.iso,
                     refYearMonth: entry.date.refYearMonth.raw,
-                    paymentMethod: entry.paymentMethod?.rawValue,
+                    paymentMethod: entry.paymentMethod?.wire,
                     cardId: entry.card?.rawValue,
                     tags: entry.tag.map { [CreateBody.Tag(id: $0.rawValue)] },
                     allowDuplicate: entry.allowDuplicate
