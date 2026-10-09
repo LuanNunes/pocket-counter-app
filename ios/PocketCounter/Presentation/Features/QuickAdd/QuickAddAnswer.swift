@@ -14,7 +14,7 @@ enum QuickAddAnswer {
         return trimmed
     }
 
-    /// Mirrors what `send()` accepts, so a disabled button is the only refusal.
+    /// Stricter than `SentenceText` (a single character is not a sentence), so a disabled button is the only refusal.
     static func isSendable(_ sentence: String) -> Bool {
         guard sentence.trimmingCharacters(in: .whitespacesAndNewlines).count > 1 else { return false }
         return (try? SentenceText(sentence)) != nil

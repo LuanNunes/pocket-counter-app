@@ -25,7 +25,7 @@ struct QuickAddChipLabel: View {
         HStack(spacing: PocketMetrics.modeChipSpacing) {
             if look == .selected {
                 Image(systemName: "checkmark")
-                    .font(.footnote.bold())
+                    .pocketFont(PocketFont.chipGlyphEmphasis)
                     .accessibilityHidden(true)
             }
             leadingView
@@ -49,7 +49,7 @@ struct QuickAddChipLabel: View {
             LedgerDot(argb: color, size: PocketMetrics.groupDot)
         case .symbol(let name):
             Image(systemName: name)
-                .font(.footnote)
+                .pocketFont(PocketFont.chipGlyph)
                 .accessibilityHidden(true)
         }
     }
@@ -100,6 +100,6 @@ struct QuickAddChipButton: View {
     }
 
     private var spokenLabel: String {
-        isCard ? QuickAddCopy.cardPrefix + chip.label : chip.label
+        isCard ? QuickAddCopy.spokenCard(chip.label) : chip.label
     }
 }

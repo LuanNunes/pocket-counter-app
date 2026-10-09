@@ -41,6 +41,20 @@ struct QuickAddModelTests {
         #expect(draft.amount?.value == Money(250))
     }
 
+    @Test("a suggested tag of the other kind never reaches the review or the write")
+    func dropsWrongKindTag() async {
+        let income = PocketCounter.Tag.fixture("g2", "Salário", kind: .income)
+        let opening = SentenceOpening(reading: .fixture(tag: .of("g2")), lookups: .fixture(tags: [income]))
+        let log = CreatedEntryLog()
+        let model = self.model(opening: .success(opening), log: log)
+
+        model.type("gastei 250 numa consulta")
+        await model.send()
+
+        guard case .reviewing(let draft) = model.state.stage else { return #expect(Bool(false)) }
+        #expect(draft.tag == nil)
+    }
+
     @Test("a blank answer to the description question changes nothing")
     func blankNameAnswer() async {
         let reading = SentenceReading.fixture(name: nil, missing: [.description])
@@ -439,7 +453,7 @@ struct QuickAddModelTests {
     }
 }
 
-final class ReadLog: @unchecked Sendable {
+private final class ReadLog: @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [(SentenceText, CalendarDay)] = []
 
@@ -450,7 +464,7 @@ final class ReadLog: @unchecked Sendable {
     }
 }
 
-final class WriteCount: @unchecked Sendable {
+private final class WriteCount: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
 
@@ -467,7 +481,7 @@ final class WriteCount: @unchecked Sendable {
     func increment() -> Int { lock.withLock { count += 1; return count } }
 }
 
-final class WriteGate: @unchecked Sendable {
+private final class WriteGate: @unchecked Sendable {
     private let lock = NSLock()
     private var opened = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -493,7 +507,7 @@ final class WriteGate: @unchecked Sendable {
     }
 }
 
-final class ScriptedWrites: @unchecked Sendable {
+private final class ScriptedWrites: @unchecked Sendable {
     private let lock = NSLock()
     private var remaining: [Result<Void, WriteFailure>]
 

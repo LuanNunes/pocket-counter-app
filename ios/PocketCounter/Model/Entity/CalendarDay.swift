@@ -66,14 +66,28 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
     }
 
     /// Shifts by whole days. Goes through `date(in:)`, which lands on noon precisely so a
-    /// daylight-saving day cannot move the result.
-    func adding(days: Int) -> CalendarDay? {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .gmt
-        guard let date = try? date(in: .gmt),
-              let shifted = calendar.date(byAdding: .day, value: days, to: date)
-        else { return nil }
-        return try? CalendarDay.containing(shifted, calendar: calendar)
+    /// Shifts by whole days in proleptic Gregorian arithmetic, so no calendar or time zone is involved.
+    func adding(days: Int) -> CalendarDay {
+        let shifted = epochDay + days
+        let z = shifted + 719_468
+        let era = (z >= 0 ? z : z - 146_096) / 146_097
+        let dayOfEra = z - era * 146_097
+        let yearOfEra = (dayOfEra - dayOfEra / 1_460 + dayOfEra / 36_524 - dayOfEra / 146_096) / 365
+        let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100)
+        let shiftedMonth = (5 * dayOfYear + 2) / 153
+        let shiftedDay = dayOfYear - (153 * shiftedMonth + 2) / 5 + 1
+        let calendarMonth = shiftedMonth < 10 ? shiftedMonth + 3 : shiftedMonth - 9
+        let calendarYear = yearOfEra + era * 400 + (calendarMonth <= 2 ? 1 : 0)
+        return CalendarDay(unchecked: calendarYear, calendarMonth, shiftedDay)
+    }
+
+    private var epochDay: Int {
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yearOfEra = y - era * 400
+        let dayOfYear = (153 * (month > 2 ? month - 3 : month + 9) + 2) / 5 + day - 1
+        let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+        return era * 146_097 + dayOfEra - 719_468
     }
 
     var refYearMonth: RefYearMonth { RefYearMonth(containing: self) }

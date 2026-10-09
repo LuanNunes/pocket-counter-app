@@ -1,7 +1,6 @@
 enum QuickAddCopy {
     static let title = "Lançamento rápido"
     static let placeholder = "Ex.: paguei 250 em uma consulta do cachorro"
-    static let homeField = "O que você gastou ou recebeu?"
     static let send = "Lançar"
     static let confirm = "Confirmar"
     static let editSentence = "Editar a frase"
@@ -33,7 +32,14 @@ enum QuickAddCopy {
         case .income: "Nenhuma categoria de receita."
         }
     }
-    static let cardPrefix = "Cartão "
+    private static let cardPrefix = "Cartão "
+
+    static func shortCardName(_ name: String) -> String {
+        guard name.range(of: cardPrefix, options: [.anchored, .caseInsensitive]) != nil else { return name }
+        return String(name.dropFirst(cardPrefix.count))
+    }
+
+    static func spokenCard(_ shortName: String) -> String { cardPrefix + shortName }
 
     static func badge(_ provenance: FieldProvenance) -> String {
         switch provenance {

@@ -52,9 +52,7 @@ struct QuickAddUnderstood: Identifiable, Equatable {
 }
 
 enum QuickAddReviewRows {
-    private static let methods: [(method: PaymentMethod, label: String)] = [
-        (.pix, "Pix"), (.debit, "Débito"), (.cash, "Dinheiro"),
-    ]
+    private static let offeredMethods: [PaymentMethod] = [.pix, .debit, .cash]
 
     static func rows(from draft: ReadingDraft, lookups: LookupSet, today: CalendarDay) -> [QuickAddReviewRow] {
         [
@@ -93,7 +91,7 @@ enum QuickAddReviewRows {
             id: "date", text: PocketFormat.shortDay(draft.date.value),
             spoken: PocketFormat.dayLabel(draft.date.value), symbol: "calendar", isIncome: false
         )
-        let method = (draft.card?.value.name ?? draft.paymentMethod.map { methodName($0.value) }).map {
+        let method = (draft.card.map { QuickAddCopy.shortCardName($0.value.name) } ?? draft.paymentMethod.map { methodName($0.value) }).map {
             QuickAddUnderstood(id: "method", text: $0, spoken: $0, symbol: "creditcard", isIncome: false)
         }
         return [amount, type, name, date, method].compactMap { $0 }
@@ -102,10 +100,7 @@ enum QuickAddReviewRows {
     private static func dateRow(_ draft: ReadingDraft, today: CalendarDay) -> QuickAddReviewRow {
         let day = draft.date.value
         let short = PocketFormat.shortDay(day)
-        let named =
-            day == today ? "hoje"
-            : day == today.adding(days: -1) ? "ontem"
-            : nil
+        let named = namedDay(day, today: today)
         let spoken = PocketFormat.dayLabel(day)
         return QuickAddReviewRow(
             field: .date, label: "Data",
@@ -115,13 +110,20 @@ enum QuickAddReviewRows {
         )
     }
 
+    private static func namedDay(_ day: CalendarDay, today: CalendarDay) -> String? {
+        guard day != today else { return "hoje" }
+        guard day == today.adding(days: -1) else { return nil }
+        return "ontem"
+    }
+
     private static func paymentMethodRow(_ draft: ReadingDraft, lookups: LookupSet) -> QuickAddReviewRow {
         let unavailable = lookups.failed.contains(.cards) ? QuickAddCopy.cardsUnavailable : nil
         let label = "Forma de Pagamento"
         if let card = draft.card {
+            let name = QuickAddCopy.shortCardName(card.value.name)
             return QuickAddReviewRow(
-                field: .paymentMethod, label: label, value: card.value.name,
-                spokenValue: card.value.name, color: nil, provenance: card.provenance, isWeak: false, unavailable: unavailable, emptyNote: nil
+                field: .paymentMethod, label: label, value: name,
+                spokenValue: name, color: nil, provenance: card.provenance, isWeak: false, unavailable: unavailable, emptyNote: nil
             )
         }
         guard let method = draft.paymentMethod else {
@@ -141,14 +143,15 @@ enum QuickAddReviewRows {
         let unavailable = failed ? QuickAddCopy.tagsUnavailable : nil
         let ofKind = lookups.tags.contains { $0.kind == draft.type?.value }
         let emptyNote = failed || ofKind ? nil : draft.type.map { QuickAddCopy.noTags(for: $0.value) }
-        guard let tag = draft.tag else {
+        let found = draft.tag.flatMap { tag in lookups.tags.first { $0.id == tag.value } }
+        let wrongKind = found.map { $0.kind != draft.type?.value } ?? false
+        guard let tag = draft.tag, !wrongKind else {
             return QuickAddReviewRow(
                 field: .tag, label: "Categoria", value: "sem categoria",
                 spokenValue: "sem categoria", color: nil, provenance: nil, isWeak: true,
                 unavailable: unavailable, emptyNote: emptyNote
             )
         }
-        let found = lookups.tags.first { $0.id == tag.value }
         let name = found?.name ?? QuickAddCopy.tagNotLoaded
         return QuickAddReviewRow(
             field: .tag, label: "Categoria", value: name, spokenValue: name, color: found?.color,
@@ -158,8 +161,8 @@ enum QuickAddReviewRows {
 
     private static func dateChips(_ draft: ReadingDraft, today: CalendarDay) -> [QuickAddChip] {
         let options = [("Hoje", 0), ("Ontem", -1), ("Anteontem", -2)]
-        return options.compactMap { label, offset in
-            guard let day = today.adding(days: offset) else { return nil }
+        return options.map { label, offset in
+            let day = today.adding(days: offset)
             return QuickAddChip(
                 id: "date-\(offset)", label: label, isOn: draft.date.value == day,
                 color: nil, change: .date(day)
@@ -168,18 +171,18 @@ enum QuickAddReviewRows {
     }
 
     private static func paymentMethodChips(_ draft: ReadingDraft, lookups: LookupSet) -> [QuickAddChip] {
-        let methodChips = methods.map { entry in
+        let methodChips = offeredMethods.map { method in
             QuickAddChip(
-                id: "method-\(entry.method.rawValue)", label: entry.label,
-                isOn: draft.card == nil && draft.paymentMethod?.value == entry.method,
-                color: nil, change: .paymentMethod(entry.method)
+                id: "method-\(method.rawValue)", label: methodName(method),
+                isOn: draft.card == nil && draft.paymentMethod?.value == method,
+                color: nil, change: .paymentMethod(method)
             )
         }
         guard !lookups.failed.contains(.cards) else { return methodChips }
 
         let cardChips = lookups.cards.map { card in
             QuickAddChip(
-                id: "card-\(card.id.rawValue)", label: card.name.replacingOccurrences(of: "^Cartão ", with: "", options: .regularExpression),
+                id: "card-\(card.id.rawValue)", label: QuickAddCopy.shortCardName(card.name),
                 isOn: draft.card?.value.id == card.id,
                 color: card.color, change: .card(CardCandidate(id: card.id, name: card.name))
             )

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The user-facing text of a 403 or a 400/422, shared by reads and writes.
+/// The user-facing text of a 403, a 400/422 or a 409, shared by reads and writes.
 enum RejectionText {
     static func forbidden(_ server: ServerMessage?) -> String {
         text(server?.message) ?? "Você não tem acesso a este recurso"

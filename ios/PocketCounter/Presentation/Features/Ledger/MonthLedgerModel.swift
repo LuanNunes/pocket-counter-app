@@ -90,6 +90,11 @@ final class MonthLedgerModel {
             writes.dropReorder(ReorderKey(ref: ref, kind: kind))
         }
 
+        /// Keeps the displayed month, which the caller refreshes at once: no flash of skeleton.
+        mutating func dropMonths(except ref: RefYearMonth) {
+            months = months.filter { $0.key == ref }
+        }
+
         mutating func beginLoading(_ ref: RefYearMonth) {
             months[ref, default: LoadState()].beginLoading()
         }
@@ -169,6 +174,14 @@ final class MonthLedgerModel {
     /// Always asks; the retry button and pull-to-refresh both land here.
     func refresh() async {
         await request()
+    }
+
+    /// For a write whose month the client cannot know (a card charge files under the statement's
+    /// month, which the server decides): every other cached month is stale, and `load()` never refetches one.
+    func invalidateAndRefresh() async {
+        stopInFlight()
+        state.dropMonths(except: state.month)
+        await refresh()
     }
 
     func cancel() {

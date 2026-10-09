@@ -141,7 +141,15 @@ final class QuickAddModel: Identifiable {
         state.stage = .reviewing(change(draft))
     }
 
-    private func advance(_ draft: ReadingDraft) {
+    /// The server suggests a tag without scoping it to the kind, and `validateTagKinds` would 400 it.
+    private func droppingWrongKindTag(_ draft: ReadingDraft) -> ReadingDraft {
+        guard let tag = draft.tag, let kind = draft.type?.value else { return draft }
+        guard let found = state.lookups.tags.first(where: { $0.id == tag.value }), found.kind != kind else { return draft }
+        return draft.settingTag(nil)
+    }
+
+    private func advance(_ reading: ReadingDraft) {
+        let draft = droppingWrongKindTag(reading)
         guard draft.nextQuestion == nil else {
             state.stage = .asking(draft)
             return

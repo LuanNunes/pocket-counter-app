@@ -297,8 +297,8 @@ struct APITransactionRepositoryTests {
         #expect(sent?["cardId"] as? String == "k1")
         #expect(sent?["allowDuplicate"] as? Bool == false)
         #expect((sent?["amount"] as? NSNumber)?.decimalValue == 250)
-        // The server requires `name` on a tag; without the key the whole create is a 400.
         #expect(sent?["transactionType"] == nil)
+        // The server requires `name` on a tag; without the key the whole create is a 400.
         #expect(sent?["tags"] as? [[String: String]] == [["id": "g1", "name": ""]])
     }
 

@@ -42,6 +42,10 @@ enum PocketFont {
     /// `.sec-h` — 20/700, -0.02em
     static let sectionTitle = PocketTextStyle(.system(.title3, weight: .bold), tracking: -0.4)
 
+    /// Symbols inside a chip, sized against its `link` text.
+    static let chipGlyph = PocketTextStyle(.system(.footnote))
+    static let chipGlyphEmphasis = PocketTextStyle(.system(.footnote, weight: .bold))
+
     /// `.sec-h .lnk` — 15/500
     static let link = PocketTextStyle(.system(.subheadline, weight: .medium))
 

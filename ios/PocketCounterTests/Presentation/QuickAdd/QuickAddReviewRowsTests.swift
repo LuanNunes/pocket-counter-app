@@ -116,6 +116,19 @@ struct QuickAddReviewRowsTests {
         #expect(row.color == nil)
     }
 
+    @Test("a suggested tag of the other kind is not a category: the row reads 'sem categoria'")
+    func wrongKindTag() throws {
+        let income = PocketCounter.Tag.fixture("g2", "Salário", kind: .income)
+        let draft = ReadingDraft(.fixture(tag: .of("g2")))
+
+        let row = try row(.tag, rows(draft, lookups: .fixture(tags: [income])))
+
+        #expect(row.value == "sem categoria")
+        #expect(row.isWeak)
+        #expect(row.provenance == nil)
+        #expect(row.color == nil)
+    }
+
     @Test("a resolved tag carries its colour and name")
     func resolvedTag() throws {
         let tag = Tag(id: .of("g1"), name: "Saúde", kind: .expense, contextId: nil, color: 0xFF34_C759)

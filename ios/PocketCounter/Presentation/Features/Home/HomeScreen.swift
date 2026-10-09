@@ -26,7 +26,7 @@ struct HomeScreen: View {
     private func reload() {
         defer { dismissed = nil }
         guard dismissed?.state.didWrite == true else { return }
-        Task { await ledger.refresh() }
+        Task { await ledger.invalidateAndRefresh() }
     }
 
     private func perform(_ action: HomeAction) {
