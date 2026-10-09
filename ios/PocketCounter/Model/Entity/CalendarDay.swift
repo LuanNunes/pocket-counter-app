@@ -49,8 +49,11 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
     static func today(in timeZone: TimeZone = .current, now: Date = .now) -> CalendarDay {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
-        let parts = calendar.dateComponents([.year, .month, .day], from: now)
-        return CalendarDay(unchecked: parts.year ?? 1970, parts.month ?? 1, parts.day ?? 1)
+        return CalendarDay(
+            unchecked: calendar.component(.year, from: now),
+            calendar.component(.month, from: now),
+            calendar.component(.day, from: now)
+        )
     }
 
     /// Noon, not midnight: midnight does not exist on some zones' daylight-saving days.

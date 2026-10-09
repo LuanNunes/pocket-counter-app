@@ -10,8 +10,10 @@ struct CalendarDayTodayTests {
         #expect(CalendarDay.today(in: .gmt, now: now) == (try CalendarDay(year: 2026, month: 10, day: 9)))
     }
 
+    // Unit-level pin only: a regression putting `Calendar.current` back inside `today` fails nothing
+    // here (the host calendar is Gregorian). The structural guard is the non-optional factory.
     @Test(arguments: [Calendar.Identifier.buddhist, .hebrew, .islamic, .persian, .japanese, .coptic])
-    func ignoresTheUsersCalendar(_ id: Calendar.Identifier) throws {
+    func nonGregorianCalendarReadsADifferentDayThanToday(_ id: Calendar.Identifier) throws {
         var other = Calendar(identifier: id)
         other.timeZone = .gmt
         let read = try? CalendarDay.containing(now, calendar: other)
@@ -19,7 +21,7 @@ struct CalendarDayTodayTests {
     }
 
     @Test func followsTheTimeZone() throws {
-        let tokyo = try #require(TimeZone(identifier: "Pacific/Auckland"))
-        #expect(CalendarDay.today(in: tokyo, now: now) == (try CalendarDay(year: 2026, month: 10, day: 10)))
+        let auckland = try #require(TimeZone(identifier: "Pacific/Auckland"))
+        #expect(CalendarDay.today(in: auckland, now: now) == (try CalendarDay(year: 2026, month: 10, day: 10)))
     }
 }
