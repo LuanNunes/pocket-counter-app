@@ -131,6 +131,46 @@ enum PocketMetrics {
     static let primaryButtonHeight: CGFloat = 52
     static let primaryButtonRadius: CGFloat = 26
 
+    // MARK: Quick add
+
+    /// `.chips{gap:7px}`, `glass.css:148`
+    static let chipGap: CGFloat = 7
+    /// 30 + 2 × 7 = 44, the minimum touch target.
+    static let chipHitPaddingV: CGFloat = 7
+    /// `.qa-field`, `screens.css:32`
+    static let entryRadius: CGFloat = 24
+    static let entryPadding = EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
+    static let entryRing: CGFloat = 2
+    /// `.qa-read`, `screens.css:41`
+    static let readCardRadius: CGFloat = 22
+    static let readCardPadding: CGFloat = 12
+    static let readCardSpacing: CGFloat = 6
+    /// `.qa-q` margin, `screens.css:44`
+    static let questionPadding = EdgeInsets(top: 18, leading: 4, bottom: 10, trailing: 4)
+    /// `.qa-amt`, `screens.css:45`
+    static let amountFieldRadius: CGFloat = 22
+    static let amountFieldPadding = EdgeInsets(top: 12, leading: 18, bottom: 12, trailing: 18)
+    static let amountFieldSpacing: CGFloat = 8
+    /// `.qa-orb`, `screens.css:48`
+    static let receiptOrb: CGFloat = 58
+    /// `.qa-done`, `screens.css:47`
+    static let receiptPadding = EdgeInsets(top: 4, leading: 20, bottom: 6, trailing: 20)
+    /// `.qa-damt` margin, `screens.css:50`
+    static let receiptAmountGap: CGFloat = 10
+    /// `.qa-rr.open` — the opacity of `tint` behind the open row.
+    static let reviewOpenWash: Double = 0.04
+    /// `.qa-opts`, `screens.css:61`
+    static let reviewStripPadding = EdgeInsets(top: 0, leading: 16, bottom: 14, trailing: 16)
+    /// `.foot-note`, `glass.css:92`
+    static let footNotePadding = EdgeInsets(top: 8, leading: 32, bottom: 0, trailing: 32)
+    /// `.qa-rv` flex gap and `margin-top`
+    static let valueLineGap: CGFloat = 7
+    static let valueLineVGap: CGFloat = 4
+    /// The footer's two buttons.
+    static let footerButtonGap: CGFloat = 10
+    static let footerContainerSpacing: CGFloat = 8
+    static let footerTopPadding: CGFloat = 8
+
     // MARK: Fields
 
     /// A field row is taller than the read-only `rowMinHeight`: it carries a caret and a

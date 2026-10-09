@@ -14,6 +14,57 @@ enum QuickAddCopy {
     static let cardsUnavailable = "Não foi possível carregar os cartões."
     static let tagsUnavailable = "Não foi possível carregar as categorias."
 
+    static let retry = "Tentar novamente"
+    static let sentenceField = "Frase do lançamento"
+    static let amountField = "Valor em reais"
+    static let namePlaceholder = "Ex.: consulta do cachorro"
+    static let amountPlaceholder = "0,00"
+    static let currencyPrefix = "R$"
+    static let expense = "Despesa"
+    static let income = "Receita"
+    static let close = "fechar"
+    static let openHint = "Mostra as opções"
+    static let closeHint = "Fecha as opções"
+    static let noTagOptions = "Nenhuma categoria para este tipo de lançamento."
+    static let cardPrefix = "Cartão "
+
+    static func badge(_ provenance: FieldProvenance) -> String {
+        switch provenance {
+        case .fromSentence: "da frase"
+        case .assumed: "assumido"
+        case .defined: "definido"
+        }
+    }
+
+    static func spokenBadge(_ provenance: FieldProvenance) -> String {
+        switch provenance {
+        case .fromSentence: "da frase"
+        case .assumed: "assumido"
+        case .defined: "definido por você"
+        }
+    }
+
+    static func kindName(_ type: TransactionType) -> String {
+        switch type {
+        case .expense: expense
+        case .income: income
+        }
+    }
+
+    static func receiptStatus(_ type: TransactionType) -> String {
+        switch type {
+        case .expense: "Despesa lançada · pendente"
+        case .income: "Receita lançada · pendente"
+        }
+    }
+
+    static func spokenReceiptStatus(_ type: TransactionType) -> String {
+        switch type {
+        case .expense: "Despesa lançada, pendente"
+        case .income: "Receita lançada, pendente"
+        }
+    }
+
     static func question(_ field: MissingField) -> String {
         switch field {
         case .amount: "Qual foi o valor?"

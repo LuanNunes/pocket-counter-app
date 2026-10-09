@@ -48,11 +48,11 @@ struct PocketInlineMessage: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(text)
+                    Text(verbatim: text)
                         .pocketFont(PocketFont.subtitle)
 
                     if let secondary {
-                        Text(secondary)
+                        Text(verbatim: secondary)
                             .pocketFont(PocketFont.caption)
                             .foregroundStyle(secondaryInk)
                     }
