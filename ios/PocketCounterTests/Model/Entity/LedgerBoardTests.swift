@@ -38,10 +38,10 @@ struct LedgerBoardTests {
     @Test("the search and só-fixos narrow the rows before they are grouped and totalled")
     func pipeline() {
         let items = [
-            HistoryItem.fixture(id: "a", amount: -10, seriesId: "s", name: "Luz"),
-            .fixture(id: "b", amount: -20, seriesId: "s", name: "Água"),
+            HistoryItem.fixture(id: "a", amount: -10, recurringTransactionId: "s", name: "Luz"),
+            .fixture(id: "b", amount: -20, recurringTransactionId: "s", name: "Água"),
             .fixture(id: "c", amount: -40, name: "Luz"),
-            .fixture(id: "d", amount: 70, type: .income, seriesId: "s", name: "Luz"),
+            .fixture(id: "d", amount: 70, type: .income, recurringTransactionId: "s", name: "Luz"),
         ]
 
         let result = board(items, query: "luz", onlyFixos: true)

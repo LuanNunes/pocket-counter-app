@@ -11,23 +11,23 @@ struct CatalogDTOTests {
 
     @Test("a full tag decodes")
     func fullTag() throws {
-        let tag = try decode(TagDTO.self, ##"{"id":"g1","idUser":"u","name":"Mercado","kind":"INCOME","idCategory":"c1","color":"#112233","idSeries":"s1"}"##)
+        let tag = try decode(TagDTO.self, ##"{"id":"g1","idUser":"u","name":"Mercado","kind":"INCOME","idCategory":"c1","color":"#112233","idRecurringTransaction":"s1"}"##)
 
         #expect(tag.kind == "INCOME")
         #expect(tag.idCategory == "c1")
         #expect(tag.color == "#112233")
-        #expect(tag.idSeries == "s1")
+        #expect(tag.idRecurringTransaction == "s1")
     }
 
     @Test("the five-argument embedded tag has no colour and decodes without error")
     func embeddedTag() throws {
         let tag = try decode(
             TagDTO.self,
-            #"{"id":"g1","idUser":"u","idCategory":"c1","idTransaction":"t1","name":"Mercado","kind":"EXPENSE","color":null,"idSeries":null}"#
+            #"{"id":"g1","idUser":"u","idCategory":"c1","idTransaction":"t1","name":"Mercado","kind":"EXPENSE","color":null,"idRecurringTransaction":null}"#
         )
 
         #expect(tag.color == nil)
-        #expect(tag.idSeries == nil)
+        #expect(tag.idRecurringTransaction == nil)
     }
 
     @Test("a category decodes with optional colour and order")

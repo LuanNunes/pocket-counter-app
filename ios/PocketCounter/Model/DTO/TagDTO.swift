@@ -7,5 +7,5 @@ struct TagDTO: Decodable, Sendable {
     let kind: String
     let idCategory: String?
     let color: String?
-    let idSeries: String?
+    let idRecurringTransaction: String?
 }

@@ -24,7 +24,7 @@ extension HistoryItem {
         tagIds: [TagID]? = nil,
         statusPayment: PaymentStatus = .paid,
         displayOrder: Int = 0,
-        seriesId: String? = nil,
+        recurringTransactionId: String? = nil,
         name: String? = nil,
         description: String? = nil,
         isInvoice: Bool = false,
@@ -40,7 +40,7 @@ extension HistoryItem {
             statusPayment: statusPayment,
             displayOrder: displayOrder,
             cardId: cardId,
-            seriesId: seriesId.map { SeriesID(rawValue: $0) },
+            recurringTransactionId: recurringTransactionId.map { RecurringTransactionID(rawValue: $0) },
             name: name,
             description: description,
             isInvoice: isInvoice

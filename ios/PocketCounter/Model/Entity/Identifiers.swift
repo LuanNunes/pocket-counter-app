@@ -12,7 +12,7 @@ struct CardID: RawRepresentable, Hashable, Sendable {
     let rawValue: String
 }
 
-struct SeriesID: RawRepresentable, Hashable, Sendable {
+struct RecurringTransactionID: RawRepresentable, Hashable, Sendable {
     let rawValue: String
 }
 

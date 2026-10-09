@@ -16,11 +16,11 @@ enum WireFixtures {
 
     static func tag(
         id: String = "g1", name: String = "Mercado", kind: String = "EXPENSE",
-        idCategory: String? = "c1", color: String? = nil, idSeries: String? = nil
+        idCategory: String? = "c1", color: String? = nil, idRecurringTransaction: String? = nil
     ) -> String {
         """
         {"id":\(quoted(id)),"idUser":"u1","idCategory":\(quoted(idCategory)),"idTransaction":null,\
-        "name":\(quoted(name)),"kind":\(quoted(kind)),"color":\(quoted(color)),"idSeries":\(quoted(idSeries))}
+        "name":\(quoted(name)),"kind":\(quoted(kind)),"color":\(quoted(color)),"idRecurringTransaction":\(quoted(idRecurringTransaction))}
         """
     }
 
@@ -38,19 +38,18 @@ enum WireFixtures {
         """
     }
 
-    static func series(
-        id: String? = "s1", name: String? = "Aluguel", type: String? = "EXPENSE", recurrenceDay: Int? = 5
+    static func recurringTransaction(
+        id: String? = "s1", name: String? = "Aluguel", type: String? = "EXPENSE"
     ) -> String {
         """
-        {"id":\(quoted(id)),"idUser":"u1","name":\(quoted(name)),"transactionType":\(quoted(type)),\
-        "recurrenceDay":\(recurrenceDay.map(String.init) ?? "null")}
+        {"id":\(quoted(id)),"idUser":"u1","name":\(quoted(name)),"transactionType":\(quoted(type))}
         """
     }
 
     static func transaction(
         id: String = "t1", type: String = "EXPENSE", name: String? = "Mercado", amount: String = "10.50",
         status: String = "PAID", ref: Int = 202610, displayOrder: Int = 0, method: String? = nil,
-        cardId: String? = nil, isInvoice: Bool = false, idSeries: String? = nil,
+        cardId: String? = nil, isInvoice: Bool = false, idRecurringTransaction: String? = nil,
         dateDue: String? = nil, datePaid: String? = nil, tags: Field<[String]> = .absent
     ) -> String {
         var tagsField = ""
@@ -61,7 +60,7 @@ enum WireFixtures {
         {"id":\(quoted(id)),"idUser":"u1","transactionType":\(quoted(type)),"name":\(quoted(name)),\
         "description":null,"amount":\(amount),"statusPayment":\(quoted(status)),"refYearMonth":\(ref),\
         "displayOrder":\(displayOrder),"paymentMethod":\(quoted(method)),"cardId":\(quoted(cardId)),\
-        "isInvoice":\(isInvoice),"idSeries":\(quoted(idSeries)),"currency":"BRL","dateDue":\(quoted(dateDue)),\
+        "isInvoice":\(isInvoice),"idRecurringTransaction":\(quoted(idRecurringTransaction)),"currency":"BRL","dateDue":\(quoted(dateDue)),\
         "datePaid":\(quoted(datePaid))\(tagsField)}
         """
     }

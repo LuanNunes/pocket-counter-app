@@ -86,9 +86,9 @@ struct LedgerFilterTests {
         #expect(ids([.fixture(id: "a", amount: -99, name: "x")], query: "100") == [])
     }
 
-    @Test("only fixos keeps rows that belong to a series")
+    @Test("only fixos keeps rows that belong to a recurring transaction")
     func onlyFixos() {
-        let items = [HistoryItem.fixture(id: "f", seriesId: "s"), .fixture(id: "n")]
+        let items = [HistoryItem.fixture(id: "f", recurringTransactionId: "s"), .fixture(id: "n")]
 
         #expect(ids(items, onlyFixos: true) == ["f"])
         #expect(ids(items, onlyFixos: false) == ["f", "n"])

@@ -14,12 +14,12 @@ struct HistoryItem: Hashable, Sendable {
     let displayOrder: Int
     let paymentMethod: PaymentMethod?
     let cardId: CardID?
-    let seriesId: SeriesID?
+    let recurringTransactionId: RecurringTransactionID?
     let name: String?
     let description: String?
     let isInvoice: Bool
 
-    var isFixo: Bool { seriesId != nil }
+    var isFixo: Bool { recurringTransactionId != nil }
 
     init(
         id: TransactionID,
@@ -32,7 +32,7 @@ struct HistoryItem: Hashable, Sendable {
         displayOrder: Int = 0,
         paymentMethod: PaymentMethod? = nil,
         cardId: CardID? = nil,
-        seriesId: SeriesID? = nil,
+        recurringTransactionId: RecurringTransactionID? = nil,
         name: String? = nil,
         description: String? = nil,
         isInvoice: Bool = false
@@ -47,7 +47,7 @@ struct HistoryItem: Hashable, Sendable {
         self.displayOrder = displayOrder
         self.paymentMethod = paymentMethod
         self.cardId = cardId
-        self.seriesId = seriesId
+        self.recurringTransactionId = recurringTransactionId
         self.name = name
         self.description = description
         self.isInvoice = isInvoice
@@ -60,7 +60,7 @@ struct HistoryItem: Hashable, Sendable {
     func settingPaymentStatus(_ status: PaymentStatus) -> HistoryItem {
         HistoryItem(
             id: id, ref: ref, date: date, amount: amount, type: type, tagIds: tagIds, statusPayment: status,
-            displayOrder: displayOrder, paymentMethod: paymentMethod, cardId: cardId, seriesId: seriesId,
+            displayOrder: displayOrder, paymentMethod: paymentMethod, cardId: cardId, recurringTransactionId: recurringTransactionId,
             name: name, description: description, isInvoice: isInvoice
         )
     }
@@ -68,7 +68,7 @@ struct HistoryItem: Hashable, Sendable {
     func settingDisplayOrder(_ order: Int) -> HistoryItem {
         HistoryItem(
             id: id, ref: ref, date: date, amount: amount, type: type, tagIds: tagIds, statusPayment: statusPayment,
-            displayOrder: order, paymentMethod: paymentMethod, cardId: cardId, seriesId: seriesId,
+            displayOrder: order, paymentMethod: paymentMethod, cardId: cardId, recurringTransactionId: recurringTransactionId,
             name: name, description: description, isInvoice: isInvoice
         )
     }

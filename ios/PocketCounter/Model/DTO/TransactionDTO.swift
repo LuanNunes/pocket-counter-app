@@ -13,7 +13,7 @@ struct TransactionDTO: Decodable, Sendable {
     let paymentMethod: String?
     let cardId: String?
     let isInvoice: Bool
-    let idSeries: String?
+    let idRecurringTransaction: String?
     let dateDue: String?
     let datePaid: String?
     let tags: [TagDTO]?

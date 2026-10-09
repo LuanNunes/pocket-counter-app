@@ -37,7 +37,7 @@ struct TransactionMapperTests {
     func scalars() throws {
         let item = try map(WireFixtures.transaction(
             id: "t9", name: "Aluguel", status: "PENDING", displayOrder: 4, method: "PIX",
-            cardId: "k1", isInvoice: true, idSeries: "s1", dateDue: "2026-10-05"
+            cardId: "k1", isInvoice: true, idRecurringTransaction: "s1", dateDue: "2026-10-05"
         ))
 
         #expect(item.id == TransactionID(rawValue: "t9"))
@@ -47,7 +47,7 @@ struct TransactionMapperTests {
         #expect(item.paymentMethod == .pix)
         #expect(item.cardId == CardID(rawValue: "k1"))
         #expect(item.isInvoice)
-        #expect(item.seriesId == SeriesID(rawValue: "s1"))
+        #expect(item.recurringTransactionId == RecurringTransactionID(rawValue: "s1"))
         #expect(item.isFixo)
     }
 
@@ -119,10 +119,10 @@ struct TransactionMapperTests {
         }
     }
 
-    @Test("an empty series id is a missing field, not a fixo with an unusable path")
-    func emptySeriesId() {
-        #expect(throws: MappingFailure.missingField(entity: "Transaction", field: "idSeries")) {
-            try map(WireFixtures.transaction(idSeries: ""))
+    @Test("an empty recurring transaction id is a missing field, not a fixo with an unusable path")
+    func emptyRecurringTransactionId() {
+        #expect(throws: MappingFailure.missingField(entity: "Transaction", field: "idRecurringTransaction")) {
+            try map(WireFixtures.transaction(idRecurringTransaction: ""))
         }
     }
 }

@@ -154,11 +154,11 @@ struct AppContainerTests {
         #expect(http.requests.first?.value(forHTTPHeaderField: "Authorization") == "Bearer a")
     }
 
-    @Test("the fixo action on a plain row creates a series, then links the row to it")
+    @Test("the fixo action on a plain row creates a recurring transaction, then links the row to it")
     func toggleFixoAction() async throws {
         let http = FakeHTTP(routes: [
-            "/api/v1/recurring-series": FakeHTTP.json(WireFixtures.series(id: "s9")),
-            "/api/v1/recurring-series/s9/transactions/t1": FakeHTTP.empty(200),
+            "/api/v1/recurring-transactions": FakeHTTP.json(WireFixtures.recurringTransaction(id: "s9")),
+            "/api/v1/recurring-transactions/s9/transactions/t1": FakeHTTP.empty(200),
         ])
         let keychain = FakeKeychain.holding(TokenPair(accessToken: "a", refreshToken: "r"))
         let container = try container("dev", keychain: keychain, send: http)
@@ -166,8 +166,8 @@ struct AppContainerTests {
         try await container.toggleFixo(.fixture(id: "t1", name: "Aluguel"))
 
         #expect(http.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" } == [
-            "POST /api/v1/recurring-series",
-            "POST /api/v1/recurring-series/s9/transactions/t1",
+            "POST /api/v1/recurring-transactions",
+            "POST /api/v1/recurring-transactions/s9/transactions/t1",
         ])
     }
 

@@ -14,7 +14,7 @@ struct TransactionDTOTests {
         return """
         {"id":"t1","transactionType":"EXPENSE","name":null,"description":null,"amount":\(amount),
         "statusPayment":"PENDING","refYearMonth":202610,"displayOrder":3,"paymentMethod":null,
-        "cardId":null,"isInvoice":false,"idSeries":null,"dateDue":"2026-10-05","datePaid":null\(tagsField)\(extra)}
+        "cardId":null,"isInvoice":false,"idRecurringTransaction":null,"dateDue":"2026-10-05","datePaid":null\(tagsField)\(extra)}
         """
     }
 
@@ -48,6 +48,20 @@ struct TransactionDTOTests {
         #expect(try decode(body()).tags == nil)
         #expect(try decode(body(tags: "[]")).tags?.isEmpty == true)
         #expect(try decode(body(tags: populated)).tags?.map(\.id) == ["g1"])
+    }
+
+    @Test("a recurring link arrives under the backend's key: absence would silently un-fixo the row")
+    func recurringLink() throws {
+        let json = """
+        {"id":"t1","transactionType":"EXPENSE","name":"Aluguel","amount":1200,"statusPayment":"PENDING",
+        "refYearMonth":202610,"displayOrder":0,"isInvoice":false,"idRecurringTransaction":"r1",
+        "tags":[{"id":"g1","name":"Casa","kind":"EXPENSE","idRecurringTransaction":"r1"}]}
+        """
+        let dto = try decode(json)
+
+        #expect(dto.idRecurringTransaction == "r1")
+        #expect(dto.tags?.first?.idRecurringTransaction == "r1")
+        #expect(try TransactionMapper.map(dto).isFixo)
     }
 
     @Test("an unknown extra field is ignored")

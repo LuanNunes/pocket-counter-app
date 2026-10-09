@@ -18,10 +18,10 @@ struct HistoryItemTests {
         #expect(item.displayTitle() == expected)
     }
 
-    @Test("an item is fixo exactly when it belongs to a series")
+    @Test("an item is fixo exactly when it belongs to a recurring transaction")
     func isFixo() {
-        #expect(HistoryItem.fixture(seriesId: "s1").isFixo)
-        #expect(!HistoryItem.fixture(seriesId: nil).isFixo)
+        #expect(HistoryItem.fixture(recurringTransactionId: "s1").isFixo)
+        #expect(!HistoryItem.fixture(recurringTransactionId: nil).isFixo)
     }
 
     @Test("no own tags and an empty override are different things")
@@ -76,14 +76,14 @@ struct CatalogEntityTests {
     func settingPaymentStatus() {
         let item = HistoryItem.fixture(
             id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .paid, displayOrder: 3,
-            seriesId: "s1", name: "Aluguel", isInvoice: true
+            recurringTransactionId: "s1", name: "Aluguel", isInvoice: true
         )
 
         let pending = item.settingPaymentStatus(.pending)
 
         #expect(pending == HistoryItem.fixture(
             id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .pending, displayOrder: 3,
-            seriesId: "s1", name: "Aluguel", isInvoice: true
+            recurringTransactionId: "s1", name: "Aluguel", isInvoice: true
         ))
     }
 
@@ -91,14 +91,14 @@ struct CatalogEntityTests {
     func settingDisplayOrder() {
         let item = HistoryItem.fixture(
             id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .pending, displayOrder: 3,
-            seriesId: "s1", name: "Aluguel", isInvoice: true
+            recurringTransactionId: "s1", name: "Aluguel", isInvoice: true
         )
 
         let moved = item.settingDisplayOrder(0)
 
         #expect(moved == HistoryItem.fixture(
             id: "t9", amount: 42, tagIds: [.of("g1")], statusPayment: .pending, displayOrder: 0,
-            seriesId: "s1", name: "Aluguel", isInvoice: true
+            recurringTransactionId: "s1", name: "Aluguel", isInvoice: true
         ))
     }
 }

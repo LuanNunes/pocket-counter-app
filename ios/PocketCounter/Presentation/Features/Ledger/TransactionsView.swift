@@ -183,7 +183,7 @@ enum TransactionsPreview {
         HistoryItem(
             id: TransactionID(rawValue: id), ref: ref, date: date, amount: Money(Decimal(cents) / 100),
             type: cents < 0 ? .expense : .income, tagIds: tags?.map { TagID(rawValue: $0) }, statusPayment: status,
-            paymentMethod: method, cardId: card.map { CardID(rawValue: $0) }, seriesId: fixo ? SeriesID(rawValue: "s") : nil, name: name)
+            paymentMethod: method, cardId: card.map { CardID(rawValue: $0) }, recurringTransactionId: fixo ? RecurringTransactionID(rawValue: "s") : nil, name: name)
     }
 
     static let items = [

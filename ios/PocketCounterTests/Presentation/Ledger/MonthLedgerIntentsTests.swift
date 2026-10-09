@@ -198,7 +198,7 @@ struct MonthLedgerDeleteTests {
     }
 }
 
-private let standingOrder = HistoryItem.fixture(id: "rent", amount: -10, statusPayment: .pending, seriesId: "s1")
+private let standingOrder = HistoryItem.fixture(id: "rent", amount: -10, statusPayment: .pending, recurringTransactionId: "s1")
 
 @MainActor
 @Suite("MonthLedgerModel toggling fixo")
@@ -235,7 +235,7 @@ struct MonthLedgerFixoTests {
         let harness = Harness()
         let model = await harness.model()
         let retagged = HistoryItem.fixture(
-            id: "rent", amount: -10, tagIds: [.of("g1")], statusPayment: .pending, seriesId: "s1")
+            id: "rent", amount: -10, tagIds: [.of("g1")], statusPayment: .pending, recurringTransactionId: "s1")
         harness.source.ledgers[october] = ledger(october, retagged, gym, salary)
 
         await model.toggleFixo(of: rent)

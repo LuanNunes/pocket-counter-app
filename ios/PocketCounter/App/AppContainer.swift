@@ -62,7 +62,7 @@ struct AppContainer {
     }
 
     var toggleFixo: ToggleFixoAction {
-        let toggle = ToggleFixo(series: recurringSeriesRepository)
+        let toggle = ToggleFixo(recurring: recurringTransactionRepository)
         return { item throws(WriteFailure) in try await toggle.toggle(item) }
     }
 
@@ -83,7 +83,7 @@ struct AppContainer {
     }
 
     // Computed: it holds no cache, so the built-once rule does not apply.
-    private var recurringSeriesRepository: any RecurringSeriesRepository { APIRecurringSeriesRepository(client: authenticatedClient) }
+    private var recurringTransactionRepository: any RecurringTransactionRepository { APIRecurringTransactionRepository(client: authenticatedClient) }
 
     var sessionRepository: any SessionRepository { APISessionRepository(client: client, tokens: tokens) }
 }
