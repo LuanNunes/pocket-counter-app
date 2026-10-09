@@ -48,8 +48,8 @@ struct QuickAddReviewList: View {
                 PocketInlineMessage(kind: .warning, text: unavailable, surface: .onCell)
                     .padding(.leading, -4)
             }
-            if options.isEmpty, row.unavailable == nil {
-                Text(verbatim: QuickAddCopy.noTagOptions)
+            if options.isEmpty, let note = row.emptyNote {
+                Text(verbatim: note)
                     .pocketFont(PocketFont.caption)
                     .foregroundStyle(PocketColor.labelSecondary)
             }

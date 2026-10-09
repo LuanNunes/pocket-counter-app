@@ -3,12 +3,10 @@ import SwiftUI
 /// The one place that holds the model; everything below takes values and closures.
 struct QuickAddSheet: View {
     let model: QuickAddModel
-    let today: CalendarDay
     let onFinish: () -> Void
 
     @State private var answer = ""
     @State private var opened: QuickAddReviewRow.Field?
-    @State private var receipt: TransactionEntry?
     @State private var detent = PresentationDetent.fraction(Self.keyboardFraction)
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -16,13 +14,12 @@ struct QuickAddSheet: View {
 
     var body: some View {
         QuickAddContent(
-            state: model.state, receipt: receipt, today: today,
+            state: model.state, today: model.today,
             answer: $answer, opened: $opened, onAction: perform
         )
         .presentationDetents(detents, selection: selection)
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isBusy)
-        .onChange(of: model.state.stage) { _, stage in remember(stage) }
         .onChange(of: hasKeyboard) { settle() }
     }
 
@@ -74,11 +71,6 @@ struct QuickAddSheet: View {
 
     private var selection: Binding<PresentationDetent> {
         Binding(get: { detents.contains(detent) ? detent : .large }, set: { detent = $0 })
-    }
-
-    private func remember(_ stage: QuickAddStage) {
-        guard case .saving(let draft) = stage else { return }
-        receipt = draft.confirmed()
     }
 
     private func settle() {

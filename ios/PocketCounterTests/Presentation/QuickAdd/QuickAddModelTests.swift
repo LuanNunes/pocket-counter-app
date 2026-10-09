@@ -142,9 +142,24 @@ struct QuickAddModelTests {
         await model.send()
         await model.save()
 
-        #expect(model.state.stage == .saved)
+        #expect(model.state.stage.isSaved)
         #expect(log.entries.count == 1)
         #expect(log.entries.first?.allowDuplicate == false)
+    }
+
+    @Test("the receipt carries the entry that was written")
+    func receiptCarriesEntry() async throws {
+        let model = self.model(log: CreatedEntryLog())
+
+        model.type("gastei 250 numa consulta")
+        await model.send()
+        await model.save()
+
+        guard case .saved(let entry) = model.state.stage else {
+            Issue.record("not saved")
+            return
+        }
+        #expect(entry.amount == Money(250))
     }
 
     @Test("a duplicate is a question, and insisting writes the same row with the flag")
@@ -161,7 +176,7 @@ struct QuickAddModelTests {
         guard case .reviewing = model.state.stage else { return #expect(Bool(false)) }
         #expect(model.state.duplicate == "Já existe Consulta do cachorro")
         await model.saveAnyway()
-        #expect(model.state.stage == .saved)
+        #expect(model.state.stage.isSaved)
         #expect(model.state.duplicate == nil)
         #expect(model.state.writeFailure == nil)
         #expect(log.entries.map(\.allowDuplicate) == [false, true])
@@ -233,7 +248,7 @@ struct QuickAddModelTests {
         await model.save()
         await model.save()
 
-        #expect(model.state.stage == .saved)
+        #expect(model.state.stage.isSaved)
         #expect(model.state.writeFailure == nil)
     }
 
@@ -398,7 +413,7 @@ struct QuickAddModelTests {
         await second
 
         #expect(count.value == 1)
-        #expect(model.state.stage == .saved)
+        #expect(model.state.stage.isSaved)
     }
 
     @Test("pressing Lançar mesmo assim twice while the write is in flight writes once more")
@@ -420,7 +435,7 @@ struct QuickAddModelTests {
         await second
 
         #expect(count.value == 2)
-        #expect(model.state.stage == .saved)
+        #expect(model.state.stage.isSaved)
     }
 }
 
@@ -486,5 +501,12 @@ final class ScriptedWrites: @unchecked Sendable {
 
     func next() -> Result<Void, WriteFailure> {
         lock.withLock { remaining.count > 1 ? remaining.removeFirst() : remaining[0] }
+    }
+}
+
+extension QuickAddStage {
+    fileprivate var isSaved: Bool {
+        guard case .saved = self else { return false }
+        return true
     }
 }

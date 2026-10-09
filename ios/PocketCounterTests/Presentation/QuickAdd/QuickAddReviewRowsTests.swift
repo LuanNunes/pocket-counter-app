@@ -104,6 +104,41 @@ struct QuickAddReviewRowsTests {
         #expect(QuickAddReviewRows.understood(from: draft).map(\.id) == ["date"])
     }
 
+    @Test("a suggested tag that cannot be found is not 'sem categoria'")
+    func unresolvableTag() throws {
+        let draft = ReadingDraft(.fixture(tag: .of("gone")))
+
+        let row = try row(.tag, rows(draft, lookups: .fixture(failed: [.tags])))
+
+        #expect(row.value == QuickAddCopy.tagNotLoaded)
+        #expect(!row.isWeak)
+        #expect(row.provenance == .assumed)
+        #expect(row.color == nil)
+    }
+
+    @Test("a resolved tag carries its colour and name")
+    func resolvedTag() throws {
+        let tag = Tag(id: .of("g1"), name: "Saúde", kind: .expense, contextId: nil, color: 0xFF34_C759)
+        let draft = ReadingDraft(.fixture(tag: .of("g1")))
+
+        let row = try row(.tag, rows(draft, lookups: .fixture(tags: [tag])))
+
+        #expect(row.value == "Saúde")
+        #expect(row.color == 0xFF34_C759)
+    }
+
+    @Test("the empty note names the draft's kind, and only when nothing failed")
+    func emptyNote() throws {
+        let expense = ReadingDraft(.fixture())
+        let income = ReadingDraft(.fixture(type: Sourced(value: .income, source: .written)))
+
+        #expect(try row(.tag, rows(expense)).emptyNote == "Nenhuma categoria de despesa.")
+        #expect(try row(.tag, rows(income)).emptyNote == "Nenhuma categoria de receita.")
+        #expect(try row(.tag, rows(expense, lookups: .fixture(failed: [.tags]))).emptyNote == nil)
+        #expect(try row(.tag, rows(expense, lookups: .fixture(tags: [.fixture("g", kind: .expense)]))).emptyNote == nil)
+        #expect(try row(.date, rows(expense)).emptyNote == nil)
+    }
+
     @Test("the date chips are today and the two days before it")
     func dateChips() {
         let chips = QuickAddReviewRows.chips(

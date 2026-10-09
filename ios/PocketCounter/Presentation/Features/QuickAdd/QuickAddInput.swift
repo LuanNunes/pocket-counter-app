@@ -9,6 +9,7 @@ struct QuickAddField: View {
     var submitLabel = SubmitLabel.send
     var onSubmit: () -> Void = {}
 
+    @Environment(\.isEnabled) private var isEnabled
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -31,14 +32,15 @@ struct QuickAddField: View {
             RoundedRectangle(cornerRadius: PocketMetrics.entryRadius, style: .continuous)
                 .strokeBorder(PocketColor.tint.opacity(0.35), lineWidth: PocketMetrics.entryRing)
         }
-        .focusedAfterSettling($isFocused)
+        .focusedAfterSettling($isFocused, when: isEnabled)
     }
 }
 
 extension View {
     /// Focusing at once makes the keyboard and the sheet animate together.
-    func focusedAfterSettling(_ focus: FocusState<Bool>.Binding) -> some View {
-        task {
+    func focusedAfterSettling(_ focus: FocusState<Bool>.Binding, when isEnabled: Bool = true) -> some View {
+        task(id: isEnabled) {
+            guard isEnabled else { return }
             do { try await Task.sleep(for: .milliseconds(420)) } catch { return }
             focus.wrappedValue = true
         }

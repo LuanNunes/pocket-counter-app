@@ -3,7 +3,6 @@ import SwiftUI
 /// The whole sheet for a given state. Owns no model: every change leaves through `onAction`.
 struct QuickAddContent: View {
     let state: QuickAddModel.State
-    let receipt: TransactionEntry?
     let today: CalendarDay
     @Binding var answer: String
     @Binding var opened: QuickAddReviewRow.Field?
@@ -69,8 +68,8 @@ struct QuickAddContent: View {
             asking(draft)
         case .reviewing(let draft), .saving(let draft):
             reviewing(draft)
-        case .saved:
-            savedReceipt
+        case .saved(let entry):
+            QuickAddReceipt(entry: entry)
         }
     }
 
@@ -78,13 +77,6 @@ struct QuickAddContent: View {
     private func asking(_ draft: ReadingDraft) -> some View {
         if let field = draft.nextQuestion {
             QuickAddQuestion(draft: draft, field: field, answer: $answer, onAction: onAction)
-        }
-    }
-
-    @ViewBuilder
-    private var savedReceipt: some View {
-        if let receipt {
-            QuickAddReceipt(entry: receipt)
         }
     }
 
@@ -116,11 +108,9 @@ struct QuickAddContent: View {
 
     // MARK: Notices
 
-    private struct WriteNotice: Equatable {
+    private struct WriteNotice {
         let notice: PocketNotice
         let action: PocketInlineMessage.Action?
-
-        static func == (lhs: WriteNotice, rhs: WriteNotice) -> Bool { lhs.notice == rhs.notice }
     }
 
     private var readingNotice: PocketNotice? {

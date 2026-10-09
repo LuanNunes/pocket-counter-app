@@ -10,7 +10,7 @@ enum QuickAddStage: Equatable {
     case asking(ReadingDraft)
     case reviewing(ReadingDraft)
     case saving(ReadingDraft)
-    case saved
+    case saved(TransactionEntry)
 }
 
 /// How a question is answered, which decides both the control and the footer.
@@ -59,7 +59,7 @@ final class QuickAddModel {
     private(set) var state = State()
     private let read: ReadSentenceAction
     private let create: CreateTransactionAction
-    private let today: CalendarDay
+    let today: CalendarDay
 
     init(
         read: @escaping ReadSentenceAction,
@@ -156,7 +156,7 @@ final class QuickAddModel {
         do {
             try await create(entry)
             state.didWrite = true
-            state.stage = .saved
+            state.stage = .saved(entry)
         } catch {
             settle(error, draft)
         }

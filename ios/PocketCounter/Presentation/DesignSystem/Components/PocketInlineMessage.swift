@@ -68,7 +68,7 @@ struct PocketInlineMessage: View {
                 ProgressView()
                     .padding(.vertical, 12)
             } else if let action {
-                Button(action.title, action: action.perform)
+                Button(action: action.perform) { Text(verbatim: action.title) }
                     .buttonStyle(.plain)
                     .pocketFont(PocketFont.link)
                     .foregroundStyle(primaryInk)

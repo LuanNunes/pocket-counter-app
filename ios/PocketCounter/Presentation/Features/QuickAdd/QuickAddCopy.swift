@@ -25,7 +25,14 @@ enum QuickAddCopy {
     static let close = "fechar"
     static let openHint = "Mostra as opções"
     static let closeHint = "Fecha as opções"
-    static let noTagOptions = "Nenhuma categoria para este tipo de lançamento."
+    static let tagNotLoaded = "categoria não carregada"
+
+    static func noTags(for type: TransactionType) -> String {
+        switch type {
+        case .expense: "Nenhuma categoria de despesa."
+        case .income: "Nenhuma categoria de receita."
+        }
+    }
     static let cardPrefix = "Cartão "
 
     static func badge(_ provenance: FieldProvenance) -> String {

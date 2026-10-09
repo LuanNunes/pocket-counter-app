@@ -18,6 +18,8 @@ struct QuickAddReviewRow: Identifiable, Equatable {
     let provenance: FieldProvenance?
     let isWeak: Bool
     let unavailable: String?
+    /// Said in the open strip when there is nothing to offer and nothing failed.
+    let emptyNote: String?
 
     var id: String { field.id }
     var action: String { isWeak ? "definir" : "alterar" }
@@ -109,7 +111,7 @@ enum QuickAddReviewRows {
             field: .date, label: "Data",
             value: named.map { "\(short) · \($0)" } ?? short,
             spokenValue: named.map { "\(spoken), \($0)" } ?? spoken,
-            color: nil, provenance: draft.date.provenance, isWeak: false, unavailable: nil
+            color: nil, provenance: draft.date.provenance, isWeak: false, unavailable: nil, emptyNote: nil
         )
     }
 
@@ -119,34 +121,38 @@ enum QuickAddReviewRows {
         if let card = draft.card {
             return QuickAddReviewRow(
                 field: .paymentMethod, label: label, value: card.value.name,
-                spokenValue: card.value.name, color: nil, provenance: card.provenance, isWeak: false, unavailable: unavailable
+                spokenValue: card.value.name, color: nil, provenance: card.provenance, isWeak: false, unavailable: unavailable, emptyNote: nil
             )
         }
         guard let method = draft.paymentMethod else {
             return QuickAddReviewRow(
                 field: .paymentMethod, label: label, value: "não informada",
-                spokenValue: "não informada", color: nil, provenance: nil, isWeak: true, unavailable: unavailable
+                spokenValue: "não informada", color: nil, provenance: nil, isWeak: true, unavailable: unavailable, emptyNote: nil
             )
         }
         return QuickAddReviewRow(
             field: .paymentMethod, label: label, value: methodName(method.value),
-            spokenValue: methodName(method.value), color: nil, provenance: method.provenance, isWeak: false, unavailable: unavailable
+            spokenValue: methodName(method.value), color: nil, provenance: method.provenance, isWeak: false, unavailable: unavailable, emptyNote: nil
         )
     }
 
     private static func tagRow(_ draft: ReadingDraft, lookups: LookupSet) -> QuickAddReviewRow {
-        let unavailable = lookups.failed.contains(.tags) ? QuickAddCopy.tagsUnavailable : nil
+        let failed = lookups.failed.contains(.tags)
+        let unavailable = failed ? QuickAddCopy.tagsUnavailable : nil
+        let ofKind = lookups.tags.contains { $0.kind == draft.type?.value }
+        let emptyNote = failed || ofKind ? nil : draft.type.map { QuickAddCopy.noTags(for: $0.value) }
         guard let tag = draft.tag else {
             return QuickAddReviewRow(
                 field: .tag, label: "Categoria", value: "sem categoria",
-                spokenValue: "sem categoria", color: nil, provenance: nil, isWeak: true, unavailable: unavailable
+                spokenValue: "sem categoria", color: nil, provenance: nil, isWeak: true,
+                unavailable: unavailable, emptyNote: emptyNote
             )
         }
         let found = lookups.tags.first { $0.id == tag.value }
-        let name = found?.name ?? "sem categoria"
+        let name = found?.name ?? QuickAddCopy.tagNotLoaded
         return QuickAddReviewRow(
             field: .tag, label: "Categoria", value: name, spokenValue: name, color: found?.color,
-            provenance: tag.provenance, isWeak: false, unavailable: unavailable
+            provenance: tag.provenance, isWeak: false, unavailable: unavailable, emptyNote: emptyNote
         )
     }
 

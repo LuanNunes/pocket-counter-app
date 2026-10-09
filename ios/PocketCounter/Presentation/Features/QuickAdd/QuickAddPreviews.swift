@@ -47,14 +47,13 @@ enum QuickAddPreviewData {
 
 private struct QuickAddPreviewHost: View {
     let state: QuickAddModel.State
-    var receipt: TransactionEntry?
     @State private var answer = ""
     @State private var opened: QuickAddReviewRow.Field?
 
     var body: some View {
         Color.clear.sheet(isPresented: .constant(true)) {
             QuickAddContent(
-                state: state, receipt: receipt, today: QuickAddPreviewData.today,
+                state: state, today: QuickAddPreviewData.today,
                 answer: $answer, opened: $opened, onAction: { _ in }
             )
             .presentationDetents([.large])
@@ -84,6 +83,8 @@ private struct QuickAddPreviewHost: View {
 }
 
 #Preview("Recibo") {
-    QuickAddPreviewHost(state: QuickAddPreviewData.state(.saved), receipt: QuickAddPreviewData.entry)
+    if let entry = QuickAddPreviewData.entry {
+        QuickAddPreviewHost(state: QuickAddPreviewData.state(.saved(entry)))
+    }
 }
 #endif
