@@ -365,28 +365,61 @@ struct QuickAddModelTests {
         #expect(log.entries.count == 1)
     }
 
-    @Test("pressing Lançar twice while the write is in flight writes once")
-    func doubleTap() async {
-        let gate = WriteGate()
-        let count = WriteCount()
-        let model = QuickAddModel(
+    private func settle() async {
+        for _ in 0..<50 { await Task.yield() }
+    }
+
+    private func gatedModel(duplicateFirst: Bool, gate: WriteGate, count: WriteCount) -> QuickAddModel {
+        QuickAddModel(
             read: { _, _ throws(ReadingFailure) in SentenceOpening(reading: .fixture(), lookups: .fixture()) },
             create: { _ throws(WriteFailure) in
-                count.increment()
+                let call = count.increment()
+                if duplicateFirst && call == 1 { throw .duplicate("Já existe") }
                 await gate.wait()
             },
             today: day
         )
+    }
+
+    @Test("pressing Lançar twice while the write is in flight writes once")
+    func doubleTap() async {
+        let gate = WriteGate()
+        let count = WriteCount()
+        let model = gatedModel(duplicateFirst: false, gate: gate, count: count)
         model.type("gastei 250 numa consulta")
         await model.send()
 
         async let first: Void = model.save()
-        await Task.yield()
-        await model.save()
+        await count.reached(1)
+        async let second: Void = model.save()
+        await settle()
         gate.open()
         await first
+        await second
 
         #expect(count.value == 1)
+        #expect(model.state.stage == .saved)
+    }
+
+    @Test("pressing Lançar mesmo assim twice while the write is in flight writes once more")
+    func doubleTapInsist() async {
+        let gate = WriteGate()
+        let count = WriteCount()
+        let model = gatedModel(duplicateFirst: true, gate: gate, count: count)
+        model.type("gastei 250 numa consulta")
+        await model.send()
+        await model.save()
+        #expect(model.state.duplicate == "Já existe")
+
+        async let first: Void = model.saveAnyway()
+        await count.reached(2)
+        async let second: Void = model.saveAnyway()
+        await settle()
+        gate.open()
+        await first
+        await second
+
+        #expect(count.value == 2)
         #expect(model.state.stage == .saved)
     }
 }
@@ -408,19 +441,27 @@ final class WriteCount: @unchecked Sendable {
 
     var value: Int { lock.withLock { count } }
 
-    func increment() { lock.withLock { count += 1 } }
+    func reached(_ target: Int) async {
+        for _ in 0..<1000 {
+            guard value < target else { return }
+            await Task.yield()
+        }
+    }
+
+    @discardableResult
+    func increment() -> Int { lock.withLock { count += 1; return count } }
 }
 
 final class WriteGate: @unchecked Sendable {
     private let lock = NSLock()
     private var opened = false
-    private var waiter: CheckedContinuation<Void, Never>?
+    private var waiters: [CheckedContinuation<Void, Never>] = []
 
     func wait() async {
         await withCheckedContinuation { continuation in
             let resume = lock.withLock { () -> Bool in
                 guard !opened else { return true }
-                waiter = continuation
+                waiters.append(continuation)
                 return false
             }
             if resume { continuation.resume() }
@@ -428,12 +469,12 @@ final class WriteGate: @unchecked Sendable {
     }
 
     func open() {
-        let pending = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+        let pending = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
             opened = true
-            defer { waiter = nil }
-            return waiter
+            defer { waiters = [] }
+            return waiters
         }
-        pending?.resume()
+        pending.forEach { $0.resume() }
     }
 }
 
