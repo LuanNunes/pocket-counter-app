@@ -40,12 +40,39 @@ struct ReadingDraft: Hashable, Sendable {
     func settingType(_ value: TransactionType) -> ReadingDraft { changing { $0.type = .defined(value) } }
     func settingAmount(_ value: Money) -> ReadingDraft { changing { $0.amount = .defined(value) } }
     func settingDate(_ value: CalendarDay) -> ReadingDraft { changing { $0.date = .defined(value) } }
-    func settingCard(_ value: CardCandidate) -> ReadingDraft { changing { $0.card = .defined(value) } }
     func settingTag(_ value: TagID?) -> ReadingDraft { changing { $0.tag = value } }
     func skippingCard() -> ReadingDraft { changing { $0.cardSkipped = true } }
 
+    /// Naming a card is naming credit: the server treats a row as a card charge only when the
+    /// method is CREDIT, so a card under any other method is neither a charge nor a clean row.
+    func settingCard(_ value: CardCandidate) -> ReadingDraft {
+        changing {
+            $0.card = .defined(value)
+            $0.paymentMethod = .defined(.credit)
+        }
+    }
+
+    /// The same invariant, read backwards.
     func settingPaymentMethod(_ value: PaymentMethod?) -> ReadingDraft {
-        changing { $0.paymentMethod = value.map(DraftField.defined) }
+        changing {
+            $0.paymentMethod = value.map(DraftField.defined)
+            guard value != .credit else { return }
+            $0.card = nil
+        }
+    }
+
+    /// `nil` on two grounds: one of the three required fields is absent, or `TransactionEntry`
+    /// refuses what is there. Deliberately not asking `nextQuestion`: `pending` is what the
+    /// server said was missing, and a total function cannot depend on that word.
+    ///
+    /// The card travels whenever it is *present* — not when its provenance is `.defined`. A card
+    /// the sentence named carries `.fromSentence`, and dropping it would lose what the user wrote.
+    func confirmed() -> TransactionEntry? {
+        guard let type, let amount, let name else { return nil }
+        return TransactionEntry(
+            type: type.value, amount: amount.value, date: date.value, name: name.value,
+            paymentMethod: paymentMethod?.value, card: card?.value.id, tag: tag
+        )
     }
 
     /// Blank clears it: a name of spaces does not name the row.

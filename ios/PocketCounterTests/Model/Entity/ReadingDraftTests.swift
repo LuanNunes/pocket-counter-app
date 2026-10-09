@@ -185,4 +185,59 @@ struct ReadingDraftTests {
         #expect(draft.settingTag(.of("g2")).tag == .of("g2"))
         #expect(draft.settingTag(nil).tag == nil)
     }
+
+    @Test("a draft with type, amount and name confirms even while the server still lists questions")
+    func confirmsWithPendingQuestions() throws {
+        let draft = ReadingDraft(.fixture(missing: [.card]))
+
+        let entry = try #require(draft.confirmed())
+
+        #expect(entry.type == .expense)
+        #expect(entry.amount == Money(250))
+        #expect(entry.name == "Consulta do cachorro")
+    }
+
+    @Test("a draft missing what the server requires does not confirm", arguments: [
+        SentenceReading.fixture(type: nil),
+        SentenceReading.fixture(amount: nil),
+        SentenceReading.fixture(name: nil),
+    ])
+    func doesNotConfirm(reading: SentenceReading) {
+        #expect(ReadingDraft(reading).confirmed() == nil)
+    }
+
+    @Test("a name of only whitespace leaves the draft unconfirmable")
+    func blankNameUnconfirms() {
+        #expect(ReadingDraft(.fixture()).settingName("   ").confirmed() == nil)
+    }
+
+    // A card the sentence named carries .fromSentence, not .defined.
+    @Test("a card the sentence named travels too, not only one the user picked")
+    func resolvedCardTravels() throws {
+        let draft = ReadingDraft(
+            .fixture(
+                paymentMethod: Sourced(value: .credit, source: .written),
+                card: .resolved(Sourced(value: .fixture("k1", "Nubank"), source: .written))
+            )
+        )
+
+        #expect(draft.card?.provenance == .fromSentence)
+        #expect(try #require(draft.confirmed()).card == CardID(rawValue: "k1"))
+    }
+
+    @Test("naming a card is naming credit")
+    func cardImpliesCredit() {
+        let draft = ReadingDraft(.fixture()).settingCard(.fixture())
+
+        #expect(draft.paymentMethod?.value == .credit)
+        #expect(draft.confirmed()?.card == CardID(rawValue: "k1"))
+    }
+
+    @Test("leaving credit drops the card, so no row carries one without it")
+    func nonCreditDropsCard() {
+        let draft = ReadingDraft(.fixture()).settingCard(.fixture()).settingPaymentMethod(.pix)
+
+        #expect(draft.card == nil)
+        #expect(draft.confirmed()?.card == nil)
+    }
 }
