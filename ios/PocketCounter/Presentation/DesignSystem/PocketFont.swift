@@ -42,6 +42,10 @@ enum PocketFont {
     /// `.sec-h` — 20/700, -0.02em
     static let sectionTitle = PocketTextStyle(.system(.title3, weight: .bold), tracking: -0.4)
 
+    /// Symbols inside a chip, sized against its `link` text.
+    static let chipGlyph = PocketTextStyle(.system(.footnote))
+    static let chipGlyphEmphasis = PocketTextStyle(.system(.footnote, weight: .bold))
+
     /// `.sec-h .lnk` — 15/500
     static let link = PocketTextStyle(.system(.subheadline, weight: .medium))
 
@@ -105,6 +109,15 @@ enum PocketFont {
 
     /// `chevron.down` in a group header, 14pt.
     static let groupChevron = PocketTextStyle(.system(.footnote, weight: .semibold))
+
+    /// `.qa-field textarea` — 20, -0.01em
+    static let entry = PocketTextStyle(.system(.title3), tracking: -0.2)
+
+    /// `.qa-rv` — 17/500
+    static let fieldValue = PocketTextStyle(.system(.body, weight: .medium), tracking: -0.17)
+
+    /// `.qa-q` — 22/700, -0.02em
+    static let question = PocketTextStyle(.system(.title2, weight: .bold), tracking: -0.44)
 
     /// The 28pt symbol that opens a full-screen notice. `.title` *is* 28pt, and scales.
     static let notice = PocketTextStyle(.system(.title, weight: .semibold))

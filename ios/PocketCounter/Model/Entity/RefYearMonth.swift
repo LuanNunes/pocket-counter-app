@@ -13,7 +13,14 @@ struct RefYearMonth: Hashable, Comparable, Sendable {
     var month: Int { raw % 100 }
 
     static var current: RefYearMonth {
-        containing(.now)
+        current()
+    }
+
+    /// Always Gregorian: the backend computes `refYearMonth` in Gregorian terms whatever calendar the user reads.
+    static func current(in timeZone: TimeZone = .current, now: Date = .now) -> RefYearMonth {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return containing(now, calendar: calendar)
     }
 
     init(year: Int, month: Int) throws {

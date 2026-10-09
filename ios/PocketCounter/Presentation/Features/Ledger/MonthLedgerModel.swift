@@ -90,6 +90,11 @@ final class MonthLedgerModel {
             writes.dropReorder(ReorderKey(ref: ref, kind: kind))
         }
 
+        /// Keeps the displayed month, which the caller refreshes at once: no flash of skeleton.
+        mutating func dropMonths(except ref: RefYearMonth) {
+            months = months.filter { $0.key == ref }
+        }
+
         mutating func beginLoading(_ ref: RefYearMonth) {
             months[ref, default: LoadState()].beginLoading()
         }
@@ -171,6 +176,14 @@ final class MonthLedgerModel {
         await request()
     }
 
+    /// For a write whose month the client cannot know (a card charge files under the statement's
+    /// month, which the server decides): every other cached month is stale, and `load()` never refetches one.
+    func invalidateAndRefresh() async {
+        stopInFlight()
+        state.dropMonths(except: state.month)
+        await refresh()
+    }
+
     func cancel() {
         stopInFlight()
     }
@@ -191,7 +204,7 @@ final class MonthLedgerModel {
             case .sessionExpired:
                 state.dropStatus(item.id)
                 await onSessionExpired()
-            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
+            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .duplicate, .server:
                 state.failStatus(item.id, ref: item.ref, error)
             }
         }
@@ -209,7 +222,7 @@ final class MonthLedgerModel {
             case .sessionExpired:
                 state.dropIntent(item.id)
                 await onSessionExpired()
-            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
+            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .duplicate, .server:
                 state.failIntent(item.id, ref: item.ref, error)
             }
             return
@@ -237,7 +250,7 @@ final class MonthLedgerModel {
                 return
             case .vanished:
                 break // DELETE is idempotent: a row already gone is the outcome the user asked for.
-            case .authenticationUnavailable, .unreachable, .rejected, .server:
+            case .authenticationUnavailable, .unreachable, .rejected, .duplicate, .server:
                 state.failIntent(item.id, ref: item.ref, error)
                 return
             }
@@ -262,7 +275,7 @@ final class MonthLedgerModel {
                 state.dropReorder(ref, kind: kind)
                 await onSessionExpired()
                 return
-            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
+            case .authenticationUnavailable, .unreachable, .vanished, .rejected, .duplicate, .server:
                 break
             }
             // A partial reorder may have committed; the reload is the only way to see how much.

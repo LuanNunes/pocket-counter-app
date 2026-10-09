@@ -47,13 +47,38 @@ struct WriteFailureTranslationTests {
 
     @Test("every other status, a decoding failure and an invalid request are server failures", arguments: [
         APIError.status(code: 500, server: nil),
-        .status(code: 409, server: nil),
         .status(code: 502, server: nil),
         .decoding(endpoint: "/x", underlying: "bad"),
         .invalidRequest("bad"),
     ])
     func server(error: APIError) {
         #expect(WriteFailure(error) == .server)
+    }
+
+    @Test("a 409 is the server naming an existing row, not a server failure")
+    func duplicate() {
+        let sentence = "Já existe Consulta do cachorro em 07/10/2026 no valor de 250.00"
+
+        #expect(
+            WriteFailure(status(409, details: ["7f3a1c2e-0000-4000-8000-000000000001"], message: sentence))
+                == .duplicate(sentence)
+        )
+    }
+
+    @Test("a 409 with no body still carries a sentence")
+    func duplicateWithoutBody() {
+        #expect(
+            WriteFailure(APIError.status(code: 409, server: nil))
+                == .duplicate("Já existe um lançamento igual neste mês")
+        )
+    }
+
+    @Test("a 409's details hold the existing row's id, which is never shown")
+    func duplicateIgnoresDetails() {
+        #expect(
+            WriteFailure(status(409, details: ["7f3a1c2e-0000-4000-8000-000000000001"]))
+                == .duplicate("Já existe um lançamento igual neste mês")
+        )
     }
 
     @Test("a decoding failure logs the endpoint it came from")

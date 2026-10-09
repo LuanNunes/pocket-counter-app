@@ -3,10 +3,11 @@ import SwiftUI
 struct HomeView: View {
     let summary: HomeSummary
     let onAction: (HomeAction) -> Void
+    let onQuickAdd: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            QuickAddHomeField()
+            QuickAddHomeField(onOpen: onQuickAdd)
             HomeHeroCard(summary: summary)
             HomeTiles(summary: summary, onAction: onAction)
                 .padding(.vertical, PocketMetrics.tilesMarginV)
@@ -59,7 +60,7 @@ private enum HomePreview {
         NavigationStack {
             Screen(title: "Início") {
                 LoadRegion(phase: phase, placeholder: { .placeholder(for: ref) }, onRetry: {}) { value in
-                    HomeView(summary: .from(value), onAction: { _ in })
+                    HomeView(summary: .from(value), onAction: { _ in }, onQuickAdd: {})
                 }
             }
         }

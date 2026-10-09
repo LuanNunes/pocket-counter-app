@@ -8,6 +8,8 @@ struct FakeTransactionRepository: TransactionRepository {
     var invoiceItemsResult: Result<[InvoiceItem], LoadFailure> = .success([])
     var writeResult: Result<Void, WriteFailure> = .success(())
     var deleteResult: Result<Void, WriteFailure> = .success(())
+    var createResult: Result<Void, WriteFailure> = .success(())
+    var created = CreatedEntryLog()
     var writes = StatusWriteLog()
     var rendezvous: Rendezvous?
     var writeRendezvous: Rendezvous?
@@ -37,6 +39,12 @@ struct FakeTransactionRepository: TransactionRepository {
     }
 
     func reorder(_ ids: [TransactionID]) async throws(WriteFailure) {}
+
+    func create(_ entry: TransactionEntry) async throws(WriteFailure) {
+        created.record(entry)
+        await writeRendezvous?.arrive()
+        try createResult.get()
+    }
 }
 
 final class StatusWriteLog: @unchecked Sendable {
@@ -52,5 +60,16 @@ final class StatusWriteLog: @unchecked Sendable {
 
     func record(_ id: TransactionID, _ status: PaymentStatus) {
         lock.withLock { recorded.append(Call(id: id, status: status)) }
+    }
+}
+
+final class CreatedEntryLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [TransactionEntry] = []
+
+    var entries: [TransactionEntry] { lock.withLock { recorded } }
+
+    func record(_ entry: TransactionEntry) {
+        lock.withLock { recorded.append(entry) }
     }
 }

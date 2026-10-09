@@ -53,6 +53,11 @@ enum PocketFormat {
         "\(day.day) de \(monthLabel(year: day.year, month: day.month))"
     }
 
+    /// `07/10`, the review's compact day (`quickadd.jsx`'s `ddmm`).
+    static func shortDay(_ day: CalendarDay) -> String {
+        String(format: "%02d/%02d", day.day, day.month)
+    }
+
     /// The standalone form, which the month pill capitalises (`store.jsx:7-8`).
     static func monthName(_ ref: RefYearMonth, capitalized: Bool) -> String {
         let name = monthNames[ref.month - 1].lowercased(with: locale)

@@ -76,11 +76,11 @@ struct PocketRow<Leading: View, Trailing: View>: View {
             leading
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(title)
+                Text(verbatim: title)
                     .pocketFont(PocketFont.body)
 
                 if let subtitle {
-                    Text(subtitle)
+                    Text(verbatim: subtitle)
                         .pocketFont(PocketFont.caption)
                         .foregroundStyle(PocketColor.labelSecondary)
                 }
