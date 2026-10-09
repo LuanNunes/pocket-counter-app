@@ -3,7 +3,7 @@ import SwiftUI
 struct HomeScreen: View {
     let ledger: MonthLedgerModel
     let onSelectTab: SelectTabAction
-    let quickAdd: @MainActor () -> QuickAddModel?
+    let quickAdd: @MainActor () -> QuickAddModel
 
     @State private var sheet: QuickAddModel?
     @State private var dismissed: QuickAddModel?

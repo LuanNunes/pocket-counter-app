@@ -45,6 +45,14 @@ struct CalendarDay: Hashable, Comparable, Sendable, Codable {
         )
     }
 
+    /// Always Gregorian: the backend speaks Gregorian ISO dates whatever calendar the user reads.
+    static func today(in timeZone: TimeZone = .current, now: Date = .now) -> CalendarDay {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        return CalendarDay(unchecked: parts.year ?? 1970, parts.month ?? 1, parts.day ?? 1)
+    }
+
     /// Noon, not midnight: midnight does not exist on some zones' daylight-saving days.
     func date(in timeZone: TimeZone) throws -> Date {
         var calendar = Calendar(identifier: .gregorian)

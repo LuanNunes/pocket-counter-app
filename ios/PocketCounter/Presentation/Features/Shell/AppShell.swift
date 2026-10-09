@@ -8,7 +8,7 @@ struct AppShell: View {
     let onSignOut: () -> Void
 
     @State private var ledger: MonthLedgerModel
-    private let quickAdd: @MainActor () -> QuickAddModel?
+    private let quickAdd: @MainActor () -> QuickAddModel
     @State private var tab: TabRoute = .inicio
 
     init(
@@ -24,8 +24,7 @@ struct AppShell: View {
         let read = container.readSentence
         let create = container.createTransaction
         quickAdd = {
-            guard let today = try? CalendarDay.containing(.now) else { return nil }
-            return QuickAddModel(read: read, create: create, today: today)
+            QuickAddModel(read: read, create: create, today: .today())
         }
         _ledger = State(wrappedValue: MonthLedgerModel(
             loadMonth: container.loadMonth, setPaymentStatus: container.setPaymentStatus,
