@@ -177,12 +177,20 @@ struct ReadingDraftTests {
         #expect(draft.paymentMethod == nil)
     }
 
-    @Test("the suggested tag can be set and cleared")
-    func tag() {
+    @Test("a suggested tag is the server's inference, not the user's words")
+    func suggestedTag() {
         let draft = ReadingDraft(.fixture(tag: .of("g1")))
 
-        #expect(draft.tag == .of("g1"))
-        #expect(draft.settingTag(.of("g2")).tag == .of("g2"))
+        #expect(draft.tag?.value == .of("g1"))
+        #expect(draft.tag?.provenance == .assumed)
+    }
+
+    @Test("a chosen tag is defined, and can be cleared")
+    func chosenTag() {
+        let draft = ReadingDraft(.fixture(tag: .of("g1")))
+
+        #expect(draft.settingTag(.of("g2")).tag?.value == .of("g2"))
+        #expect(draft.settingTag(.of("g2")).tag?.provenance == .defined)
         #expect(draft.settingTag(nil).tag == nil)
     }
 

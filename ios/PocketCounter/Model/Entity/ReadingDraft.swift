@@ -9,7 +9,7 @@ struct ReadingDraft: Hashable, Sendable {
     private(set) var name: DraftField<String>?
     private(set) var paymentMethod: DraftField<PaymentMethod>?
     private(set) var card: DraftField<CardCandidate>?
-    private(set) var tag: TagID?
+    private(set) var tag: DraftField<TagID>?
     private(set) var cardChoices: [CardCandidate]
     private(set) var cardSkipped = false
     let cardReading: CardReading
@@ -21,7 +21,8 @@ struct ReadingDraft: Hashable, Sendable {
         date = DraftField(reading.date)
         name = reading.name.map(DraftField.init)
         paymentMethod = reading.paymentMethod.map(DraftField.init)
-        tag = reading.tag
+        // The server sends no `source.tag`: a suggested tag is its inference, so `.fromSentence` would lie.
+        tag = reading.tag.map { DraftField(value: $0, provenance: .assumed) }
         pending = reading.missing
         cardReading = reading.card
         switch reading.card {
@@ -40,7 +41,7 @@ struct ReadingDraft: Hashable, Sendable {
     func settingType(_ value: TransactionType) -> ReadingDraft { changing { $0.type = .defined(value) } }
     func settingAmount(_ value: Money) -> ReadingDraft { changing { $0.amount = .defined(value) } }
     func settingDate(_ value: CalendarDay) -> ReadingDraft { changing { $0.date = .defined(value) } }
-    func settingTag(_ value: TagID?) -> ReadingDraft { changing { $0.tag = value } }
+    func settingTag(_ value: TagID?) -> ReadingDraft { changing { $0.tag = value.map(DraftField.defined) } }
     func skippingCard() -> ReadingDraft { changing { $0.cardSkipped = true } }
 
     /// Naming a card is naming credit: the server treats a row as a card charge only when the
@@ -67,7 +68,7 @@ struct ReadingDraft: Hashable, Sendable {
         guard let type, let amount, let name else { return nil }
         return TransactionEntry(
             type: type.value, amount: amount.value, date: date.value, name: name.value,
-            paymentMethod: paymentMethod?.value, card: card?.value.id, tag: tag
+            paymentMethod: paymentMethod?.value, card: card?.value.id, tag: tag?.value
         )
     }
 
