@@ -66,7 +66,7 @@ struct TransactionDetailTests {
         var state = await loadedState()
         let retagged = HistoryItem.fixture(id: "rent", tagIds: [.of("b")], seriesId: "s1", name: "Aluguel")
 
-        state.commit(MonthLedger(ref: october, items: [retagged], lookups: lookups), for: october)
+        state.commit(MonthLedger(ref: october, items: [retagged], lookups: lookups), for: october, at: state.writes.revision)
 
         let detail = try #require(detail(.of(target, in: state)))
         #expect(detail.tags.map(\.name) == ["Casa"])

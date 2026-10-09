@@ -16,7 +16,7 @@ final class MonthLedgerModel {
     struct State: Equatable {
         let window: MonthWindow
         var month: RefYearMonth
-        fileprivate(set) var months: [RefYearMonth: LoadState<MonthLedger>] = [:]
+        private(set) var months: [RefYearMonth: LoadState<MonthLedger>] = [:]
         fileprivate(set) var writes = LedgerWrites()
 
         var load: LoadState<MonthLedger> {
@@ -33,18 +33,21 @@ final class MonthLedgerModel {
             self.month = month
         }
 
-        func holdsCommittedItem(_ id: TransactionID, in ref: RefYearMonth) -> Bool {
-            months[ref]?.value?.items.contains { $0.id == id } ?? false
+        /// `months` holds only what the server said; this is what the screen shows.
+        func ledger(for ref: RefYearMonth) -> MonthLedger? {
+            months[ref]?.value.map(writes.overlaying)
+        }
+
+        func holdsRow(_ id: TransactionID, in ref: RefYearMonth) -> Bool {
+            ledger(for: ref)?.items.contains { $0.id == id } ?? false
         }
 
         mutating func beginStatus(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
             writes.beginStatus(id, ref: ref, target: target)
         }
 
-        /// Promotes and clears in one mutation, so no render sees the overlay gone and the ledger not yet updated.
         mutating func completeWrite(_ id: TransactionID, ref: RefYearMonth, target: PaymentStatus) {
-            months[ref]?.amend { $0.applying([id: target]) }
-            writes.dropStatus(id)
+            writes.settleStatus(id, ref: ref, target: target)
         }
 
         mutating func failStatus(_ id: TransactionID, ref: RefYearMonth, _ failure: WriteFailure) {
@@ -68,32 +71,41 @@ final class MonthLedgerModel {
         }
 
         mutating func completeDeletion(_ id: TransactionID, ref: RefYearMonth) {
-            months[ref]?.amend { $0.removing(id) }
-            writes.forget(id)
+            writes.settleDeletion(id, ref: ref)
         }
 
-        /// Projects into the committed ledger, like a deletion: no row owns a reorder.
-        /// A fresh attempt supersedes the old notice: the order on screen is the new one.
-        mutating func beginReorder(_ ref: RefYearMonth, order: [TransactionID]) {
-            months[ref]?.amend { $0.reordering(order) }
-            writes.dropReorder()
+        mutating func beginReorder(_ ref: RefYearMonth, kind: TransactionType, order: [TransactionID]) {
+            writes.recordReorder(ReorderKey(ref: ref, kind: kind), order: order)
         }
 
-        mutating func revertReorder(_ ref: RefYearMonth, to order: [TransactionID]) {
-            months[ref]?.amend { $0.reordering(order) }
+        mutating func settleReorder(_ ref: RefYearMonth, kind: TransactionType) {
+            writes.settleReorder(ReorderKey(ref: ref, kind: kind))
         }
 
         mutating func failReorder(_ ref: RefYearMonth, kind: TransactionType, _ failure: WriteFailure) {
-            writes.failReorder(ref, kind: kind, failure)
+            writes.failReorder(ReorderKey(ref: ref, kind: kind), failure)
         }
 
-        mutating func dropReorder() {
-            writes.dropReorder()
+        mutating func dropReorder(_ ref: RefYearMonth, kind: TransactionType) {
+            writes.dropReorder(ReorderKey(ref: ref, kind: kind))
         }
 
-        mutating func commit(_ ledger: MonthLedger, for ref: RefYearMonth) {
+        mutating func beginLoading(_ ref: RefYearMonth) {
+            months[ref, default: LoadState()].beginLoading()
+        }
+
+        mutating func fail(_ failure: LoadFailure, for ref: RefYearMonth) {
+            months[ref, default: LoadState()].fail(failure)
+        }
+
+        mutating func abandon(_ ref: RefYearMonth) {
+            months[ref, default: LoadState()].abandon()
+        }
+
+        /// The only way a ledger enters `months`. `revision` is what `writes` held when the request was issued.
+        mutating func commit(_ ledger: MonthLedger, for ref: RefYearMonth, at revision: Int) {
             months[ref, default: LoadState()].commit(ledger)
-            writes.answered(for: ref)
+            writes.answered(for: ref, at: revision)
         }
     }
 
@@ -167,7 +179,7 @@ final class MonthLedgerModel {
     /// Async and spawning no `Task`: the view wraps it.
     func togglePaymentStatus(of item: HistoryItem) async {
         // A redacted placeholder row carries the real handler; this stops its tap.
-        guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
+        guard state.holdsRow(item.id, in: item.ref) else { return }
         guard !state.writes.isWriting(item.id) else { return }
         let target: PaymentStatus = item.statusPayment == .paid ? .pending : .paid
         state.beginStatus(item.id, ref: item.ref, target: target)
@@ -187,7 +199,7 @@ final class MonthLedgerModel {
 
     /// Takes the row as displayed. Async and spawning no `Task`, like `delete`.
     func toggleFixo(of item: HistoryItem) async {
-        guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
+        guard state.holdsRow(item.id, in: item.ref) else { return }
         guard !state.writes.isWriting(item.id) else { return }
         state.beginIntent(item.id, ref: item.ref, target: .fixo(!item.isFixo))
         do {
@@ -212,7 +224,7 @@ final class MonthLedgerModel {
 
     /// Async and spawning no `Task`: the view wraps it, so dismissing the sheet cannot cancel it.
     func delete(_ item: HistoryItem) async {
-        guard state.holdsCommittedItem(item.id, in: item.ref) else { return }
+        guard state.holdsRow(item.id, in: item.ref) else { return }
         guard !state.writes.isWriting(item.id) else { return }
         state.beginIntent(item.id, ref: item.ref, target: .deletion)
         do {
@@ -236,18 +248,18 @@ final class MonthLedgerModel {
     /// `group` is the rows as dragged, in their new order. Async and spawning no `Task`, like `delete`.
     /// Does not consult `isWriting`: a reorder belongs to no row, and `displayOrder` is disjoint from every row write.
     func reorder(_ group: [TransactionID], of kind: TransactionType, in ref: RefYearMonth) async {
-        guard let ledger = state.months[ref]?.value else { return }
+        guard let ledger = state.ledger(for: ref) else { return }
         let all = ledger.items.filter { $0.type == kind }.map(\.id)
         let order = LedgerReorder.placing(group, into: all)
         guard order != all else { return }
-        // A commit from a load already in flight can overwrite this; the next load reconciles.
-        state.beginReorder(ref, order: order)
+        state.beginReorder(ref, kind: kind, order: order)
         do {
             try await reorderTransactions(order)
+            state.settleReorder(ref, kind: kind)
         } catch {
             switch error {
             case .sessionExpired:
-                state.dropReorder()
+                state.dropReorder(ref, kind: kind)
                 await onSessionExpired()
                 return
             case .authenticationUnavailable, .unreachable, .vanished, .rejected, .server:
@@ -255,7 +267,8 @@ final class MonthLedgerModel {
             }
             // A partial reorder may have committed; the reload is the only way to see how much.
             // Recorded after it: the reload's own answer would clear the notice.
-            if state.month == ref { await refresh() } else { state.revertReorder(ref, to: all) }
+            state.dropReorder(ref, kind: kind)
+            if state.month == ref { await refresh() }
             state.failReorder(ref, kind: kind, error)
         }
     }
@@ -263,11 +276,12 @@ final class MonthLedgerModel {
     private func request() async {
         let ref = state.month
         stopInFlight()
-        state.months[ref, default: LoadState()].beginLoading()
+        state.beginLoading(ref)
         requestCount += 1
         let request = requestCount
+        let answered = state.writes.revision
         latestRequest[ref] = request
-        let task = Task { await perform(ref, request: request) }
+        let task = Task { await perform(ref, request: request, answering: answered) }
         inFlight = (ref, task)
         await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
         guard inFlight?.task == task else { return }
@@ -279,29 +293,29 @@ final class MonthLedgerModel {
         inFlight = nil
         current.task.cancel()
         latestRequest[current.ref] = nil
-        state.months[current.ref]?.abandon()
+        state.abandon(current.ref)
     }
 
     /// Writes by the month that was asked for, never by `state.month`, which may have moved on.
     /// A superseded request for the same month writes nothing.
-    private func perform(_ ref: RefYearMonth, request: Int) async {
+    private func perform(_ ref: RefYearMonth, request: Int, answering revision: Int) async {
         do {
             let ledger = try await loadMonth(ref)
             guard latestRequest[ref] == request else { return }
             guard ledger.ref == ref else {
-                state.months[ref, default: LoadState()].fail(.server)
+                state.fail(.server, for: ref)
                 return
             }
-            state.commit(ledger, for: ref)
+            state.commit(ledger, for: ref, at: revision)
         } catch {
             let isLatest = latestRequest[ref] == request
             switch error {
             case .sessionExpired:
-                if isLatest { state.months[ref, default: LoadState()].abandon() }
+                if isLatest { state.abandon(ref) }
                 await onSessionExpired()
             case .abandoned, .authenticationUnavailable, .unreachable, .notFound, .rejected, .server:
                 guard isLatest else { return }
-                state.months[ref, default: LoadState()].fail(error)
+                state.fail(error, for: ref)
             }
         }
     }

@@ -85,15 +85,16 @@ struct MonthLedgerStateWritesTests {
         #expect(after.pendingCount == before.pendingCount - 1)
     }
 
-    @Test("completing promotes the target into the ledger and clears the overlay in one step")
+    @Test("completing settles the overlay and leaves the server's answer as it was")
     func complete() async {
         var state = await loadedModel().state
         state.beginStatus(rent.id, ref: october, target: .paid)
 
         state.completeWrite(rent.id, ref: october, target: .paid)
 
-        #expect(state.writes.statuses.isEmpty)
-        #expect(state.months[october]?.value?.items.first { $0.id == rent.id }?.statusPayment == .paid)
+        #expect(state.writes.statuses[rent.id] == PaymentStatusWrite(ref: october, phase: .settled(.paid)))
+        #expect(state.months[october]?.value?.items.first { $0.id == rent.id }?.statusPayment == .pending)
+        #expect(state.load.value?.items.first { $0.id == rent.id }?.statusPayment == .paid)
     }
 
     @Test("completing leaves a pending refresh and a standing failure alone")
@@ -151,7 +152,7 @@ struct MonthLedgerStateWritesTests {
         state.beginStatus(other, ref: november, target: .paid)
         state.failStatus(other, ref: november, .server)
 
-        state.commit(ledger(october, rent, gym, salary), for: october)
+        state.commit(ledger(october, rent, gym, salary), for: october, at: state.writes.revision)
 
         #expect(state.writes.statuses == [
             rent.id: PaymentStatusWrite(ref: october, phase: .inFlight(.paid)),
@@ -179,22 +180,22 @@ struct MonthLedgerStateWritesTests {
         let extra = HistoryItem.fixture(id: "extra", amount: -5, statusPayment: .pending)
         state.beginStatus(rent.id, ref: october, target: .paid)
 
-        state.commit(ledger(october, rent, extra), for: october)
+        state.commit(ledger(october, rent, extra), for: october, at: state.writes.revision)
 
         #expect(state.load.value == ledger(october, rent.settingPaymentStatus(.paid), extra))
     }
 
-    @Test("only a committed item of that month counts as held")
-    func holdsCommittedItem() async {
+    @Test("only a row of that month's overlaid ledger counts as held")
+    func holdsRow() async {
         let model = await loadedModel()
         let fresh = LedgerModelFixture.model(
             window: .around(october), month: october, loadMonth: source.action, onSessionExpired: expiry.action
         )
 
-        #expect(model.state.holdsCommittedItem(rent.id, in: october))
-        #expect(!model.state.holdsCommittedItem(rent.id, in: november))
-        #expect(!model.state.holdsCommittedItem(TransactionID(rawValue: "placeholder"), in: october))
-        #expect(!fresh.state.holdsCommittedItem(rent.id, in: october))
+        #expect(model.state.holdsRow(rent.id, in: october))
+        #expect(!model.state.holdsRow(rent.id, in: november))
+        #expect(!model.state.holdsRow(TransactionID(rawValue: "placeholder"), in: october))
+        #expect(!fresh.state.holdsRow(rent.id, in: october))
     }
 }
 
@@ -231,7 +232,7 @@ struct MonthLedgerToggleTests {
         await model.togglePaymentStatus(of: item)
 
         #expect(repository.writes.calls == [.init(id: item.id, status: expected)])
-        #expect(model.state.writes.statuses.isEmpty)
+        #expect(model.state.writes.statuses[item.id]?.phase == .settled(expected))
         #expect(status(of: item, in: model.state) == expected)
     }
 
@@ -261,7 +262,7 @@ struct MonthLedgerToggleTests {
         #expect(model.state.writes.statuses.isEmpty)
     }
 
-    @Test("a tap on a row the committed ledger does not hold sends nothing")
+    @Test("a tap on a row the overlaid ledger does not hold sends nothing")
     func placeholderTap() async {
         let repository = FakeTransactionRepository()
         let model = await model(repository)
@@ -288,7 +289,8 @@ struct MonthLedgerToggleTests {
         #expect(repository.writes.calls.count == 2)
         #expect(status(of: rent, in: model.state) == .paid)
         #expect(status(of: gym, in: model.state) == .paid)
-        #expect(model.state.writes.statuses.isEmpty)
+        #expect(model.state.writes.statuses[rent.id]?.phase == .settled(.paid))
+        #expect(model.state.writes.statuses[gym.id]?.phase == .settled(.paid))
     }
 
     @Test("an expired session signals once, records no row failure and leaves the ledger alone")
@@ -332,7 +334,7 @@ struct MonthLedgerToggleTests {
         model.select(october)
 
         #expect(status(of: rent, in: model.state) == .paid)
-        #expect(model.state.writes.statuses.isEmpty)
+        #expect(model.state.writes.statuses[rent.id]?.phase == .settled(.paid))
     }
 
     @Test("a refresh landing mid-flight yields the promoted value over the refreshed ledger")
@@ -350,7 +352,7 @@ struct MonthLedgerToggleTests {
         await write.value
 
         #expect(model.state.load.value == ledger(october, rent.settingPaymentStatus(.paid), gym, salary, extra))
-        #expect(model.state.writes.statuses.isEmpty)
+        #expect(model.state.writes.statuses[rent.id]?.phase == .settled(.paid))
     }
 
     @Test("a failure over a stale month keeps the stale notice and the loading flag")

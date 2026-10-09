@@ -27,7 +27,7 @@ struct MonthLedgerStateIntentsTests {
         return model
     }
 
-    @Test("an intent never reaches the committed ledger the screens share")
+    @Test("an in-flight intent never reaches the ledger the screens share")
     func notProjected() async {
         var state = await loadedModel().state
         let before = state.load
@@ -88,15 +88,16 @@ struct MonthLedgerStateIntentsTests {
         #expect(state.writes.intents.isEmpty)
     }
 
-    @Test("completing a deletion removes the row from its month and clears the intent")
+    @Test("completing a deletion hides the row from what the screen shows and remembers it as settled")
     func completeDeletion() async {
         var state = await loadedModel().state
         state.beginIntent(rent.id, ref: october, target: .deletion)
 
         state.completeDeletion(rent.id, ref: october)
 
-        #expect(state.writes.intents.isEmpty)
+        #expect(state.writes.intents[rent.id]?.phase == .settled(.deletion))
         #expect(state.load.value == ledger(october, gym, salary))
+        #expect(state.months[october]?.value == ledger(october, rent, gym, salary))
     }
 
     @Test("completing a deletion also clears a failed status write for that row")
@@ -151,7 +152,7 @@ struct MonthLedgerStateIntentsTests {
         state.beginIntent(otherIntent, ref: november, target: .deletion)
         state.failIntent(otherIntent, ref: november, .server)
 
-        state.commit(ledger(october, rent, gym, salary), for: october)
+        state.commit(ledger(october, rent, gym, salary), for: october, at: state.writes.revision)
 
         #expect(state.writes.statuses == [
             rent.id: PaymentStatusWrite(ref: october, phase: .inFlight(.paid)),

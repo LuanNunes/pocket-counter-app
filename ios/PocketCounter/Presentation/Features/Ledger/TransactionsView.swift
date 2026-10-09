@@ -282,9 +282,7 @@ enum TransactionsPreview {
 #Preview("Falha ao reordenar") {
     TransactionsPreview.screen(
         .loaded(TransactionsPreview.ledger()),
-        reorderNotice: ReorderNotice.message(
-            for: FailedReorder(ref: TransactionsPreview.ref, kind: .expense, failure: .unreachable),
-            month: TransactionsPreview.ref, kind: .expense))
+        reorderNotice: ReorderNotice.message(for: .unreachable))
 }
 
 #Preview("Carregando") { TransactionsPreview.screen(.firstLoad) }

@@ -11,6 +11,8 @@ private let market = HistoryItem.fixture(id: "market", amount: -30, displayOrder
 private let salary = HistoryItem.fixture(id: "salary", amount: 100, type: .income, displayOrder: 0)
 private let bonus = HistoryItem.fixture(id: "bonus", amount: 50, type: .income, displayOrder: 1)
 
+private let expense = ReorderKey(ref: october, kind: .expense)
+
 private func ids(_ items: HistoryItem...) -> [TransactionID] {
     items.map(\.id)
 }
@@ -29,6 +31,7 @@ private struct Harness {
     let expiry = ExpirySignal()
     let status: WriteProbe<TransactionID>
     let reorder: WriteProbe<[TransactionID]>
+    let delete = WriteProbe<TransactionID>()
 
     init(status: WriteProbe<TransactionID> = .init(), reorder: WriteProbe<[TransactionID]> = .init()) {
         self.status = status
@@ -37,10 +40,11 @@ private struct Harness {
 
     func model(loaded: Bool = true) async -> MonthLedgerModel {
         source.ledgers = [october: ledger(), november: ledger(november, [])]
-        let status = status, reorder = reorder
+        let status = status, reorder = reorder, delete = delete
         let model = LedgerModelFixture.model(
             window: .around(october), month: october, loadMonth: source.action,
             setPaymentStatus: { id, _ throws(WriteFailure) in try await status.run(id) },
+            deleteTransaction: { id throws(WriteFailure) in try await delete.run(id) },
             reorderTransactions: { ids throws(WriteFailure) in try await reorder.run(ids) },
             onSessionExpired: expiry.action
         )
@@ -62,7 +66,7 @@ struct MonthLedgerReorderTests {
         #expect(harness.reorder.calls == [ids(market, gym, rent)])
     }
 
-    @Test("the committed ledger shows the new order at once, dense within the kind, and the other kind is untouched")
+    @Test("the overlaid ledger shows the new order at once, dense within the kind, and the other kind is untouched")
     func optimistic() async {
         let harness = Harness(reorder: .init(rendezvous: Rendezvous()))
         let model = await harness.model()
@@ -75,7 +79,7 @@ struct MonthLedgerReorderTests {
         task.cancel()
     }
 
-    @Test("a success reloads nothing and records nothing")
+    @Test("a success reloads nothing, records no failure and remembers the order as settled")
     func success() async {
         let harness = Harness()
         let model = await harness.model()
@@ -83,7 +87,8 @@ struct MonthLedgerReorderTests {
         await model.reorder(ids(market, rent), of: .expense, in: october)
 
         #expect(harness.source.calls == [october])
-        #expect(model.state.writes.failedReorder == nil)
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == nil)
+        #expect(model.state.writes.reorders[expense] == ReorderWrite(order: ids(market, gym, rent), phase: .settled))
         #expect(expenses(model).map(\.id) == ids(market, gym, rent))
         #expect(harness.expiry.count == 0)
     }
@@ -120,7 +125,7 @@ struct MonthLedgerReorderTests {
 
         await model.reorder(ids(market, rent), of: .expense, in: october)
 
-        #expect(model.state.writes.failedReorder == FailedReorder(ref: october, kind: .expense, failure: failure))
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == failure)
         #expect(harness.source.calls == [october, october])
         #expect(model.state.load.phase == .loaded(ledger()))
         #expect(harness.expiry.count == 0)
@@ -131,16 +136,16 @@ struct MonthLedgerReorderTests {
         let harness = Harness(reorder: .init(.failure(.server)))
         let model = await harness.model()
         await model.reorder(ids(market, rent), of: .expense, in: october)
-        #expect(model.state.writes.failedReorder != nil)
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) != nil)
 
         harness.reorder.answer(.success(()))
         // The failed attempt reloaded, so the committed order is the server's again: repeat the move.
         await model.reorder(ids(market, rent), of: .expense, in: october)
 
-        #expect(model.state.writes.failedReorder == nil)
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == nil)
     }
 
-    @Test("a failure whose reload also fails leaves the month stale and the notice standing")
+    @Test("a failure whose reload also fails shows the last answer, stale, and keeps the notice")
     func reloadFails() async {
         let harness = Harness(reorder: .init(.failure(.server)))
         let model = await harness.model()
@@ -148,8 +153,8 @@ struct MonthLedgerReorderTests {
 
         await model.reorder(ids(market, rent), of: .expense, in: october)
 
-        #expect(model.state.load.phase == .stale(ledger().reordering(ids(market, gym, rent)), .unreachable))
-        #expect(model.state.writes.failedReorder == FailedReorder(ref: october, kind: .expense, failure: .server))
+        #expect(model.state.load.phase == .stale(ledger(), .unreachable))
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == .server)
     }
 
     @Test("a failure after the month changed records for its own month and reloads nothing")
@@ -165,7 +170,7 @@ struct MonthLedgerReorderTests {
         await hold.release()
         await task.value
 
-        #expect(model.state.writes.failedReorder == FailedReorder(ref: october, kind: .expense, failure: .server))
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == .server)
         #expect(harness.source.calls == [october, november])
         model.select(october)
         #expect(expenses(model).map(\.id) == ids(rent, gym, market))
@@ -180,7 +185,7 @@ struct MonthLedgerReorderTests {
         await model.reorder(ids(market, rent), of: .expense, in: october)
 
         #expect(harness.expiry.count == 1)
-        #expect(model.state.writes.failedReorder == nil)
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == nil)
         #expect(harness.source.calls == [october])
     }
 
@@ -191,15 +196,15 @@ struct MonthLedgerReorderTests {
         harness.source.failure = .unreachable
         await model.reorder(ids(market, rent), of: .expense, in: october)
         harness.source.failure = nil
-        let failed = model.state.writes.failedReorder
+        let failed = model.state.writes.reorderFailure(in: october, kind: .expense)
 
         model.select(november)
         await model.load()
-        #expect(model.state.writes.failedReorder == failed)
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == failed)
 
         model.select(october)
         await model.refresh()
-        #expect(model.state.writes.failedReorder == nil)
+        #expect(model.state.writes.reorderFailure(in: october, kind: .expense) == nil)
     }
 
     @Test("a reorder never closes or opens the door of a row")
@@ -251,5 +256,16 @@ struct MonthLedgerReorderTests {
         #expect(harness.reorder.calls == [ids(market, gym, rent), ids(gym, market, rent)])
         #expect(expenses(model).map(\.id) == ids(gym, market, rent))
         #expect(harness.source.calls == [october])
+    }
+
+    @Test("a drag after a deletion sends the order without the deleted row")
+    func afterDeletion() async {
+        let harness = Harness()
+        let model = await harness.model()
+        await model.delete(rent)
+
+        await model.reorder(ids(market, gym), of: .expense, in: october)
+
+        #expect(harness.reorder.calls == [ids(market, gym)])
     }
 }

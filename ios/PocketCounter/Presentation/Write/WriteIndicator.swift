@@ -20,6 +20,8 @@ struct WriteIndicator: Equatable {
         switch write.phase {
         case .inFlight:
             return WriteIndicator(isBusy: true, notice: nil, remedy: nil)
+        case .settled:
+            return .none
         case .failed(let failure):
             guard let notice = WriteFailureMessage.message(for: failure, subject: subject) else { return .none }
             return WriteIndicator(isBusy: false, notice: notice, remedy: failure == .vanished ? .refresh : .retry)

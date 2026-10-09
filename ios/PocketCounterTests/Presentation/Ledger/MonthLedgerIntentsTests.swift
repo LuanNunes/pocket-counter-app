@@ -53,7 +53,7 @@ private func ledger(_ ref: RefYearMonth, items: [HistoryItem]) -> MonthLedger {
 @MainActor
 @Suite("MonthLedgerModel deleting")
 struct MonthLedgerDeleteTests {
-    @Test("a delete removes that row, sends its id once and leaves no intent behind")
+    @Test("a delete removes that row, sends its id once and remembers it as settled")
     func success() async {
         let harness = Harness()
         let model = await harness.model()
@@ -62,7 +62,7 @@ struct MonthLedgerDeleteTests {
 
         #expect(harness.delete.calls == [rent.id])
         #expect(model.state.load.value == ledger(october, gym, salary))
-        #expect(model.state.writes.intents.isEmpty)
+        #expect(model.state.writes.intents[rent.id]?.phase == .settled(.deletion))
     }
 
     @Test("a delete makes no reload: the answer is the removal")
@@ -144,9 +144,10 @@ struct MonthLedgerDeleteTests {
         await hold.release()
         await task.value
 
-        #expect(model.state.months[october]?.value == ledger(october, gym, salary))
+        #expect(model.state.months[october]?.value == ledger(october, rent, gym, salary))
+        #expect(model.state.ledger(for: october) == ledger(october, gym, salary))
         #expect(model.state.months[november] == novemberBefore)
-        #expect(model.state.writes.intents.isEmpty)
+        #expect(model.state.writes.intents[rent.id]?.phase == .settled(.deletion))
     }
 
     @Test("a second delete while the first is in flight sends nothing")
@@ -164,7 +165,7 @@ struct MonthLedgerDeleteTests {
         await first.value
     }
 
-    @Test("a row the committed ledger does not hold sends nothing")
+    @Test("a row the overlaid ledger does not hold sends nothing")
     func placeholder() async {
         let harness = Harness()
         let model = await harness.model()
@@ -192,7 +193,8 @@ struct MonthLedgerDeleteTests {
         await second.value
 
         #expect(model.state.load.value == ledger(october, salary))
-        #expect(model.state.writes.intents.isEmpty)
+        #expect(model.state.writes.intents[rent.id]?.phase == .settled(.deletion))
+        #expect(model.state.writes.intents[gym.id]?.phase == .settled(.deletion))
     }
 }
 
@@ -322,7 +324,7 @@ struct MonthLedgerFixoTests {
         #expect(model.state.load.phase == .loaded(ledger(october, rent, gym, salary)))
     }
 
-    @Test("a row the committed ledger does not hold sends nothing")
+    @Test("a row the overlaid ledger does not hold sends nothing")
     func placeholder() async {
         let harness = Harness()
         let model = await harness.model()
