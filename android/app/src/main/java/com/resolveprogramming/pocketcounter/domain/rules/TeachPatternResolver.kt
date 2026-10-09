@@ -31,6 +31,10 @@ object TeachPatternResolver {
             allowGatewayMarker = forIgnoreRule,
         )
 
+    /** The pattern for a draft with no notification behind it — the manual and quick-add paths. */
+    fun resolveFromDraft(draft: WizardDraft): String? =
+        TeachPatternSanitizer.cleanFirst(listOf(draft.merchant, draft.name))
+
     /**
      * The parsed payment hint, minus the bare card words of [CARD_HINT_WORDS]. "conta" is why: the
      * parser emits it for the INCOME phrase "crédito em conta", so an IGNORE rule keyed on it would

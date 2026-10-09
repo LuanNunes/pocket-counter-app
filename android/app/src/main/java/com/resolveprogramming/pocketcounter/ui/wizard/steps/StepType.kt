@@ -35,32 +35,10 @@ fun StepType(
     selectedType: TransactionType?,
     onSelect: (TransactionType) -> Unit,
     modifier: Modifier = Modifier,
+    question: (@Composable () -> Unit)? = null,
 ) {
     Column(modifier = modifier) {
-        val questionText = run {
-            if (suggestedType != null) {
-                val typeName = "receita".takeIf { suggestedType == TransactionType.INCOME } ?: "despesa"
-                return@run buildAnnotatedString {
-                    append("O texto parece indicar uma\n")
-                    withStyle(SpanStyle(color = PocketTheme.colors.accent, fontWeight = FontWeight.Bold)) {
-                        append(typeName)
-                    }
-                    append(". Confirma?")
-                }
-            }
-            buildAnnotatedString {
-                append("Não consegui identificar o tipo. ")
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                    append("Você me diz?")
-                }
-            }
-        }
-
-        Text(
-            text = questionText,
-            style = PocketTheme.typography.stepQuestion,
-            color = PocketTheme.colors.text,
-        )
+        question?.invoke() ?: DefaultTypeQuestion(suggestedType)
 
         Spacer(Modifier.height(20.dp))
 
@@ -88,6 +66,34 @@ fun StepType(
             )
         }
     }
+}
+
+@Composable
+private fun DefaultTypeQuestion(suggestedType: TransactionType?) {
+    val questionText = run {
+        if (suggestedType != null) {
+            val typeName = "receita".takeIf { suggestedType == TransactionType.INCOME } ?: "despesa"
+            return@run buildAnnotatedString {
+                append("O texto parece indicar uma\n")
+                withStyle(SpanStyle(color = PocketTheme.colors.accent, fontWeight = FontWeight.Bold)) {
+                    append(typeName)
+                }
+                append(". Confirma?")
+            }
+        }
+        buildAnnotatedString {
+            append("Não consegui identificar o tipo. ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                append("Você me diz?")
+            }
+        }
+    }
+
+    Text(
+        text = questionText,
+        style = PocketTheme.typography.stepQuestion,
+        color = PocketTheme.colors.text,
+    )
 }
 
 @Composable

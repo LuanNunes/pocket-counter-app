@@ -19,27 +19,34 @@ import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
 
 enum class PocketBadgeVariant { WARN, INCOME, EXPENSE, ACCENT, SOFT }
 
+/** [MICRO] is `.qa-rev-badge`: the quick-add summary rows, where a 22dp badge crowds the value. */
+enum class PocketBadgeSize { DEFAULT, MICRO }
+
 @Composable
 fun PocketBadge(
     text: String,
     variant: PocketBadgeVariant,
     modifier: Modifier = Modifier,
+    size: PocketBadgeSize = PocketBadgeSize.DEFAULT,
     leadingIcon: (@Composable () -> Unit)? = null,
 ) {
     val colors = PocketTheme.colors
     val (backgroundColor, contentColor) = when (variant) {
-        PocketBadgeVariant.WARN -> colors.warnBg to colors.warn
+        // warn on warnBg is 2.6:1 in light, sub-AA for an 11sp badge; text2 reaches 7.4.
+        PocketBadgeVariant.WARN -> colors.warnBg to colors.text2
         PocketBadgeVariant.INCOME -> colors.incomeBg to colors.income
         PocketBadgeVariant.EXPENSE -> colors.expenseBg to colors.expense
-        PocketBadgeVariant.ACCENT -> colors.accentBg to colors.accent
+        // accent on accentBg is 4.06:1 in light, under AA; text2 reaches 7.39.
+        PocketBadgeVariant.ACCENT -> colors.accentBg to colors.text2
         PocketBadgeVariant.SOFT -> colors.surface2 to colors.text2
     }
+    val micro = size == PocketBadgeSize.MICRO
 
     Row(
         modifier = modifier
-            .height(22.dp)
+            .height(16.dp.takeIf { micro } ?: 22.dp)
             .background(backgroundColor, PocketTheme.shapes.pill)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 6.dp.takeIf { micro } ?: 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -50,9 +57,9 @@ fun PocketBadge(
             text = text.uppercase(),
             color = contentColor,
             fontFamily = DmSans,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
-            letterSpacing = 0.02f.em,
+            fontWeight = FontWeight.Bold.takeIf { micro } ?: FontWeight.SemiBold,
+            fontSize = 9.5.sp.takeIf { micro } ?: 11.sp,
+            letterSpacing = 0.05f.em.takeIf { micro } ?: 0.02f.em,
             textAlign = TextAlign.Center,
         )
     }

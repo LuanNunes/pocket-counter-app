@@ -6,6 +6,7 @@ import com.resolveprogramming.pocketcounter.data.remote.api.AuthApi
 import com.resolveprogramming.pocketcounter.data.remote.dto.ErrorResponse
 import com.resolveprogramming.pocketcounter.data.remote.dto.LoginRequest
 import com.resolveprogramming.pocketcounter.data.remote.dto.RegisterRequest
+import com.resolveprogramming.pocketcounter.data.session.SessionScopedStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -22,6 +23,7 @@ class AuthRepository @Inject constructor(
     private val tokenStore: TokenStore,
     private val json: Json,
     private val appLockState: AppLockState,
+    private val sessionScopedStores: Set<@JvmSuppressWildcards SessionScopedStore>,
 ) {
     val isLoggedIn: Flow<Boolean> = tokenStore.isLoggedIn
 
@@ -47,6 +49,7 @@ class AuthRepository @Inject constructor(
         }
         tokenStore.clear()
         appLockState.lock()
+        clearSessionScopedState()
     }
 
     /**
@@ -62,9 +65,14 @@ class AuthRepository @Inject constructor(
         }
         tokenStore.clear()
         appLockState.lock()
+        clearSessionScopedState()
         Result.success(Unit)
     } catch (e: Exception) {
         Result.failure(e)
+    }
+
+    private fun clearSessionScopedState() {
+        sessionScopedStores.forEach { it.clearForSession() }
     }
 
     private suspend fun runAuth(
@@ -76,6 +84,9 @@ class AuthRepository @Inject constructor(
                 val body = response.body()!!
                 tokenStore.saveTokens(body.accessToken, body.refreshToken)
                 appLockState.unlock()
+                // An expired refresh token lets a different account sign in with no logout in
+                // between, so the incoming session — not just the outgoing one — starts empty.
+                clearSessionScopedState()
                 return@run Result.success(Unit)
             }
             val errorBody = response.errorBody()?.string()

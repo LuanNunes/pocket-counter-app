@@ -71,8 +71,8 @@ class ClassificationRuleTest {
     }
 
     @Test
-    fun writeBlocker_blankPatternOnIgnore_hasNoSignal() {
-        assertEquals(RuleWriteBlocker.PATTERN_WITHOUT_SIGNAL, ClassificationRule.ignore("").writeBlocker(null))
+    fun writeBlocker_blankPatternOnIgnore_isTooShort() {
+        assertEquals(RuleWriteBlocker.PATTERN_TOO_SHORT, ClassificationRule.ignore("").writeBlocker(null))
     }
 
     @Test
@@ -109,5 +109,26 @@ class ClassificationRuleTest {
         val rule = ClassificationRule.suggest("---", "t").copy(idTag = null)
 
         assertEquals(RuleWriteBlocker.PATTERN_WITHOUT_SIGNAL, rule.writeBlocker(TransactionType.INCOME))
+    }
+
+    @Test
+    fun writeBlocker_oneCharacterPattern_isTooShort() {
+        val rule = ClassificationRule.suggest("a", "t")
+
+        assertEquals(RuleWriteBlocker.PATTERN_TOO_SHORT, rule.writeBlocker(TransactionType.EXPENSE))
+    }
+
+    @Test
+    fun writeBlocker_patternAtTheMinimum_isNull() {
+        val atMinimum = "x".repeat(ClassificationRule.MIN_PATTERN_LENGTH)
+
+        assertNull(ClassificationRule.suggest(atMinimum, "t").writeBlocker(TransactionType.EXPENSE))
+    }
+
+    @Test
+    fun writeBlocker_minimumLengthIsMeasuredOnTheTrimmedPattern() {
+        val rule = ClassificationRule.suggest(" a ", "t")
+
+        assertEquals(RuleWriteBlocker.PATTERN_TOO_SHORT, rule.writeBlocker(TransactionType.EXPENSE))
     }
 }

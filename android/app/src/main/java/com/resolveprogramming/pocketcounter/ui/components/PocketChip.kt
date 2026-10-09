@@ -18,20 +18,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.resolveprogramming.pocketcounter.ui.theme.LocalReducedMotion
 import com.resolveprogramming.pocketcounter.ui.theme.PocketTheme
+import com.resolveprogramming.pocketcounter.ui.theme.dashedBorder
 
-enum class PocketChipVariant { DEFAULT, ON, ADD, WARN }
+enum class PocketChipVariant { DEFAULT, ON, ADD, WARN, INCOME, EXPENSE }
+
+private val ChipHeight = 32.dp
 
 @Composable
 fun PocketChip(
@@ -48,19 +48,26 @@ fun PocketChip(
         PocketChipVariant.DEFAULT, PocketChipVariant.ADD -> colors.surface2
         PocketChipVariant.ON -> colors.accent
         PocketChipVariant.WARN -> colors.warnBg
+        PocketChipVariant.INCOME -> colors.incomeBg
+        PocketChipVariant.EXPENSE -> colors.expenseBg
     }
     val contentColor = when (variant) {
         PocketChipVariant.DEFAULT -> colors.text2
         PocketChipVariant.ON -> colors.accentInk
         PocketChipVariant.ADD -> colors.text3
         PocketChipVariant.WARN -> colors.warn
+        // income on incomeBg is 3.99:1 in light; becomes colors.income once the token is regenerated.
+        PocketChipVariant.INCOME -> colors.text2
+        PocketChipVariant.EXPENSE -> colors.expense
     }
     val borderColor = when (variant) {
         PocketChipVariant.DEFAULT -> colors.line
         PocketChipVariant.ON -> colors.accent
         PocketChipVariant.ADD -> colors.line
-        PocketChipVariant.WARN -> Color.Transparent
+        PocketChipVariant.WARN, PocketChipVariant.INCOME, PocketChipVariant.EXPENSE -> Color.Transparent
     }
+    val fontWeight = FontWeight.SemiBold
+        .takeIf { variant == PocketChipVariant.INCOME || variant == PocketChipVariant.EXPENSE }
     val dashedBorder = variant == PocketChipVariant.ADD
 
     val interactionSource = remember { MutableInteractionSource() }
@@ -69,10 +76,10 @@ fun PocketChip(
 
     val chipModifier = Modifier
         .scale(scale)
-        .height(32.dp)
+        .height(ChipHeight)
         .then(
             run {
-                if (dashedBorder) return@run Modifier.dashedBorder(borderColor)
+                if (dashedBorder) return@run Modifier.dashedBorder(borderColor, ChipHeight / 2)
                 Modifier.border(1.dp, borderColor, PocketTheme.shapes.pill)
             }
         )
@@ -92,6 +99,7 @@ fun PocketChip(
                 text = label,
                 style = PocketTheme.typography.bodySm,
                 color = contentColor,
+                fontWeight = fontWeight,
             )
         }
     }
@@ -101,7 +109,7 @@ fun PocketChip(
     if (onClick != null) {
         Box(
             modifier = modifier
-                .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                 .selectable(
                     selected = variant == PocketChipVariant.ON,
                     interactionSource = interactionSource,
@@ -119,17 +127,4 @@ fun PocketChip(
             content()
         }
     }
-}
-
-private fun Modifier.dashedBorder(color: Color): Modifier = drawBehind {
-    val stroke = Stroke(
-        width = 1.dp.toPx(),
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f), 0f),
-    )
-    val radius = size.height / 2f
-    drawRoundRect(
-        color = color,
-        cornerRadius = CornerRadius(radius, radius),
-        style = stroke,
-    )
 }

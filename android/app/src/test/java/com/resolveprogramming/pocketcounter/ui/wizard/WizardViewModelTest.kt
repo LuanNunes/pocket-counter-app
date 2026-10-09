@@ -2215,15 +2215,36 @@ class WizardViewModelTest {
     }
 
     @Test
-    fun `a duplicate rule is silent and the save completes`() = runTest {
+    fun `a duplicate rule is disclosed and the save completes`() = runTest {
         coEvery { classificationRuleRepository.create(any()) } returns Result.success(RuleWriteOutcome.Duplicate)
         val vm = teachViewModel(listOf(makeCategoryTag("tag-cat")))
 
         var done = false
-        saveTeaching(vm, "tag-cat", onDone = { done = true })
+        val messages = relayedMessages { saveTeaching(vm, "tag-cat", onDone = { done = true }) }
 
         assertTrue(done)
-        assertNull(vm.state.value.toastMessage)
+        assertEquals(listOf("Lançado ✓ · a regra já existia."), messages)
+    }
+
+    @Test
+    fun `a refused rule reports the server's reason instead of doing nothing`() = runTest {
+        // The rule cap is only knowable after the write, and the transaction is already saved.
+        coEvery { classificationRuleRepository.create(any()) } returns
+            Result.success(RuleWriteOutcome.Rejected("Você já tem 500 regras."))
+        val vm = teachViewModel(listOf(makeCategoryTag("tag-cat")))
+
+        val messages = relayedMessages { saveTeaching(vm, "tag-cat") }
+
+        assertEquals(listOf("Lançado ✓ · regra não criada: Você já tem 500 regras."), messages)
+    }
+
+    @Test
+    fun `a rule that saved says nothing`() = runTest {
+        val vm = teachViewModel(listOf(makeCategoryTag("tag-cat")))
+
+        val messages = relayedMessages { saveTeaching(vm, "tag-cat") }
+
+        assertTrue(messages.isEmpty())
     }
 
     @Test

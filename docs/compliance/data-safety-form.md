@@ -34,7 +34,16 @@ side of declaring.
   functionality. Not shared. Optional (opt-in via notification-access permission).
 
 ### App activity
-- **Other user-generated content** — see above (notification text). Declare here.
+- **Other user-generated content** — ONE checkbox covering two sources. Declare:
+  **collected**, **not** shared, Optional. Both sources together decide the "stored"
+  answer, so it must be **Yes** (notification text is stored):
+  - *Notification text* (capture feature, opt-in via notification access) — **stored**
+    server-side, associated with the account. See *Messages* above.
+  - *Free-text sentences typed in lançamento rápido* — **not stored**: sent to our
+    servers to be interpreted, used to pre-fill the form, then discarded. Only the
+    transaction the user confirms is saved. Ephemeral for this source.
+  - Note for the reviewer: if the user opts to teach a classification rule, the short
+    pattern they confirm **is** stored. That is a user-authored rule, not the sentence.
 
 ### NOT collected (leave unchecked)
 - Location, Contacts, Photos/Videos, Audio, Health, Web browsing, Calendar,
@@ -44,7 +53,8 @@ side of declaring.
 ## Data handling declarations
 
 - **Ephemeral processing:** No (notification content is stored server-side associated
-  with the account) `[CONFIRM]`.
+  with the account) `[CONFIRM]`. The *lançamento rápido* sentence is the one flow that is
+  ephemeral — processed and discarded, never persisted.
 - **Data shared with third parties:** None (hosting provider is a processor, not
   "sharing" under Play's definition).
 - **Deletion:** account deletion removes personal + financial data
